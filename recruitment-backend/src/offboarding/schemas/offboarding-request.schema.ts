@@ -9,7 +9,7 @@ export class OffboardingRequest {
 
   // DEPENDENCY: Employee Profile subsystem (employee ID) bas no reference
   @Prop({ required: true })
-  employeeProfileId: string;
+  employeeId: string;
 
   // Who initiated the offboarding? Employee | HR | Manager
   @Prop({ required: true })
