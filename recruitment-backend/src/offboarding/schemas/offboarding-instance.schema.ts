@@ -24,15 +24,20 @@ export class OffboardingInstance {
 
  
   //external reference le Employee
-  @Prop({ type: Types.ObjectId, ref: 'Employee', required: true })
-  employeeId: Types.ObjectId;
+  @Prop({ required: true })
+employeeId: string;
+
+
+  //@Prop({ type: Types.ObjectId, ref: 'Employee', required: true })
+  //employeeId: Types.ObjectId;
+
+
 
   /**
    * DEPENDENCY: Offboarding checklist configuration
    * - Points to a checklist/template describing standard tasks (IT, HR, Finance, Facilities...)
    * - When your team creates an OffboardingChecklistTemplate model, use its model name as `ref`
    */
-  //menna na2sek el schema di heya fein??????
   @Prop({ type: Types.ObjectId, ref: 'OffboardingChecklistTemplate' })
   checklistTemplateId?: Types.ObjectId;
 

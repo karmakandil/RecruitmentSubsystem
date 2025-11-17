@@ -20,12 +20,21 @@ import {
   OffboardingTaskSchema,
 } from './schemas/offboarding-task.schema';
 
+import {
+  OffboardingChecklistTemplate,
+  OffboardingChecklistTemplateSchema,
+} from './schemas/OffboardingChecklistTemplate.schema';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: OffboardingRequest.name, schema: OffboardingRequestSchema },
       { name: OffboardingInstance.name, schema: OffboardingInstanceSchema },
       { name: OffboardingTask.name, schema: OffboardingTaskSchema },
+      {
+        name: OffboardingChecklistTemplate.name,
+        schema: OffboardingChecklistTemplateSchema,
+      },
     ]),
   ],
   controllers: [OffboardingController],

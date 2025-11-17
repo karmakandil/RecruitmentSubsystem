@@ -50,15 +50,17 @@ export class OffboardingTask {
    * - _id of the user/employee actually responsible for this specific task
    */
   // external reference le Employee Module
-  @Prop({ type: Types.ObjectId, ref: 'Employee' })
-  assignedToUserId?: Types.ObjectId;
+  @Prop()
+assignedToUserId?: string;
 
-  /**
+
+/**
    * Who approved/completed this task (user id from Employee/User subsystem)
    */
   // external reference le Employee Module
-  @Prop({ type: Types.ObjectId, ref: 'Employee' })
-  approvedBy?: Types.ObjectId;
+ @Prop()
+approvedBy?: string;
+
 
   @Prop()
   approvedAt?: Date;
@@ -84,7 +86,7 @@ export class OffboardingTask {
 
   @Prop()
   leavesBalanceDays?: number;
-
+ 
   @Prop()
   encashmentAmount?: number;
 }
