@@ -2,18 +2,16 @@
 
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { OffboardingController } from './offboarding.controller';
-import { OffboardingService } from './offboarding.service';
-
-import {
-  OffboardingRequest,
-  OffboardingRequestSchema,
-} from './schemas/offboarding-request.schema';
 
 import {
   OffboardingInstance,
   OffboardingInstanceSchema,
 } from './schemas/offboarding-instance.schema';
+
+import {
+  OffboardingRequest,
+  OffboardingRequestSchema,
+} from './schemas/offboarding-request.schema';
 
 import {
   OffboardingTask,
@@ -28,17 +26,12 @@ import {
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: OffboardingRequest.name, schema: OffboardingRequestSchema },
       { name: OffboardingInstance.name, schema: OffboardingInstanceSchema },
+      { name: OffboardingRequest.name, schema: OffboardingRequestSchema },
       { name: OffboardingTask.name, schema: OffboardingTaskSchema },
-      {
-        name: OffboardingChecklistTemplate.name,
-        schema: OffboardingChecklistTemplateSchema,
-      },
+      { name: OffboardingChecklistTemplate.name, schema: OffboardingChecklistTemplateSchema },
     ]),
   ],
-  controllers: [OffboardingController],
-  providers: [OffboardingService],
-  exports: [OffboardingService],
+  exports: [MongooseModule],
 })
 export class OffboardingModule {}
