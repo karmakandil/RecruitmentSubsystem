@@ -69,9 +69,6 @@ export class AppraisalRecord {
   @Prop({ type: String })
   improvementAreas?: string;
 
-  @Prop({ type: Object }) //from Time Mangement System
-  attendanceSnapshot?: Record<string, unknown>;
-
   @Prop({
     type: String,
     enum: Object.values(AppraisalRecordStatus),
