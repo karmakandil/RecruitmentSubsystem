@@ -67,25 +67,36 @@ export class RecruitmentService {
    * ONB-004: Get onboarding tracker for a new hire
    */
   async getOnboardingByEmployeeId(employeeId: string): Promise<any> {
-    try {
-      const onboarding = await this.onboardingModel
-        .findOne({ employeeId: new Types.ObjectId(employeeId) })
-        .select('-__v')
-        .lean()
-        .exec();
+  try {
+    console.log('Searching for employeeId:', employeeId);
+    
+    // Try both as string and ObjectId
+    const onboarding = await this.onboardingModel
+      .findOne({ 
+        $or: [
+          { employeeId: employeeId },
+          { employeeId: new Types.ObjectId(employeeId) }
+        ]
+      })
+      .select('-__v')
+      .lean()
+      .exec();
 
-      if (!onboarding) {
-        throw new NotFoundException('Onboarding checklist not found for this employee');
-      }
+    console.log('Result:', onboarding);
 
-      return onboarding;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new BadRequestException('Failed to fetch onboarding: ' + error.message);
+    if (!onboarding) {
+      throw new NotFoundException('Onboarding checklist not found for this employee');
     }
+
+    return onboarding;
+  } catch (error) {
+    console.error('Error details:', error);
+    if (error instanceof NotFoundException) {
+      throw error;
+    }
+    throw new BadRequestException('Failed to fetch onboarding: ' + error.message);
   }
+}
 
   /**
    * Get onboarding by ID
