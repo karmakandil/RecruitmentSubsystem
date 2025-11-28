@@ -15,27 +15,36 @@ import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
 import { OnboardingTaskStatus } from './enums/onboarding-task-status.enum';
+import { Document, DocumentDocument } from './models/document.schema';
+import * as fs from 'fs-extra';
+import { DocumentType } from './enums/document-type.enum';
+import { Response } from 'express';
+
 
 @Injectable()
 export class RecruitmentService {
-  constructor(
-    @InjectModel(JobRequisition.name)
-    private jobModel: Model<JobRequisition>,
-    
-    @InjectModel(Application.name)
-    private applicationModel: Model<Application>,
+ constructor(
+  @InjectModel(JobRequisition.name)
+  private jobModel: Model<JobRequisition>,
+  
+  @InjectModel(Application.name)
+  private applicationModel: Model<Application>,
 
-    @InjectModel(Interview.name)
-    private interviewModel: Model<Interview>,
+  @InjectModel(Interview.name)
+  private interviewModel: Model<Interview>,
 
-    @InjectModel(Offer.name)
-    private offerModel: Model<Offer>,
+  @InjectModel(Offer.name)
+  private offerModel: Model<Offer>,
 
-    @InjectModel('JobTemplate') private jobTemplateModel: Model<any>,
+  @InjectModel('JobTemplate') private jobTemplateModel: Model<any>,
 
-    @InjectModel(Onboarding.name) 
-    private readonly onboardingModel: Model<OnboardingDocument>,
-  ) {}
+  @InjectModel(Onboarding.name) 
+  private readonly onboardingModel: Model<OnboardingDocument>,
+
+  // ADD THIS:
+  @InjectModel(Document.name) 
+  private readonly documentModel: Model<DocumentDocument>,
+) {}
 
   // Utility function to calculate job requisition progress
   calculateProgress(status: string): number {
@@ -422,4 +431,185 @@ export class RecruitmentService {
       throw new BadRequestException('Failed to fetch stats: ' + error.message);
     }
   }
+  // ============= DOCUMENT UPLOAD METHODS (ONB-007) =============
+
+/**
+ * Upload document for onboarding task
+ * ONB-007: Document upload for compliance
+ */
+/**
+ * Upload document for onboarding task
+ * ONB-007: Document upload for compliance
+ */
+async uploadTaskDocument(
+  onboardingId: string,
+  taskIndex: number,
+  file: Express.Multer.File,
+  documentType: DocumentType,
+): Promise<any> {
+  try {
+    // 1. Validate onboarding exists
+    const onboarding = await this.onboardingModel.findById(onboardingId);
+    if (!onboarding) {
+      throw new NotFoundException('Onboarding not found');
+    }
+
+    // 2. Validate task index
+    if (taskIndex < 0 || taskIndex >= onboarding.tasks.length) {
+      throw new BadRequestException('Invalid task index');
+    }
+
+    // 3. Validate file exists
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // 4. Validate file type
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg', 
+      'image/png',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+      );
+    }
+
+    // 5. Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      throw new BadRequestException('File size exceeds 5MB limit');
+    }
+
+    // 6. Use the file path that Multer already saved
+    // (Multer's diskStorage already saved the file for us)
+    const filePath = file.path;
+
+    // 7. Create Document record
+    const document = new this.documentModel({
+      ownerId: onboarding.employeeId,
+      type: documentType,
+      filePath: filePath,
+      uploadedAt: new Date(),
+    });
+
+    const savedDocument = await document.save();
+
+    // 8. Update task with documentId
+    onboarding.tasks[taskIndex].documentId = savedDocument._id;
+
+    // Auto-complete task if it was pending
+    if (onboarding.tasks[taskIndex].status === OnboardingTaskStatus.PENDING) {
+      onboarding.tasks[taskIndex].status = OnboardingTaskStatus.COMPLETED;
+      onboarding.tasks[taskIndex].completedAt = new Date();
+    }
+
+    // 9. Check if all tasks completed
+    const allCompleted = onboarding.tasks.every(
+      (task) => task.status === OnboardingTaskStatus.COMPLETED,
+    );
+
+    if (allCompleted) {
+      onboarding.completed = true;
+      onboarding.completedAt = new Date();
+    }
+
+    // 10. Save onboarding
+    const savedOnboarding = await onboarding.save();
+
+    return {
+      message: 'Document uploaded successfully',
+      document: savedDocument.toObject(),
+      onboarding: savedOnboarding.toObject(),
+    };
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    throw error;
+  }
+}
+
+/**
+ * Download document by ID
+ */
+async downloadDocument(documentId: string, res: Response): Promise<void> {
+  try {
+    // 1. Find document
+    const document = await this.documentModel.findById(documentId).lean();
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // 2. Check file exists on disk
+    const fileExists = await fs.pathExists(document.filePath);
+    if (!fileExists) {
+      throw new NotFoundException('File not found on server');
+    }
+
+    // 3. Send file
+    res.download(document.filePath);
+  } catch (error) {
+    console.error('Error downloading document:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get document attached to specific task
+ */
+async getTaskDocument(onboardingId: string, taskIndex: number): Promise<any> {
+  try {
+    const onboarding = await this.onboardingModel.findById(onboardingId).lean();
+    if (!onboarding) {
+      throw new NotFoundException('Onboarding not found');
+    }
+
+    if (taskIndex < 0 || taskIndex >= onboarding.tasks.length) {
+      throw new BadRequestException('Invalid task index');
+    }
+
+    const task = onboarding.tasks[taskIndex];
+    if (!task.documentId) {
+      throw new NotFoundException('No document attached to this task');
+    }
+
+    const document = await this.documentModel.findById(task.documentId).lean();
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    return document;
+  } catch (error) {
+    console.error('Error getting task document:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete document (optional - for cleanup)
+ */
+async deleteDocument(documentId: string): Promise<void> {
+  try {
+    const document = await this.documentModel.findById(documentId);
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Delete file from disk
+    const fileExists = await fs.pathExists(document.filePath);
+    if (fileExists) {
+      await fs.remove(document.filePath);
+    }
+
+    // Delete document record
+    await this.documentModel.findByIdAndDelete(documentId);
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    throw error;
+  }
+}
 }

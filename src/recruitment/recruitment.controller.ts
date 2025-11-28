@@ -11,6 +11,16 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { 
+  UseInterceptors, 
+  UploadedFile, 
+  Res 
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { multerConfig } from './multer.config';
+import { UploadDocumentDto } from './dto/upload-document.dto';
+import { DocumentType } from './enums/document-type.enum';
 
 import { RecruitmentService } from './recruitment.service';
 import { CreateJobRequisitionDto } from './dto/job-requisition.dto';
@@ -206,6 +216,62 @@ export class RecruitmentController {
   async deleteOnboarding(@Param('id') id: string) {
     return this.service.deleteOnboarding(id);
   }
+// ============= DOCUMENT UPLOAD ENDPOINTS (ONB-007) =============
+
+/**
+ * POST /recruitment/onboarding/:id/task/:taskIndex/upload
+ * Upload document for specific onboarding task
+ */
+@Post('onboarding/:id/task/:taskIndex/upload')
+@UseInterceptors(FileInterceptor('file', multerConfig))
+async uploadTaskDocument(
+  @Param('id') onboardingId: string,
+  @Param('taskIndex') taskIndex: string,
+  @UploadedFile() file: Express.Multer.File,
+  @Body('documentType') documentType: DocumentType,
+) {
+  return this.service.uploadTaskDocument(
+    onboardingId,
+    parseInt(taskIndex, 10),
+    file,
+    documentType,
+  );
+}
+
+/**
+ * GET /recruitment/document/:documentId/download
+ * Download document by ID
+ */
+@Get('document/:documentId/download')
+async downloadDocument(
+  @Param('documentId') documentId: string,
+  @Res() res: Response,
+) {
+  return this.service.downloadDocument(documentId, res);
+}
+
+/**
+ * GET /recruitment/onboarding/:id/task/:taskIndex/document
+ * Get document metadata for specific task
+ */
+@Get('onboarding/:id/task/:taskIndex/document')
+async getTaskDocument(
+  @Param('id') onboardingId: string,
+  @Param('taskIndex') taskIndex: string,
+) {
+  return this.service.getTaskDocument(onboardingId, parseInt(taskIndex, 10));
+}
+
+/**
+ * DELETE /recruitment/document/:documentId
+ * Delete document (cleanup)
+ */
+@Delete('document/:documentId')
+@HttpCode(HttpStatus.NO_CONTENT)
+async deleteDocument(@Param('documentId') documentId: string) {
+  return this.service.deleteDocument(documentId);
+}
+
 }
 
 
