@@ -31,6 +31,7 @@ import { CreateOfferDto, RespondToOfferDto, FinalizeOfferDto } from './dto/offer
 import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
+import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
 
 @Controller('recruitment')
 export class RecruitmentController {
@@ -104,6 +105,19 @@ export class RecruitmentController {
     @Body() dto: FinalizeOfferDto,
   ) {
     return this.service.finalizeOffer(id, dto);
+  }
+
+  /**
+   * POST /recruitment/offer/:id/create-employee
+   * Create employee profile from accepted offer and signed contract
+   * HR Manager access signed contract details to create employee profile
+   */
+  @Post('offer/:id/create-employee')
+  async createEmployeeFromContract(
+    @Param('id') offerId: string,
+    @Body() dto: CreateEmployeeFromContractDto,
+  ) {
+    return this.service.createEmployeeFromContract(offerId, dto);
   }
 
   // ============= ONBOARDING ENDPOINTS =============

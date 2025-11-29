@@ -19,6 +19,14 @@ import { Document, DocumentDocument } from './models/document.schema';
 import * as fs from 'fs-extra';
 import { DocumentType } from './enums/document-type.enum';
 import { Response } from 'express';
+import { EmployeeProfileService } from '../employee-profile/employee-profile.service';
+import { Contract, ContractDocument } from './models/contract.schema';
+import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
+import { OfferResponseStatus } from './enums/offer-response-status.enum';
+import { OfferFinalStatus } from './enums/offer-final-status.enum';
+import { CreateEmployeeDto } from '../employee-profile/dto/create-employee.dto';
+import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+import { Candidate, CandidateDocument } from '../employee-profile/models/candidate.schema';
 
 
 @Injectable()
@@ -26,7 +34,7 @@ export class RecruitmentService {
  constructor(
   @InjectModel(JobRequisition.name)
   private jobModel: Model<JobRequisition>,
-  
+
   @InjectModel(Application.name)
   private applicationModel: Model<Application>,
 
@@ -38,12 +46,19 @@ export class RecruitmentService {
 
   @InjectModel('JobTemplate') private jobTemplateModel: Model<any>,
 
-  @InjectModel(Onboarding.name) 
+  @InjectModel(Onboarding.name)
   private readonly onboardingModel: Model<OnboardingDocument>,
 
-  // ADD THIS:
-  @InjectModel(Document.name) 
+  @InjectModel(Document.name)
   private readonly documentModel: Model<DocumentDocument>,
+
+  @InjectModel(Contract.name)
+  private readonly contractModel: Model<ContractDocument>,
+
+  @InjectModel(Candidate.name)
+  private readonly candidateModel: Model<CandidateDocument>,
+
+  private readonly employeeProfileService: EmployeeProfileService,
 ) {}
 
   // Utility function to calculate job requisition progress
@@ -612,4 +627,141 @@ async deleteDocument(documentId: string): Promise<void> {
     throw error;
   }
 }
+
+// ============= EMPLOYEE CREATION FROM CONTRACT =============
+
+/**
+ * Create employee profile from accepted offer and signed contract
+ * HR Manager can access signed contract details to create employee profile
+ */
+async createEmployeeFromContract(
+  offerId: string,
+  dto: CreateEmployeeFromContractDto,
+): Promise<any> {
+  try {
+    // 1. Validate and get offer
+    if (!Types.ObjectId.isValid(offerId)) {
+      throw new BadRequestException('Invalid offer ID');
+    }
+
+    const offer = await this.offerModel.findById(offerId).lean();
+    if (!offer) {
+      throw new NotFoundException('Offer not found');
+    }
+
+    // 2. Validate offer status - must be accepted by candidate AND approved
+    if (offer.applicantResponse !== OfferResponseStatus.ACCEPTED) {
+      throw new BadRequestException(
+        'Offer must be accepted by candidate before creating employee profile',
+      );
+    }
+
+    if (offer.finalStatus !== OfferFinalStatus.APPROVED) {
+      throw new BadRequestException(
+        'Offer must be approved before creating employee profile',
+      );
+    }
+
+    // 3. Find contract for this offer
+    let contract: any = null;
+    if (dto.contractId) {
+      contract = await this.contractModel.findById(dto.contractId).lean();
+      if (!contract || contract.offerId.toString() !== offerId) {
+        throw new NotFoundException('Contract not found or does not match offer');
+      }
+    } else {
+      // Find contract by offerId
+      contract = await this.contractModel.findOne({ offerId: new Types.ObjectId(offerId) }).lean();
+    }
+
+    // 4. Validate contract exists and has signed document
+    if (!contract) {
+      throw new NotFoundException(
+        'No contract found for this offer. Please create and upload signed contract first.',
+      );
+    }
+
+    if (!contract.documentId) {
+      throw new BadRequestException(
+        'Contract must have a signed document attached before creating employee profile',
+      );
+    }
+
+    // 5. Verify the contract document exists
+    const contractDocument = await this.documentModel.findById(contract.documentId).lean();
+    if (!contractDocument) {
+      throw new NotFoundException('Signed contract document not found');
+    }
+
+    // 6. Get candidate data
+    const candidate = await this.candidateModel.findById(offer.candidateId).lean();
+    if (!candidate) {
+      throw new NotFoundException('Candidate not found');
+    }
+
+    // 7. Generate work email if not provided
+    let workEmail = dto.workEmail;
+    if (!workEmail) {
+      const firstName = candidate.firstName?.toLowerCase().replace(/\s+/g, '') || '';
+      const lastName = candidate.lastName?.toLowerCase().replace(/\s+/g, '') || '';
+      workEmail = `${firstName}.${lastName}@company.com`;
+    }
+
+    // 8. Map data to CreateEmployeeDto
+    const createEmployeeDto: CreateEmployeeDto = {
+      // Personal info from candidate
+      firstName: candidate.firstName,
+      middleName: candidate.middleName,
+      lastName: candidate.lastName,
+      nationalId: candidate.nationalId,
+      gender: candidate.gender,
+      maritalStatus: candidate.maritalStatus,
+      dateOfBirth: candidate.dateOfBirth,
+      personalEmail: candidate.personalEmail,
+      mobilePhone: candidate.mobilePhone,
+      homePhone: candidate.homePhone,
+      address: candidate.address,
+      profilePictureUrl: candidate.profilePictureUrl,
+
+      // Work info from offer/contract
+      workEmail: workEmail,
+      dateOfHire: contract.acceptanceDate || new Date(),
+      contractStartDate: contract.acceptanceDate,
+      contractEndDate: undefined, // Can be set manually by HR if needed
+      contractType: dto.contractType,
+      workType: dto.workType,
+      status: EmployeeStatus.PROBATION, // Default to probation for new hires
+
+      // Organizational assignment (from DTO or can be derived from offer)
+      primaryDepartmentId: dto.primaryDepartmentId,
+      supervisorPositionId: dto.supervisorPositionId,
+      payGradeId: dto.payGradeId,
+
+      // Position - can be mapped from offer.role if needed
+      primaryPositionId: dto.primaryDepartmentId, // HR can assign this manually via DTO
+    };
+
+    // 9. Create employee profile
+    const employee = await this.employeeProfileService.create(createEmployeeDto);
+
+    // 10. Return success response with employee and contract details
+    return {
+      message: 'Employee profile created successfully from contract',
+      employee: employee,
+      contractDetails: {
+        contractId: contract._id,
+        offerId: offer._id,
+        role: contract.role,
+        grossSalary: contract.grossSalary,
+        signingBonus: contract.signingBonus,
+        benefits: contract.benefits,
+        documentId: contract.documentId,
+      },
+    };
+  } catch (error) {
+    console.error('Error creating employee from contract:', error);
+    throw error;
+  }
+}
+
 }
