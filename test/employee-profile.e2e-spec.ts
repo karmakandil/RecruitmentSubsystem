@@ -18,7 +18,11 @@ describe('EmployeeProfileController (e2e)', () => {
   let testDepartmentId: string;
 
   // Helper function to create JWT token
-  const createToken = (jwtService: JwtService, userId: string, roles: SystemRole[] = [SystemRole.DEPARTMENT_EMPLOYEE]) => {
+  const createToken = (
+    jwtService: JwtService,
+    userId: string,
+    roles: SystemRole[] = [SystemRole.DEPARTMENT_EMPLOYEE],
+  ) => {
     return jwtService.sign({
       sub: userId,
       username: 'testuser',
@@ -57,8 +61,12 @@ describe('EmployeeProfileController (e2e)', () => {
     // Use test IDs for tokens - individual tests will create employees as needed
     const testUserId = '507f1f77bcf86cd799439011';
     adminToken = createToken(jwtService, testUserId, [SystemRole.SYSTEM_ADMIN]);
-    hrManagerToken = createToken(jwtService, testUserId, [SystemRole.HR_MANAGER]);
-    employeeToken = createToken(jwtService, testUserId, [SystemRole.DEPARTMENT_EMPLOYEE]);
+    hrManagerToken = createToken(jwtService, testUserId, [
+      SystemRole.HR_MANAGER,
+    ]);
+    employeeToken = createToken(jwtService, testUserId, [
+      SystemRole.DEPARTMENT_EMPLOYEE,
+    ]);
     authToken = adminToken; // Default token
   });
 
@@ -147,7 +155,7 @@ describe('EmployeeProfileController (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send(validEmployeeData)
         .expect(201);
-      
+
       // Then try to create another with the same national ID
       await request(app.getHttpServer())
         .post('/api/v1/employee-profile')
@@ -245,7 +253,9 @@ describe('EmployeeProfileController (e2e)', () => {
         dateOfHire: new Date(),
       });
       const testEmployeeId = (testEmployee as any)._id?.toString();
-      const testToken = createToken(jwtService, testEmployeeId, [SystemRole.DEPARTMENT_EMPLOYEE]);
+      const testToken = createToken(jwtService, testEmployeeId, [
+        SystemRole.DEPARTMENT_EMPLOYEE,
+      ]);
 
       const response = await request(app.getHttpServer())
         .get('/api/v1/employee-profile/me')
@@ -274,7 +284,9 @@ describe('EmployeeProfileController (e2e)', () => {
         dateOfHire: new Date(),
       });
       const testEmployeeId = (testEmployee as any)._id?.toString();
-      const testToken = createToken(jwtService, testEmployeeId, [SystemRole.DEPARTMENT_EMPLOYEE]);
+      const testToken = createToken(jwtService, testEmployeeId, [
+        SystemRole.DEPARTMENT_EMPLOYEE,
+      ]);
 
       const updateData = {
         personalEmail: 'updated@example.com',
@@ -457,7 +469,8 @@ describe('EmployeeProfileController (e2e)', () => {
         .send(employeeData)
         .expect(201);
 
-      const deleteId = createResponse.body.data._id || createResponse.body.data.id;
+      const deleteId =
+        createResponse.body.data._id || createResponse.body.data.id;
 
       await request(app.getHttpServer())
         .delete(`/api/v1/employee-profile/${deleteId}`)
@@ -585,4 +598,3 @@ describe('EmployeeProfileController (e2e)', () => {
     });
   });
 });
-

@@ -16,10 +16,7 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(
-    employeeNumber: string,
-    password: string,
-  ): Promise<any> {
+  async validateUser(employeeNumber: string, password: string): Promise<any> {
     const employee = await this.employeeModel
       .findOne({ employeeNumber })
       .exec();

@@ -14,7 +14,6 @@ import { LeavesModule } from './leaves/leaves.module';
 import { PayrollConfigurationModule } from './payroll-configuration/payroll-configuration.module';
 import { PayrollExecutionModule } from './payroll-execution/payroll-execution.module';
 import { PayrollTrackingModule } from './payroll-tracking/payroll-tracking.module';
-
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 

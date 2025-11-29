@@ -90,7 +90,7 @@ export class ProfileChangeRequestService {
       { new: true },
     );
 
-    return updated!;
+    return updated;
   }
 
   async cancel(
@@ -118,7 +118,7 @@ export class ProfileChangeRequestService {
       { new: true },
     );
 
-    return updated!;
+    return updated;
   }
 
   private async generateRequestId(): Promise<string> {

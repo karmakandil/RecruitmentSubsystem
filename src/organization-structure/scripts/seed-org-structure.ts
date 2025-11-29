@@ -1,6 +1,6 @@
 /**
  * Seed Organization Structure (Departments & Positions)
- * 
+ *
  * This script creates sample departments and positions for testing
  * Run with: ts-node src/organization-structure/scripts/seed-org-structure.ts
  */
@@ -19,9 +19,7 @@ async function seedOrgStructure() {
   const departmentModel = app.get<Model<Department>>(
     getModelToken(Department.name),
   );
-  const positionModel = app.get<Model<Position>>(
-    getModelToken(Position.name),
-  );
+  const positionModel = app.get<Model<Position>>(getModelToken(Position.name));
 
   try {
     // Create Departments
@@ -62,9 +60,14 @@ async function seedOrgStructure() {
           { upsert: true, new: true },
         );
         createdDepartments.push(dept);
-        console.log(`✅ Created/Updated department: ${dept.name} (${dept.code})`);
+        console.log(
+          `✅ Created/Updated department: ${dept.name} (${dept.code})`,
+        );
       } catch (error: any) {
-        console.error(`❌ Error creating department ${deptData.code}:`, error.message);
+        console.error(
+          `❌ Error creating department ${deptData.code}:`,
+          error.message,
+        );
       }
     }
 
@@ -111,7 +114,9 @@ async function seedOrgStructure() {
     const createdPositions: any[] = [];
     for (const posData of positions) {
       if (!posData.departmentId) {
-        console.log(`⚠️  Skipping position ${posData.code} - department not found`);
+        console.log(
+          `⚠️  Skipping position ${posData.code} - department not found`,
+        );
         continue;
       }
       try {
@@ -123,7 +128,10 @@ async function seedOrgStructure() {
         createdPositions.push(pos);
         console.log(`✅ Created/Updated position: ${pos.title} (${pos.code})`);
       } catch (error: any) {
-        console.error(`❌ Error creating position ${posData.code}:`, error.message);
+        console.error(
+          `❌ Error creating position ${posData.code}:`,
+          error.message,
+        );
       }
     }
 
@@ -144,14 +152,20 @@ async function seedOrgStructure() {
 
     console.log('\n📝 Example Employee with Position:');
     if (createdPositions.length > 0 && createdDepartments.length > 0) {
-      console.log(JSON.stringify({
-        firstName: 'Ahmed',
-        lastName: 'Mohamed',
-        nationalId: '12345678901234',
-        dateOfHire: '2024-01-15T00:00:00.000Z',
-        primaryPositionId: createdPositions[0]._id.toString(),
-        primaryDepartmentId: createdDepartments[0]._id.toString(),
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            firstName: 'Ahmed',
+            lastName: 'Mohamed',
+            nationalId: '12345678901234',
+            dateOfHire: '2024-01-15T00:00:00.000Z',
+            primaryPositionId: createdPositions[0]._id.toString(),
+            primaryDepartmentId: createdDepartments[0]._id.toString(),
+          },
+          null,
+          2,
+        ),
+      );
     }
   } catch (error) {
     console.error('❌ Error seeding organization structure:', error);
@@ -165,4 +179,3 @@ if (require.main === module) {
 }
 
 export { seedOrgStructure };
-

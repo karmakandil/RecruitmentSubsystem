@@ -230,7 +230,7 @@ export class EmployeeProfileService {
       .select('-password')
       .exec();
 
-    return updatedEmployee!;
+    return updatedEmployee;
   }
 
   async updateSelfService(
@@ -244,7 +244,7 @@ export class EmployeeProfileService {
       .select('-password')
       .exec();
 
-    return updatedEmployee!;
+    return updatedEmployee;
   }
 
   async remove(id: string): Promise<void> {
