@@ -26,11 +26,11 @@
  *    - Schema Reference: AttendanceRecord
  *    - Status: ⏳ PENDING - Integration code commented out, ready to uncomment
  * 
- * 4. ORGANIZATION STRUCTURE SERVICE (PENDING INTEGRATION)
- *    - Location: createJobRequisition()
+ * 4. ORGANIZATION STRUCTURE SERVICE (ACTIVE INTEGRATION)
+ *    - Location: createEmployeeFromContract()
  *    - Purpose: Validate departments and positions exist and are active
  *    - Schema Reference: Department, Position, PositionAssignment
- *    - Status: ⏳ PENDING - Integration code commented out, ready to uncomment
+ *    - Status: ✅ ACTIVE - Validates department and position IDs when creating employees
  * 
  * 5. IT SERVICE / CALENDAR SERVICE (PENDING INTEGRATION)
  *    - Location: scheduleInterview() - REC-011
@@ -78,8 +78,8 @@ import { EmployeeProfileService } from '../employee-profile/employee-profile.ser
 // import { PayrollExecutionService } from '../payroll-execution/payroll-execution.service';
 // Time Management Service - Integration pending (uncomment when ready)
 // import { TimeManagementService } from '../time-management/time-management.service';
-// Organization Structure Service - Integration pending (uncomment when ready)
-// import { OrganizationStructureService } from '../organization-structure/organization-structure.service';
+// Organization Structure Service - ACTIVE INTEGRATION
+import { OrganizationStructureService } from '../organization-structure/organization-structure.service';
 
 // ============= SCHEMA IMPORTS =============
 import { Contract, ContractDocument } from './models/contract.schema';
@@ -181,15 +181,16 @@ export class RecruitmentService {
     // Employee Profile Service - ACTIVE INTEGRATION
     private readonly employeeProfileService: EmployeeProfileService,
 
+    // Organization Structure Service - ACTIVE INTEGRATION
+    // For validating departments and positions exist and are active
+    private readonly organizationStructureService: OrganizationStructureService,
+
     // ============= PENDING INTEGRATIONS (Uncomment when services are ready) =============
     // Payroll Execution Service - For ONB-018 (REQ-PY-23) and ONB-019 (REQ-PY-27)
     // private readonly payrollExecutionService: PayrollExecutionService,
     
     // Time Management Service - For ONB-009 (clock access provisioning)
     // private readonly timeManagementService: TimeManagementService,
-    
-    // Organization Structure Service - For validating departments/positions in job requisitions
-    // private readonly organizationStructureService: OrganizationStructureService,
 
     // ============= OFFBOARDING MODELS =============
     @InjectModel(TerminationRequest.name)
@@ -605,41 +606,23 @@ export class RecruitmentService {
       console.warn('Failed to log application status history:', e);
     }
 
-    // REC-017: Send email notification to candidate about status update
+    // REC-017, REC-022: Send notification to candidate about status update
     try {
       const candidate = (application as any).candidateId;
       if (candidate && candidate.personalEmail) {
-        let emailSubject = 'Application Status Update';
-        let emailText = `Dear ${candidate.firstName || 'Candidate'},\n\n`;
-        
-        if (dto.status === ApplicationStatus.REJECTED) {
-          // REC-022: Automated rejection notification
-          emailSubject = 'Application Update';
-          emailText += 'Thank you for your interest in our company. After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n';
-          emailText += 'We appreciate the time you invested in the application process and wish you the best in your job search.\n\n';
-          emailText += 'Best regards,\nHR Team';
-        } else if (dto.status === ApplicationStatus.IN_PROCESS) {
-          emailText += `Your application status has been updated to: In Process.\n\n`;
-          emailText += 'We are currently reviewing your application and will keep you updated on the next steps.\n\n';
-          emailText += 'Best regards,\nHR Team';
-        } else if (dto.status === ApplicationStatus.OFFER) {
-          emailText += `Congratulations! Your application has progressed to the offer stage.\n\n`;
-          emailText += 'You will receive further communication regarding the offer details shortly.\n\n';
-          emailText += 'Best regards,\nHR Team';
-        } else if (dto.status === ApplicationStatus.HIRED) {
-          emailText += `Congratulations! We are pleased to offer you the position.\n\n`;
-          emailText += 'You will receive further communication regarding onboarding and next steps.\n\n';
-          emailText += 'Best regards,\nHR Team';
-        } else {
-          emailText += `Your application status has been updated to: ${dto.status}.\n\n`;
-          emailText += 'Best regards,\nHR Team';
-        }
-
-        await this.sendEmail(candidate.personalEmail, emailSubject, emailText);
+        await this.sendNotification(
+          'application_status',
+          candidate.personalEmail,
+          {
+            candidateName: candidate.firstName || 'Candidate',
+            status: dto.status,
+          },
+          { nonBlocking: true } // Non-blocking - don't fail if email fails
+        );
       }
     } catch (e) {
       // non-critical, log but don't fail
-      console.warn('Failed to send status update email:', e);
+      console.warn('Failed to send status update notification:', e);
     }
 
     // Update related job requisition progress if possible
@@ -760,39 +743,46 @@ export class RecruitmentService {
       const methodText = dto.method || 'TBD';
       const videoLinkText = dto.videoLink ? `\nVideo Link: ${dto.videoLink}` : '';
 
-      // Notify candidate
+      // REC-011: Notify candidate about interview scheduling
       if (candidate && candidate.personalEmail) {
-        const candidateEmailSubject = 'Interview Scheduled';
-        const candidateEmailText = `Dear ${candidate.firstName || 'Candidate'},\n\n` +
-          `Your interview has been scheduled for ${interviewDate}.\n` +
-          `Interview Method: ${methodText}${videoLinkText}\n\n` +
-          `We look forward to meeting with you.\n\n` +
-          `Best regards,\nHR Team`;
-        
         try {
-          await this.sendEmail(candidate.personalEmail, candidateEmailSubject, candidateEmailText);
+          await this.sendNotification(
+            'interview_scheduled',
+            candidate.personalEmail,
+            {
+              candidateName: candidate.firstName || 'Candidate',
+              interviewDate: interviewDate,
+              method: methodText,
+              videoLink: dto.videoLink,
+            },
+            { nonBlocking: true } // Non-blocking - don't fail if email fails
+          );
         } catch (e) {
           console.warn('Failed to send candidate interview notification:', e);
         }
       }
 
-      // Send calendar invites to panel members (REC-011)
+      // REC-011: Send calendar invites to panel members
       // Note: Actual calendar integration would require a calendar API (Google Calendar, Outlook, etc.)
       // For now, we send email notifications with calendar details
       if (dto.panel && dto.panel.length > 0) {
-        const panelEmailSubject = 'Interview Panel Invitation';
-        const panelEmailText = `You have been invited to participate in an interview panel.\n\n` +
-          `Interview Date: ${interviewDate}\n` +
-          `Interview Method: ${methodText}${videoLinkText}\n\n` +
-          `Please confirm your availability.\n\n` +
-          `Best regards,\nHR Team`;
-        
         // In a real implementation, you would:
         // 1. Fetch panel member emails from User service
         // 2. Send calendar invites via calendar API
-        // 3. Send email notifications
+        // 3. Send email notifications via sendNotification('panel_invitation', ...)
         // For now, we log that calendar invites should be sent
         console.log(`Calendar invites should be sent to panel members: ${dto.panel.join(', ')}`);
+        // TODO: When User service is available, fetch emails and send panel invitations:
+        // for (const panelMemberId of dto.panel) {
+        //   const panelMember = await userService.getUserById(panelMemberId);
+        //   if (panelMember && panelMember.email) {
+        //     await this.sendNotification('panel_invitation', panelMember.email, {
+        //       interviewDate: interviewDate,
+        //       method: methodText,
+        //       videoLink: dto.videoLink,
+        //     }, { nonBlocking: true });
+        //   }
+        // }
       }
     } catch (e) {
       // non-critical
@@ -902,7 +892,7 @@ export class RecruitmentService {
     });
     const savedOffer = await offer.save();
 
-    // REC-018: Send offer letter email notification to candidate
+    // REC-018: Send offer letter notification to candidate
     try {
       const candidate = await this.candidateModel.findById(dto.candidateId).lean();
       if (candidate && candidate.personalEmail) {
@@ -912,25 +902,24 @@ export class RecruitmentService {
           day: 'numeric',
         });
 
-        const offerEmailSubject = `Job Offer - ${dto.role} - Action Required`;
-        const offerEmailText = `Dear ${candidate.firstName || 'Candidate'},\n\n` +
-          `We are pleased to offer you the position of ${dto.role}.\n\n` +
-          `OFFER DETAILS:\n` +
-          `- Position: ${dto.role}\n` +
-          `- Gross Salary: $${dto.grossSalary.toLocaleString()}\n` +
-          `${dto.signingBonus ? `- Signing Bonus: $${dto.signingBonus.toLocaleString()}\n` : ''}` +
-          `${dto.benefits && dto.benefits.length > 0 ? `- Benefits: ${dto.benefits.join(', ')}\n` : ''}` +
-          `- Response Deadline: ${offerDeadlineFormatted}\n\n` +
-          `${dto.content ? `${dto.content}\n\n` : ''}` +
-          `Please review the offer details carefully. You can accept or decline this offer through the system.\n\n` +
-          `If you have any questions, please contact HR.\n\n` +
-          `Best regards,\nHR Team`;
-
-        await this.sendEmail(candidate.personalEmail, offerEmailSubject, offerEmailText);
+        await this.sendNotification(
+          'offer_letter',
+          candidate.personalEmail,
+          {
+            candidateName: candidate.firstName || 'Candidate',
+            role: dto.role,
+            grossSalary: dto.grossSalary,
+            signingBonus: dto.signingBonus,
+            benefits: dto.benefits,
+            deadline: offerDeadlineFormatted,
+            content: dto.content,
+          },
+          { nonBlocking: true } // Non-blocking - don't fail if email fails
+        );
       }
     } catch (e) {
       // Non-critical - log but don't fail offer creation
-      console.warn('Failed to send offer letter email:', e);
+      console.warn('Failed to send offer letter notification:', e);
     }
 
     return savedOffer;
@@ -1065,21 +1054,194 @@ export class RecruitmentService {
     return updated;
   }
 
-  // ---------------------------------------------------
-  // Email function to notify candidates
-  // ---------------------------------------------------
-  async sendEmail(recipient: string, subject: string, text: string) {
+  // ============================================================================
+  // CENTRALIZED NOTIFICATION SYSTEM FOR RECRUITMENT SUBSYSTEM
+  // ============================================================================
+  // This method handles all notifications for the recruitment subsystem
+  // Supports: Application status updates, Interview scheduling, Offers, Onboarding
+  // ============================================================================
+
+  /**
+   * Centralized notification method for recruitment subsystem
+   * Handles all notification types: application status, interviews, offers, onboarding
+   * 
+   * @param notificationType - Type of notification to send
+   * @param recipientEmail - Recipient email address
+   * @param context - Context data for building notification content
+   * @param options - Additional options (nonBlocking, etc.)
+   */
+  async sendNotification(
+    notificationType: 'application_status' | 'interview_scheduled' | 'offer_letter' | 'onboarding_welcome' | 'onboarding_reminder' | 'panel_invitation',
+    recipientEmail: string,
+    context: any,
+    options?: { nonBlocking?: boolean }
+  ): Promise<void> {
     // Validate recipient email
-    if (!recipient || typeof recipient !== 'string' || recipient.trim().length === 0) {
+    if (!recipientEmail || typeof recipientEmail !== 'string' || recipientEmail.trim().length === 0) {
+      if (options?.nonBlocking) {
+        console.warn('Recipient email is missing. Notification skipped.');
+        return;
+      }
       throw new BadRequestException('Recipient email is required');
     }
 
     // Basic email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(recipient.trim())) {
+    if (!emailRegex.test(recipientEmail.trim())) {
+      if (options?.nonBlocking) {
+        console.warn(`Invalid recipient email format: ${recipientEmail}. Notification skipped.`);
+        return;
+      }
       throw new BadRequestException('Invalid recipient email format');
     }
 
+    // Build notification content based on type
+    let subject: string;
+    let text: string;
+
+    try {
+      switch (notificationType) {
+        case 'application_status':
+          // REC-017: Application status updates, REC-022: Automated rejection notifications
+          subject = context.status === ApplicationStatus.REJECTED 
+            ? 'Application Update' 
+            : 'Application Status Update';
+          
+          const candidateName = context.candidateName || 'Candidate';
+          text = `Dear ${candidateName},\n\n`;
+
+          if (context.status === ApplicationStatus.REJECTED) {
+            // REC-022: Automated rejection notification template
+            text += 'Thank you for your interest in our company. After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n';
+            text += 'We appreciate the time you invested in the application process and wish you the best in your job search.\n\n';
+          } else if (context.status === ApplicationStatus.IN_PROCESS) {
+            text += `Your application status has been updated to: In Process.\n\n`;
+            text += 'We are currently reviewing your application and will keep you updated on the next steps.\n\n';
+          } else if (context.status === ApplicationStatus.OFFER) {
+            text += `Congratulations! Your application has progressed to the offer stage.\n\n`;
+            text += 'You will receive further communication regarding the offer details shortly.\n\n';
+          } else if (context.status === ApplicationStatus.HIRED) {
+            text += `Congratulations! We are pleased to offer you the position.\n\n`;
+            text += 'You will receive further communication regarding onboarding and next steps.\n\n';
+          } else {
+            text += `Your application status has been updated to: ${context.status}.\n\n`;
+          }
+          text += 'Best regards,\nHR Team';
+          break;
+
+        case 'interview_scheduled':
+          // REC-011: Interview scheduling notifications
+          subject = 'Interview Scheduled';
+          const interviewDate = context.interviewDate || 'TBD';
+          const method = context.method || 'TBD';
+          const videoLink = context.videoLink ? `\nVideo Link: ${context.videoLink}` : '';
+          
+          text = `Dear ${context.candidateName || 'Candidate'},\n\n`;
+          text += `Your interview has been scheduled for ${interviewDate}.\n`;
+          text += `Interview Method: ${method}${videoLink}\n\n`;
+          text += `We look forward to meeting with you.\n\n`;
+          text += `Best regards,\nHR Team`;
+          break;
+
+        case 'offer_letter':
+          // REC-018: Offer letter notifications
+          const role = context.role || 'the position';
+          const grossSalary = context.grossSalary ? `$${context.grossSalary.toLocaleString()}` : 'TBD';
+          const signingBonus = context.signingBonus ? `$${context.signingBonus.toLocaleString()}` : null;
+          const benefits = context.benefits && context.benefits.length > 0 ? context.benefits.join(', ') : null;
+          const deadline = context.deadline || 'TBD';
+          const offerContent = context.content || '';
+
+          subject = `Job Offer - ${role} - Action Required`;
+          text = `Dear ${context.candidateName || 'Candidate'},\n\n`;
+          text += `We are pleased to offer you the position of ${role}.\n\n`;
+          text += `OFFER DETAILS:\n`;
+          text += `- Position: ${role}\n`;
+          text += `- Gross Salary: ${grossSalary}\n`;
+          if (signingBonus) text += `- Signing Bonus: ${signingBonus}\n`;
+          if (benefits) text += `- Benefits: ${benefits}\n`;
+          text += `- Response Deadline: ${deadline}\n\n`;
+          if (offerContent) text += `${offerContent}\n\n`;
+          text += `Please review the offer details carefully. You can accept or decline this offer through the system.\n\n`;
+          text += `If you have any questions, please contact HR.\n\n`;
+          text += `Best regards,\nHR Team`;
+          break;
+
+        case 'onboarding_welcome':
+          // ONB-005: Welcome notification for new hires
+          subject = 'Welcome! Onboarding Checklist Created';
+          const taskCount = context.taskCount || 0;
+          text = `Dear ${context.employeeName || 'New Hire'},\n\n`;
+          text += `Your onboarding checklist has been created with ${taskCount} tasks to complete.\n\n`;
+          text += `Please log in to view your onboarding tracker and complete the required steps.\n\n`;
+          text += `Best regards,\nHR Team`;
+          break;
+
+        case 'onboarding_reminder':
+          // ONB-005: Reminders for overdue or upcoming tasks
+          subject = 'Onboarding Reminder';
+          const overdueTasks = context.overdueTasks || [];
+          const upcomingTasks = context.upcomingTasks || [];
+          
+          text = `Dear ${context.employeeName || 'New Hire'},\n\n`;
+
+          if (overdueTasks.length > 0) {
+            text += `You have ${overdueTasks.length} overdue task(s):\n`;
+            overdueTasks.forEach((task: any) => {
+              text += `- ${task.name} (${task.department})\n`;
+            });
+            text += '\n';
+          }
+
+          if (upcomingTasks.length > 0) {
+            text += `You have ${upcomingTasks.length} task(s) due soon:\n`;
+            upcomingTasks.forEach((task: any) => {
+              const daysLeft = task.daysLeft || 0;
+              text += `- ${task.name} (${task.department}) - Due in ${daysLeft} day(s)\n`;
+            });
+            text += '\n';
+          }
+
+          text += 'Please complete these tasks as soon as possible.\n\n';
+          text += 'Best regards,\nHR Team';
+          break;
+
+        case 'panel_invitation':
+          // REC-011: Interview panel member invitations
+          subject = 'Interview Panel Invitation';
+          const panelInterviewDate = context.interviewDate || 'TBD';
+          const panelMethod = context.method || 'TBD';
+          const panelVideoLink = context.videoLink ? `\nVideo Link: ${context.videoLink}` : '';
+          
+          text = `You have been invited to participate in an interview panel.\n\n`;
+          text += `Interview Date: ${panelInterviewDate}\n`;
+          text += `Interview Method: ${panelMethod}${panelVideoLink}\n\n`;
+          text += `Please confirm your availability.\n\n`;
+          text += `Best regards,\nHR Team`;
+          break;
+
+        default:
+          throw new BadRequestException(`Unknown notification type: ${notificationType}`);
+      }
+
+      // Send the notification using the email service
+      await this.sendEmailInternal(recipientEmail, subject, text);
+    } catch (error) {
+      if (options?.nonBlocking) {
+        // Non-blocking: log error but don't throw
+        console.warn(`Failed to send ${notificationType} notification to ${recipientEmail}:`, error);
+        return;
+      }
+      // Blocking: re-throw error
+      throw error;
+    }
+  }
+
+  /**
+   * Internal email sending method (low-level)
+   * This is the actual email sending implementation
+   */
+  private async sendEmailInternal(recipient: string, subject: string, text: string): Promise<void> {
     // Validate subject
     if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
       throw new BadRequestException('Email subject is required');
@@ -1116,6 +1278,14 @@ export class RecruitmentService {
       console.error('Failed to send email:', error);
       throw error; // Re-throw to allow caller to handle if needed
     }
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility
+   * @deprecated Use sendNotification() instead for better structure
+   */
+  async sendEmail(recipient: string, subject: string, text: string) {
+    return this.sendEmailInternal(recipient, subject, text);
   }
 
   // ============= ONBOARDING METHODS =============
@@ -1243,22 +1413,23 @@ export class RecruitmentService {
       });
       const saved = await onboarding.save();
 
-      // ONB-005: Send initial notification to new hire
+      // ONB-005: Send initial welcome notification to new hire
       try {
         const employee = await this.employeeProfileService.findOne(createOnboardingDto.employeeId.toString());
         if (employee && (employee as any).personalEmail) {
-          await this.sendEmail(
+          await this.sendNotification(
+            'onboarding_welcome',
             (employee as any).personalEmail,
-            'Welcome! Onboarding Checklist Created',
-            `Dear ${(employee as any).firstName || 'New Hire'},\n\n` +
-            `Your onboarding checklist has been created with ${tasks.length} tasks to complete.\n\n` +
-            `Please log in to view your onboarding tracker and complete the required steps.\n\n` +
-            `Best regards,\nHR Team`,
+            {
+              employeeName: (employee as any).firstName || 'New Hire',
+              taskCount: tasks.length,
+            },
+            { nonBlocking: true } // Non-blocking - don't fail if email fails
           );
         }
       } catch (e) {
         // Non-critical
-        console.warn('Failed to send onboarding notification:', e);
+        console.warn('Failed to send onboarding welcome notification:', e);
       }
 
       return saved.toObject();
@@ -1900,6 +2071,66 @@ export class RecruitmentService {
         primaryPositionId: undefined,
       };
 
+      // ============= INTEGRATION: Organization Structure Service =============
+      // Validate department and position exist and are active before creating employee
+      // BR: Ensure organizational structure is valid before employee creation
+      
+      // Validate primary department if provided
+      if (dto.primaryDepartmentId) {
+        try {
+          const department = await this.organizationStructureService.getDepartmentById(dto.primaryDepartmentId);
+          if (!department.isActive) {
+            throw new BadRequestException(
+              `Department with ID ${dto.primaryDepartmentId} is not active. Cannot assign employee to inactive department.`
+            );
+          }
+        } catch (error) {
+          if (error instanceof NotFoundException) {
+            throw new BadRequestException(
+              `Department with ID ${dto.primaryDepartmentId} not found. Please provide a valid department ID.`
+            );
+          }
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+          throw new BadRequestException(`Failed to validate department: ${error.message}`);
+        }
+      }
+
+      // Validate supervisor position if provided
+      if (dto.supervisorPositionId) {
+        try {
+          const position = await this.organizationStructureService.getPositionById(dto.supervisorPositionId);
+          if (!position.isActive) {
+            throw new BadRequestException(
+              `Position with ID ${dto.supervisorPositionId} is not active. Cannot assign supervisor with inactive position.`
+            );
+          }
+          
+          // Validate that the supervisor position belongs to the same department (if department is provided)
+          if (dto.primaryDepartmentId && position.departmentId) {
+            const positionDeptId = position.departmentId.toString();
+            const employeeDeptId = dto.primaryDepartmentId.toString();
+            if (positionDeptId !== employeeDeptId) {
+              throw new BadRequestException(
+                `Supervisor position (${dto.supervisorPositionId}) belongs to a different department than the employee's assigned department (${dto.primaryDepartmentId}).`
+              );
+            }
+          }
+        } catch (error) {
+          if (error instanceof NotFoundException) {
+            throw new BadRequestException(
+              `Position with ID ${dto.supervisorPositionId} not found. Please provide a valid position ID.`
+            );
+          }
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+          throw new BadRequestException(`Failed to validate position: ${error.message}`);
+        }
+      }
+      // ============= END INTEGRATION =============
+
       // 9. Create employee profile
       const employee = await this.employeeProfileService.create(createEmployeeDto);
 
@@ -2347,32 +2578,33 @@ export class RecruitmentService {
         }) || [];
 
         if (overdueTasks.length > 0 || upcomingTasks.length > 0) {
-          let emailSubject = 'Onboarding Reminder';
-          let emailText = `Dear ${employee.firstName || 'New Hire'},\n\n`;
+          // Format tasks for notification
+          const formattedOverdueTasks = overdueTasks.map((task: any) => ({
+            name: task.name,
+            department: task.department,
+          }));
 
-          if (overdueTasks.length > 0) {
-            emailText += `You have ${overdueTasks.length} overdue task(s):\n`;
-            overdueTasks.forEach((task: any) => {
-              emailText += `- ${task.name} (${task.department})\n`;
-            });
-            emailText += '\n';
-          }
-
-          if (upcomingTasks.length > 0) {
-            emailText += `You have ${upcomingTasks.length} task(s) due soon:\n`;
-            upcomingTasks.forEach((task: any) => {
-              const deadline = new Date(task.deadline);
-              const daysLeft = Math.ceil((deadline.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-              emailText += `- ${task.name} (${task.department}) - Due in ${daysLeft} day(s)\n`;
-            });
-            emailText += '\n';
-          }
-
-          emailText += 'Please complete these tasks as soon as possible.\n\n';
-          emailText += 'Best regards,\nHR Team';
+          const formattedUpcomingTasks = upcomingTasks.map((task: any) => {
+            const deadline = new Date(task.deadline);
+            const daysLeft = Math.ceil((deadline.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+            return {
+              name: task.name,
+              department: task.department,
+              daysLeft: daysLeft,
+            };
+          });
 
           try {
-            await this.sendEmail(employee.personalEmail, emailSubject, emailText);
+            await this.sendNotification(
+              'onboarding_reminder',
+              employee.personalEmail,
+              {
+                employeeName: employee.firstName || 'New Hire',
+                overdueTasks: formattedOverdueTasks,
+                upcomingTasks: formattedUpcomingTasks,
+              },
+              { nonBlocking: true } // Non-blocking - don't fail if email fails
+            );
           } catch (e) {
             console.warn(`Failed to send reminder to ${employee.personalEmail}:`, e);
           }
