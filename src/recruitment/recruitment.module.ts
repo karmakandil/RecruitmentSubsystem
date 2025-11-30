@@ -16,6 +16,9 @@ import { TerminationRequest, TerminationRequestSchema } from './models/terminati
 import { ClearanceChecklist, ClearanceChecklistSchema } from './models/clearance-checklist.schema';
 import { Onboarding, OnboardingSchema } from './models/onboarding.schema'; // Make sure this import exists
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
+import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
+//NEW FOR OFFBOARDING
+import { AppraisalRecord, AppraisalRecordSchema } from '../performance/models/appraisal-record.schema';
 import { Candidate, CandidateSchema } from '../employee-profile/models/candidate.schema';
 
 // ============= INTEGRATION MODULES (Uncomment when ready) =============
@@ -43,6 +46,12 @@ import { Candidate, CandidateSchema } from '../employee-profile/models/candidate
       { name: Document.name, schema: DocumentSchema },
       { name: TerminationRequest.name, schema: TerminationRequestSchema },
       { name: ClearanceChecklist.name, schema: ClearanceChecklistSchema },
+      //new for offboarding
+      { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
+        { name: AppraisalRecord.name, schema: AppraisalRecordSchema },
+
+
+    ]),EmployeeProfileModule
       { name: Onboarding.name, schema: OnboardingSchema }, // Make sure this line exists
       { name: Candidate.name, schema: CandidateSchema }, // For creating employees from candidates
     ]),
