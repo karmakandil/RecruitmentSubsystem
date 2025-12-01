@@ -20,12 +20,11 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "types": ["node", "jest"]
+    "types": ["jest", "node"]
   },
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.spec.ts",
     "**/scripts/**"
   ]
 }
