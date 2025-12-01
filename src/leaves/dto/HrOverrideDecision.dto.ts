@@ -8,9 +8,10 @@ export class HrOverrideDecisionDto {
   hrUserId: string;
 
   @IsBoolean()
-  overrideToApproved: boolean; //not sure
+  overrideToApproved: boolean;  //not sure
 
   @IsOptional()
   @IsString()
-  overrideReason?: string; //not sure
+  overrideReason?: string;   //not sure
 }
+

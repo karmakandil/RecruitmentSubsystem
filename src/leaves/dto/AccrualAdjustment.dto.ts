@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsNumber,
-  IsOptional,
-  IsDate,
-  IsEnum,
-} from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDate, IsEnum } from 'class-validator';
 
 export enum AccrualAdjustmentType {
   SUSPENSION = 'suspension',

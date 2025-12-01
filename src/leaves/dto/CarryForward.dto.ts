@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsNumber,
-  IsOptional,
-  IsDate,
-  IsBoolean,
-} from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDate, IsBoolean } from 'class-validator';
 
 export class CarryForwardSettingsDto {
   @IsString()
