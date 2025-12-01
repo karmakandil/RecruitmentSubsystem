@@ -2,6 +2,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RecruitmentService } from './recruitment.service';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { describe, beforeEach, it, expect } = require('@jest/globals');
+
 describe('RecruitmentService', () => {
   let service: RecruitmentService;
 
