@@ -25,10 +25,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     }),
     MongooseModule.forRoot(
       process.env.MONGODB_URI ||
-        'mongodb+srv://TeamUser:TeamUser@cluster0.mfclf62.mongodb.net/',
-      {
-        dbName: 'hr_system',
-      },
+        'mongodb+srv://TeamUser:TeamUser@cluster0.mfclf62.mongodb.net/hr_system',
     ),
     AuthModule,
     EmployeeProfileModule,
