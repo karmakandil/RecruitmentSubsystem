@@ -16,6 +16,7 @@ import {
   Res,
   Req,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -25,17 +26,27 @@ import { DocumentType } from './enums/document-type.enum';
 
 import { RecruitmentService } from './recruitment.service';
 import { CreateJobRequisitionDto } from './dto/job-requisition.dto';
-import { CreateApplicationDto, UpdateApplicationStatusDto } from './dto/application.dto';
-import { ScheduleInterviewDto, UpdateInterviewStatusDto } from './dto/interview.dto';
-import { CreateOfferDto, RespondToOfferDto, FinalizeOfferDto } from './dto/offer.dto';
+import {
+  CreateApplicationDto,
+  UpdateApplicationStatusDto,
+} from './dto/application.dto';
+import {
+  ScheduleInterviewDto,
+  UpdateInterviewStatusDto,
+} from './dto/interview.dto';
+import {
+  CreateOfferDto,
+  RespondToOfferDto,
+  FinalizeOfferDto,
+} from './dto/offer.dto';
 import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
-import { RolesGuard } from './guards/roles.guard';
-import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
-
 
 import {
   CreateTerminationRequestDto,
@@ -65,9 +76,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job')
-  createJob(
-    @Body() dto: CreateJobRequisitionDto,
-  ) {
+  createJob(@Body() dto: CreateJobRequisitionDto) {
     return this.service.createJobRequisition(dto);
   }
 
@@ -79,6 +88,17 @@ export class RecruitmentController {
   @Get('job')
   getJobs() {
     return this.service.getAllJobRequisitions();
+  }
+
+  /**
+   * REC-009: Real-time visualization of recruitment progress
+   * BR: Status tracking must be real-time and visualized
+   */
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('recruitment/progress')
+  getRecruitmentProgress() {
+    return this.service.getRecruitmentProgress();
   }
 
   /**
@@ -96,10 +116,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('job/:id/status')
-  updateJobStatus(
-    @Param('id') id: string,
-    @Body() dto: { status: string },
-  ) {
+  updateJobStatus(@Param('id') id: string, @Body() dto: { status: string }) {
     return this.service.updateJobRequisitionStatus(id, dto.status);
   }
 
@@ -171,19 +188,44 @@ export class RecruitmentController {
   // ------------------------------------------
 
   /**
-   * REC-007: Candidate uploads CV and applies for positions
-   * REC-028: Consent required before storing application
-   * Only candidates can apply; system auto-sets candidateId
+   * REC-007: Candidate uploads CV
+   * Upload CV/resume for candidate profile
+   * Uses candidateNumber instead of ID (candidates aren't employees yet)
    */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
-  @Post('application')
-  apply(
-    @Body() dto: CreateApplicationDto & { consentGiven: boolean },
+  @Post('candidate/:candidateNumber/upload-cv')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async uploadCV(
+    @Param('candidateNumber') candidateNumber: string,
+    @UploadedFile() file: any,
   ) {
+    return this.service.uploadCandidateCV(candidateNumber, file);
+  }
+
+  /**
+   * REC-007: Create application for candidate
+   * REC-028: Consent required before storing application
+   * HR Employees/Managers create applications on behalf of candidates
+   * Uses candidateNumber (candidates aren't employees yet, so they can't authenticate)
+   * 
+   * AUTH REQUIRED: HR Employee/Manager must login first to get JWT token
+   * Header: Authorization: Bearer <jwt_token>
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  @Post('application')
+  apply(@Body() dto: CreateApplicationDto & { consentGiven: boolean }) {
     // BR: Storing applications requires applicant authorization
     if (!dto.consentGiven) {
-      throw new BadRequestException('Consent for data processing is required to submit application');
+      throw new BadRequestException(
+        'Consent for data processing is required to submit application',
+      );
     }
     return this.service.apply(dto, dto.consentGiven);
   }
@@ -245,7 +287,12 @@ export class RecruitmentController {
    * Only HR staff, managers, and department leads can schedule
    */
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.RECRUITER, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Post('interview')
   scheduleInterview(@Body() dto: ScheduleInterviewDto) {
     return this.service.scheduleInterview(dto);
@@ -256,7 +303,12 @@ export class RecruitmentController {
    * Only HR staff, managers, and department leads can update interview status
    */
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.RECRUITER, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Patch('interview/:id/status')
   updateInterviewStatus(
     @Param('id') id: string,
@@ -268,20 +320,50 @@ export class RecruitmentController {
   /**
    * REC-011, REC-020: Submit interview feedback and assessment score
    * Interviewers provide structured feedback and scoring
+   * BR: Criteria used in interview assessment are pre-set and agreed upon
+   * BR: System needs to allow/house the multiple assessment tools to be used
    */
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.RECRUITER, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Post('interview/:id/feedback')
   submitInterviewFeedback(
     @Param('id') interviewId: string,
-    @Body() dto: { score: number; comments?: string },
+    @Body() dto: { score: number; comments?: string; assessmentTool?: string },
     @Req() req: any,
   ) {
     const interviewerId = req.user?.id || req.user?._id;
     if (!interviewerId) {
       throw new BadRequestException('Interviewer ID not found in request');
     }
-    return this.service.submitInterviewFeedback(interviewId, interviewerId, dto.score, dto.comments);
+    return this.service.submitInterviewFeedback(
+      interviewId,
+      interviewerId,
+      dto.score,
+      dto.comments,
+      dto.assessmentTool,
+    );
+  }
+
+  /**
+   * REC-020: Get assessment criteria/tools for a role
+   * BR: Criteria used in interview assessment are pre-set and agreed upon
+   * BR: System needs to allow/house the multiple assessment tools to be used
+   */
+  @UseGuards(RolesGuard)
+  @Roles(
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  @Get('assessment-tools/:requisitionId')
+  getAssessmentTools(@Param('requisitionId') requisitionId: string) {
+    return this.service.getAssessmentTools(requisitionId);
   }
 
   /**
@@ -325,11 +407,24 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
   @Patch('offer/:id/respond')
-  respond(
-    @Param('id') id: string,
-    @Body() dto: RespondToOfferDto,
-  ) {
+  respond(@Param('id') id: string, @Body() dto: RespondToOfferDto) {
     return this.service.respondToOffer(id, dto);
+  }
+
+  /**
+   * ONB-002: Candidate uploads signed contract and required forms
+   * As a Candidate, I want to upload signed contract and candidate required forms and templates to initiate the onboarding process
+   */
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.JOB_CANDIDATE)
+  @Post('offer/:id/upload-contract')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async uploadSignedContract(
+    @Param('id') offerId: string,
+    @UploadedFile() file: any,
+    @Body() dto: { additionalForms?: string[] }, // For future: multiple form uploads
+  ) {
+    return this.service.uploadSignedContract(offerId, file);
   }
 
   /**
@@ -339,10 +434,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('offer/:id/finalize')
-  finalize(
-    @Param('id') id: string,
-    @Body() dto: FinalizeOfferDto,
-  ) {
+  finalize(@Param('id') id: string, @Body() dto: FinalizeOfferDto) {
     return this.service.finalizeOffer(id, dto);
   }
 
@@ -410,11 +502,30 @@ export class RecruitmentController {
 
   /**
    * Get onboarding by employee ID (ONB-004)
+   * ONB-004: New Hire views onboarding steps in a tracker
    * Employees can view their own; HR staff can view any
    */
   @UseGuards(RolesGuard)
   @Get('onboarding/employee/:employeeId')
-  async getOnboardingByEmployeeId(@Param('employeeId') employeeId: string) {
+  async getOnboardingByEmployeeId(
+    @Param('employeeId') employeeId: string,
+    @Req() req: any,
+  ) {
+    // Authorization: Allow HR staff or the employee themselves
+    const user = req.user;
+    const userRoles = user?.roles || [];
+    const isHRStaff =
+      userRoles.includes(SystemRole.HR_EMPLOYEE) ||
+      userRoles.includes(SystemRole.HR_MANAGER) ||
+      userRoles.includes(SystemRole.SYSTEM_ADMIN);
+    const isEmployee = user?.id?.toString() === employeeId || user?._id?.toString() === employeeId;
+
+    if (!isHRStaff && !isEmployee) {
+      throw new ForbiddenException(
+        'You are not authorized to view this onboarding tracker',
+      );
+    }
+
     return this.service.getOnboardingByEmployeeId(employeeId);
   }
 
@@ -458,10 +569,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task')
-  async addTaskToOnboarding(
-    @Param('id') id: string,
-    @Body() taskDto: any,
-  ) {
+  async addTaskToOnboarding(@Param('id') id: string, @Body() taskDto: any) {
     return this.service.addTaskToOnboarding(id, taskDto);
   }
 
@@ -496,9 +604,10 @@ export class RecruitmentController {
   /**
    * POST /recruitment/onboarding/:id/task/:taskIndex/upload
    * Upload document for specific onboarding task
+   * ONB-007: New Hire uploads documents (e.g., ID, contracts, certifications)
+   * Allows both HR staff and new hires (employees) to upload documents
    */
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task/:taskIndex/upload')
   @UseInterceptors(FileInterceptor('file', multerConfig))
   async uploadTaskDocument(
@@ -506,12 +615,15 @@ export class RecruitmentController {
     @Param('taskIndex') taskIndex: string,
     @UploadedFile() file: any,
     @Body('documentType') documentType: DocumentType,
+    @Req() req: any,
   ) {
+    // Allow HR staff, managers, admins, and the employee themselves
     return this.service.uploadTaskDocument(
       onboardingId,
       parseInt(taskIndex, 10),
       file,
       documentType,
+      req.user, // Pass user for authorization check
     );
   }
 
@@ -539,6 +651,29 @@ export class RecruitmentController {
     @Param('taskIndex') taskIndex: string,
   ) {
     return this.service.getTaskDocument(onboardingId, parseInt(taskIndex, 10));
+  }
+
+  /**
+   * POST /recruitment/onboarding/:id/task/:taskIndex/verify-document
+   * HR verifies uploaded document (ONB-007)
+   * BR: Documents must be collected and verified by the HR department before the first working day
+   */
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Post('onboarding/:id/task/:taskIndex/verify-document')
+  async verifyDocument(
+    @Param('id') onboardingId: string,
+    @Param('taskIndex') taskIndex: string,
+    @Body() dto: { verified: boolean; verificationNotes?: string },
+    @Req() req: any,
+  ) {
+    return this.service.verifyDocument(
+      onboardingId,
+      parseInt(taskIndex, 10),
+      dto.verified,
+      dto.verificationNotes,
+      req.user,
+    );
   }
 
   /**
@@ -581,7 +716,10 @@ export class RecruitmentController {
     @Param('employeeId') employeeId: string,
     @Param('taskIndex') taskIndex: string,
   ) {
-    return this.service.provisionSystemAccess(employeeId, parseInt(taskIndex, 10));
+    return this.service.provisionSystemAccess(
+      employeeId,
+      parseInt(taskIndex, 10),
+    );
   }
 
   /**
@@ -595,7 +733,11 @@ export class RecruitmentController {
     @Param('employeeId') employeeId: string,
     @Body() dto: { equipmentType: string; equipmentDetails: any },
   ) {
-    return this.service.reserveEquipment(employeeId, dto.equipmentType, dto.equipmentDetails);
+    return this.service.reserveEquipment(
+      employeeId,
+      dto.equipmentType,
+      dto.equipmentDetails,
+    );
   }
 
   /**
@@ -611,7 +753,11 @@ export class RecruitmentController {
   ) {
     const startDate = new Date(dto.startDate);
     const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
-    return this.service.scheduleAccessProvisioning(employeeId, startDate, endDate);
+    return this.service.scheduleAccessProvisioning(
+      employeeId,
+      startDate,
+      endDate,
+    );
   }
 
   /**
@@ -626,7 +772,11 @@ export class RecruitmentController {
     @Body() dto: { contractSigningDate: string; grossSalary: number },
   ) {
     const contractSigningDate = new Date(dto.contractSigningDate);
-    return this.service.triggerPayrollInitiation(employeeId, contractSigningDate, dto.grossSalary);
+    return this.service.triggerPayrollInitiation(
+      employeeId,
+      contractSigningDate,
+      dto.grossSalary,
+    );
   }
 
   /**
@@ -641,7 +791,11 @@ export class RecruitmentController {
     @Body() dto: { signingBonus: number; contractSigningDate: string },
   ) {
     const contractSigningDate = new Date(dto.contractSigningDate);
-    return this.service.processSigningBonus(employeeId, dto.signingBonus, contractSigningDate);
+    return this.service.processSigningBonus(
+      employeeId,
+      dto.signingBonus,
+      contractSigningDate,
+    );
   }
 
   /**
@@ -675,11 +829,17 @@ export class RecruitmentController {
     @Req() req: any,
   ) {
     // Use referringEmployeeId from body, or fallback to current user
-    const referringEmployeeId = dto.referringEmployeeId || req.user?.id || req.user?._id;
+    const referringEmployeeId =
+      dto.referringEmployeeId || req.user?.id || req.user?._id;
     if (!referringEmployeeId) {
       throw new BadRequestException('Referring employee ID is required');
     }
-    return this.service.tagCandidateAsReferral(candidateId, referringEmployeeId, dto.role, dto.level);
+    return this.service.tagCandidateAsReferral(
+      candidateId,
+      referringEmployeeId,
+      dto.role,
+      dto.level,
+    );
   }
 
   /**
@@ -692,6 +852,39 @@ export class RecruitmentController {
   }
 
   // ------------------------------------------
+  // REPORTS (REC-009)
+  // ------------------------------------------
+
+  /**
+   * Generate time-to-hire report
+   * Multiple reports could be generated like time-to-hire
+   */
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('reports/time-to-hire')
+  getTimeToHireReport(
+    @Query('requisitionId') requisitionId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.service.getTimeToHireReport(requisitionId, startDate, endDate);
+  }
+
+  /**
+   * Generate source effectiveness report
+   * Multiple reports could be generated like source effectiveness
+   */
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('reports/source-effectiveness')
+  getSourceEffectivenessReport(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.service.getSourceEffectivenessReport(startDate, endDate);
+  }
+
+  // ------------------------------------------
   // CANDIDATE CONSENT (REC-028)
   // ------------------------------------------
 
@@ -700,25 +893,24 @@ export class RecruitmentController {
    * Candidates give consent for personal-data processing and background checks
    */
   @UseGuards(RolesGuard)
-  @Post('candidate/:candidateId/consent')
+  @Post('candidate/:candidateNumber/consent')
   recordCandidateConsent(
-    @Param('candidateId') candidateId: string,
-    @Body() dto: { consentGiven: boolean; consentType?: string; notes?: string },
+    @Param('candidateNumber') candidateNumber: string,
+    @Body()
+    dto: { consentGiven: boolean; consentType?: string; notes?: string },
   ) {
     return this.service.recordCandidateConsent(
-      candidateId,
+      candidateNumber,
       dto.consentGiven,
       dto.consentType || 'data_processing',
       dto.notes,
     );
   }
-  
-  
-  @UseGuards(
-  // JwtAuthGuard,   // uncomment when you plug the real auth guard
-  RolesGuard,
-)
 
+  @UseGuards(
+    // JwtAuthGuard,   // uncomment when you plug the real auth guard
+    RolesGuard,
+  )
 
   // ============================= OFFBOARDING =============================
 
@@ -738,7 +930,7 @@ export class RecruitmentController {
   // Employee-facing: get my resignation/termination requests
   @UseGuards(RolesGuard)
   @Get('offboarding/my-resignation')
-  @Roles(SystemRole.EMPLOYEE)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
   getMyResignationRequests(@Req() req: any) {
     return this.service.getMyResignationRequests(req.user);
   }
@@ -833,5 +1025,3 @@ export class RecruitmentController {
     return this.service.revokeSystemAccess(dto, req.user);
   }
 }
-
-
