@@ -19,6 +19,10 @@ import {
   employeeSigningBonus,
   employeeSigningBonusSchema,
 } from './models/EmployeeSigningBonus.schema';
+import {
+  EmployeeTerminationResignation,
+  EmployeeTerminationResignationSchema,
+} from './models/EmployeeTerminationResignation.schema'; // Add this import
 import { payrollRuns, payrollRunsSchema } from './models/payrollRuns.schema';
 import { paySlip, paySlipSchema } from './models/payslip.schema';
 import { PayrollTrackingModule } from '../payroll-tracking/payroll-tracking.module';
@@ -35,6 +39,7 @@ import { RecruitmentModule } from '../recruitment/recruitment.module';
     TimeManagementModule,
     EmployeeProfileModule,
     LeavesModule,
+    RecruitmentModule, // Also add this if you're using TerminationRequest
     MongooseModule.forFeature([
       { name: payrollRuns.name, schema: payrollRunsSchema },
       { name: paySlip.name, schema: paySlipSchema },
@@ -43,6 +48,10 @@ import { RecruitmentModule } from '../recruitment/recruitment.module';
         schema: employeePayrollDetailsSchema,
       },
       { name: employeeSigningBonus.name, schema: employeeSigningBonusSchema },
+      {
+        name: EmployeeTerminationResignation.name, // Add this
+        schema: EmployeeTerminationResignationSchema,
+      },
       {
         name: terminationAndResignationBenefits.name,
         schema: terminationAndResignationBenefitsSchema,
