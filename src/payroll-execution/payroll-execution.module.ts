@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { JwtModule } from '@nestjs/jwt';
 import { PayrollExecutionController } from './payroll-execution.controller';
 import { PayrollExecutionService } from './payroll-execution.service';
 import {
@@ -25,6 +26,7 @@ import { PayrollConfigurationModule } from '../payroll-configuration/payroll-con
 import { TimeManagementModule } from '../time-management/time-management.module';
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
 import { LeavesModule } from '../leaves/leaves.module';
+import { RecruitmentModule } from '../recruitment/recruitment.module';
 
 @Module({
   imports: [
