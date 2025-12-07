@@ -30,7 +30,8 @@ import { PayrollConfigurationModule } from '../payroll-configuration/payroll-con
 import { TimeManagementModule } from '../time-management/time-management.module';
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
 import { LeavesModule } from '../leaves/leaves.module';
-import { RecruitmentModule } from '../recruitment/recruitment.module';
+// NOTE: RecruitmentModule removed - we only need the TerminationRequest schema (imported directly in service)
+// The schema is globally accessible via Mongoose once registered in RecruitmentModule
 import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
 
 @Module({
@@ -40,7 +41,8 @@ import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profil
     TimeManagementModule,
     EmployeeProfileModule,
     LeavesModule,
-    RecruitmentModule,
+    // NOTE: RecruitmentModule removed - not needed since we only use the TerminationRequest schema directly
+    // The schema is accessed via db.model() and is globally available once RecruitmentModule registers it
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '1h' },

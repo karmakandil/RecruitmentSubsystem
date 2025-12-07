@@ -29,7 +29,7 @@ import {
   ClearanceChecklist,
   ClearanceChecklistSchema,
 } from './models/clearance-checklist.schema';
-import { Onboarding, OnboardingSchema } from './models/onboarding.schema'; // Make sure this import exists
+import { Onboarding, OnboardingSchema } from './models/onboarding.schema';
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
 import {
   EmployeeProfile,
@@ -39,7 +39,6 @@ import {
   EmployeeSystemRole,
   EmployeeSystemRoleSchema,
 } from '../employee-profile/models/employee-system-role.schema';
-//NEW FOR OFFBOARDING
 import {
   AppraisalRecord,
   AppraisalRecordSchema,
@@ -49,15 +48,11 @@ import {
   CandidateSchema,
 } from '../employee-profile/models/candidate.schema';
 
-// ============= INTEGRATION MODULES (Uncomment when ready) =============
-// Payroll Execution Module - For ONB-018 (REQ-PY-23) and ONB-019 (REQ-PY-27)
-// import { PayrollExecutionModule } from '../payroll-execution/payroll-execution.module';
-
-// Time Management Module - For ONB-009 (clock access provisioning)
-// import { TimeManagementModule } from '../time-management/time-management.module';
-
-// Organization Structure Module - For validating departments/positions
+import { PayrollExecutionModule } from '../payroll-execution/payroll-execution.module';
+import { TimeManagementModule } from '../time-management/time-management.module';
+import { PayrollConfigurationModule } from '../payroll-configuration/payroll-configuration.module';
 import { OrganizationStructureModule } from '../organization-structure/organization-structure.module';
+import { LeavesModule } from '../leaves/leaves.module';
 
 @Module({
   imports: [
@@ -77,20 +72,18 @@ import { OrganizationStructureModule } from '../organization-structure/organizat
       { name: Document.name, schema: DocumentSchema },
       { name: TerminationRequest.name, schema: TerminationRequestSchema },
       { name: ClearanceChecklist.name, schema: ClearanceChecklistSchema },
-      { name: Onboarding.name, schema: OnboardingSchema }, // Make sure this line exists
-      { name: Candidate.name, schema: CandidateSchema }, // For creating employees from candidates
-      //new for offboarding
+      { name: Onboarding.name, schema: OnboardingSchema },
+      { name: Candidate.name, schema: CandidateSchema },
       { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
       { name: EmployeeSystemRole.name, schema: EmployeeSystemRoleSchema },
       { name: AppraisalRecord.name, schema: AppraisalRecordSchema },
     ]),
-    // ============= INTEGRATED MODULES =============
-    EmployeeProfileModule, // ACTIVE - For creating employees from candidates
-    OrganizationStructureModule, // ACTIVE - For validating departments/positions when creating employees
-
-    // ============= PENDING INTEGRATIONS (Uncomment when modules are ready) =============
-    // PayrollExecutionModule, // For payroll initiation and signing bonus processing
-    // TimeManagementModule, // For clock access provisioning
+    EmployeeProfileModule,
+    OrganizationStructureModule,
+    PayrollExecutionModule,
+    TimeManagementModule,
+    PayrollConfigurationModule,
+    LeavesModule,
   ],
   controllers: [RecruitmentController],
   providers: [RecruitmentService],
