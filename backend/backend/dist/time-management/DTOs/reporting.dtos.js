@@ -1,0 +1,125 @@
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ExportReportDto = exports.GenerateExceptionReportDto = exports.GenerateLatenessReportDto = exports.GenerateOvertimeReportDto = exports.IsEndDateAfterStartDateConstraint = void 0;
+const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
+let IsEndDateAfterStartDateConstraint = class IsEndDateAfterStartDateConstraint {
+    validate(endDate, args) {
+        const obj = args.object;
+        const startDate = obj.startDate;
+        if (!startDate || !endDate)
+            return true;
+        return new Date(endDate).getTime() >= new Date(startDate).getTime();
+    }
+    defaultMessage(args) {
+        return 'endDate must be greater than or equal to startDate';
+    }
+};
+exports.IsEndDateAfterStartDateConstraint = IsEndDateAfterStartDateConstraint;
+exports.IsEndDateAfterStartDateConstraint = IsEndDateAfterStartDateConstraint = __decorate([
+    (0, class_validator_1.ValidatorConstraint)({ name: 'isEndDateAfterStartDate', async: false })
+], IsEndDateAfterStartDateConstraint);
+class GenerateOvertimeReportDto {
+}
+exports.GenerateOvertimeReportDto = GenerateOvertimeReportDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], GenerateOvertimeReportDto.prototype, "employeeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    __metadata("design:type", Date)
+], GenerateOvertimeReportDto.prototype, "startDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    (0, class_validator_1.Validate)(IsEndDateAfterStartDateConstraint),
+    __metadata("design:type", Date)
+], GenerateOvertimeReportDto.prototype, "endDate", void 0);
+class GenerateLatenessReportDto {
+}
+exports.GenerateLatenessReportDto = GenerateLatenessReportDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], GenerateLatenessReportDto.prototype, "employeeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    __metadata("design:type", Date)
+], GenerateLatenessReportDto.prototype, "startDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    (0, class_validator_1.Validate)(IsEndDateAfterStartDateConstraint),
+    __metadata("design:type", Date)
+], GenerateLatenessReportDto.prototype, "endDate", void 0);
+class GenerateExceptionReportDto {
+}
+exports.GenerateExceptionReportDto = GenerateExceptionReportDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], GenerateExceptionReportDto.prototype, "employeeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    __metadata("design:type", Date)
+], GenerateExceptionReportDto.prototype, "startDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    (0, class_validator_1.Validate)(IsEndDateAfterStartDateConstraint),
+    __metadata("design:type", Date)
+], GenerateExceptionReportDto.prototype, "endDate", void 0);
+class ExportReportDto {
+}
+exports.ExportReportDto = ExportReportDto;
+__decorate([
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ExportReportDto.prototype, "reportType", void 0);
+__decorate([
+    (0, class_validator_1.IsNotEmpty)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ExportReportDto.prototype, "format", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], ExportReportDto.prototype, "employeeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    __metadata("design:type", Date)
+], ExportReportDto.prototype, "startDate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDate)(),
+    (0, class_transformer_1.Type)(() => Date),
+    (0, class_validator_1.Validate)(IsEndDateAfterStartDateConstraint),
+    __metadata("design:type", Date)
+], ExportReportDto.prototype, "endDate", void 0);
+//# sourceMappingURL=reporting.dtos.js.map

@@ -374,7 +374,7 @@ export class RecruitmentService {
     const requisitions = await this.jobModel
       .find()
       .populate('templateId')
-      .populate('hiringManagerId')
+      //.populate('hiringManagerId')
       .lean();
 
     const enrichedRequisitions = await Promise.all(
@@ -546,11 +546,12 @@ export class RecruitmentService {
         'You have already applied to this position',
       );
     }
-
+////////////////////////////CHANGED///////////////////////////////////////////
+    // changed - convert strings to ObjectId to fix query matching
     const application = new this.applicationModel({
-      candidateId: dto.candidateId,
-      requisitionId: dto.requisitionId,
-      assignedHr: dto.assignedHr || undefined,
+      candidateId: new Types.ObjectId(dto.candidateId),
+      requisitionId: new Types.ObjectId(dto.requisitionId),
+      assignedHr: dto.assignedHr ? new Types.ObjectId(dto.assignedHr) : undefined,
       currentStage: ApplicationStage.SCREENING,
       status: ApplicationStatus.SUBMITTED,
     });
@@ -2122,11 +2123,13 @@ Due: ${context.dueDate}`
    * Upload document for onboarding task
    * ONB-007: Document upload for compliance
    */
+  // changed - modified to accept either file upload OR manual entry for testing
   async uploadTaskDocument(
     onboardingId: string,
     taskIndex: number,
     file: any,
     documentType: DocumentType,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
   ): Promise<any> {
     try {
       // 1. Validate ObjectId
@@ -2139,9 +2142,12 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid task index');
       }
 
-      // 3. Validate file exists
-      if (!file) {
-        throw new BadRequestException('No file uploaded');
+      // 3. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
       }
 
       // 4. Validate onboarding exists
@@ -2155,36 +2161,44 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid task index');
       }
 
-      // 6. Validate file type
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
+      let filePath: string;
 
-      if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-        throw new BadRequestException(
-          'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
-        );
+      if (hasFile) {
+        // File upload flow
+        // 6. Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
+
+        // 7. Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
       }
-
-      // 7. Validate file size (5MB max)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (!file.size || file.size > maxSize) {
-        throw new BadRequestException('File size exceeds 5MB limit');
-      }
-
-      // 8. Validate file path exists
-      if (!file.path) {
-        throw new BadRequestException('File path is missing');
-      }
-
-      // 9. Use the file path that Multer already saved
-      // (Multer's diskStorage already saved the file for us)
-      const filePath = file.path;
 
       // 10. Create Document record
       const document = new this.documentModel({
@@ -2733,10 +2747,12 @@ Due: ${context.dueDate}`
    * As a Candidate, I want to upload signed contract and candidate required forms and templates to initiate the onboarding process
    * BR: Documents must be collected and verified by HR before first working day
    */
+  // changed - modified to accept either file upload OR manual document data for testing
   async uploadContractDocument(
     offerId: string,
     file: any,
     documentType: DocumentType = DocumentType.CONTRACT,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
   ): Promise<any> {
     try {
       // 1. Validate offerId
@@ -2744,36 +2760,51 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid offer ID format');
       }
 
-      // 2. Validate file exists
-      if (!file) {
-        throw new BadRequestException('No file uploaded');
+      // 2. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
       }
 
-      // 3. Validate file type
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
+      let filePath: string;
 
-      if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-        throw new BadRequestException(
-          'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
-        );
-      }
+      if (hasFile) {
+        // File upload flow
+        // 3. Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
 
-      // 4. Validate file size (5MB max)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (!file.size || file.size > maxSize) {
-        throw new BadRequestException('File size exceeds 5MB limit');
-      }
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
 
-      // 5. Validate file path exists
-      if (!file.path) {
-        throw new BadRequestException('File path is missing');
+        // 4. Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
       }
 
       // 6. Get offer and validate
@@ -2801,7 +2832,7 @@ Due: ${context.dueDate}`
       const document = new this.documentModel({
         ownerId: candidate._id,
         type: documentType,
-        filePath: file.path,
+        filePath: filePath,
         uploadedAt: new Date(),
       });
 
@@ -2859,10 +2890,12 @@ Due: ${context.dueDate}`
    * ONB-007: Candidate uploads required forms and templates
    * Upload additional documents (ID, certifications, etc.) for onboarding
    */
+  // changed - modified to accept either file upload OR manual entry for testing
   async uploadCandidateForm(
     offerId: string,
     file: any,
     documentType: DocumentType,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
   ): Promise<any> {
     try {
       // 1. Validate offerId
@@ -2870,39 +2903,15 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid offer ID format');
       }
 
-      // 2. Validate file exists
-      if (!file) {
-        throw new BadRequestException('No file uploaded');
+      // 2. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
       }
 
-      // 3. Validate file type
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
-
-      if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-        throw new BadRequestException(
-          'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
-        );
-      }
-
-      // 4. Validate file size (5MB max)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (!file.size || file.size > maxSize) {
-        throw new BadRequestException('File size exceeds 5MB limit');
-      }
-
-      // 5. Validate file path exists
-      if (!file.path) {
-        throw new BadRequestException('File path is missing');
-      }
-
-      // 6. Validate document type (must be ID or CERTIFICATE for forms)
+      // 3. Validate document type (must be ID or CERTIFICATE for forms)
       if (
         documentType !== DocumentType.ID &&
         documentType !== DocumentType.CERTIFICATE
@@ -2910,6 +2919,45 @@ Due: ${context.dueDate}`
         throw new BadRequestException(
           'Invalid document type for candidate form. Must be ID or CERTIFICATE',
         );
+      }
+
+      let filePath: string;
+
+      if (hasFile) {
+        // File upload flow
+        // Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
+
+        // Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
       }
 
       // 7. Get offer and validate
@@ -2930,7 +2978,7 @@ Due: ${context.dueDate}`
       const document = new this.documentModel({
         ownerId: candidate._id,
         type: documentType,
-        filePath: file.path,
+        filePath: filePath,
         uploadedAt: new Date(),
       });
 
@@ -3024,9 +3072,9 @@ Due: ${context.dueDate}`
     if (!Types.ObjectId.isValid(candidateId)) {
       throw new BadRequestException('Invalid candidate ID format');
     }
+    // changed - removed populate('referringEmployeeId') because 'User' model not registered
     return this.referralModel
       .find({ candidateId: new Types.ObjectId(candidateId) })
-      .populate('referringEmployeeId')
       .lean()
       .exec();
   }
@@ -3210,9 +3258,9 @@ Due: ${context.dueDate}`
       throw new BadRequestException('Invalid interview ID format');
     }
 
+    // changed - removed populate('interviewerId') because 'User' model not registered
     return this.assessmentResultModel
       .find({ interviewId: new Types.ObjectId(interviewId) })
-      .populate('interviewerId')
       .lean()
       .exec();
   }
@@ -4242,7 +4290,8 @@ Due: ${context.dueDate}`
   // 1) CREATE TERMINATION / RESIGNATION REQUEST
   async createTerminationRequest(dto: CreateTerminationRequestDto, user: any) {
     // Guard: user must be authenticated
-    if (!user || !user.role) {
+    // changed - user.role to user.roles (array)
+    if (!user || !user.roles || user.roles.length === 0) {
       throw new ForbiddenException('User role missing from token.');
     }
 
@@ -4279,7 +4328,8 @@ Due: ${context.dueDate}`
     // --- A) RESIGNATION: employee initiates their own request ---
     if (dto.initiator === TerminationInitiation.EMPLOYEE) {
       // Must be an EMPLOYEE in token
-      if (user.role !== SystemRole.DEPARTMENT_EMPLOYEE) {
+      // changed - user.role to user.roles.includes()
+      if (!user.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE)) {
         throw new ForbiddenException(
           'Only employees can initiate a resignation.',
         );
@@ -4314,7 +4364,8 @@ Due: ${context.dueDate}`
       dto.initiator === TerminationInitiation.MANAGER
     ) {
       // Only HR_MANAGER is allowed to do this
-      if (user.role !== SystemRole.HR_MANAGER) {
+      // changed - user.role to user.roles.includes()
+      if (!user.roles?.includes(SystemRole.HR_MANAGER)) {
         throw new ForbiddenException(
           'Only HR Manager can initiate termination based on performance.',
         );
@@ -4406,12 +4457,14 @@ Due: ${context.dueDate}`
 
   // 2b) GET MY RESIGNATION REQUESTS (for employees)
   async getMyResignationRequests(user: any) {
-    if (!user || !user.role) {
+    // changed - user.role to user.roles (array)
+    if (!user || !user.roles || user.roles.length === 0) {
       throw new ForbiddenException('Unauthorized');
     }
 
     // Only EMPLOYEE role can call this endpoint to fetch their own resignations
-    if (user.role !== SystemRole.DEPARTMENT_EMPLOYEE) {
+    // changed - user.role to user.roles.includes()
+    if (!user.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE)) {
       throw new ForbiddenException(
         'Only employees can access their resignation requests.',
       );
@@ -4443,7 +4496,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Only HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can update termination status.',
       );
@@ -4529,7 +4583,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Reasonable to restrict to HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can edit termination details.',
       );
@@ -4598,7 +4653,8 @@ Due: ${context.dueDate}`
   // 5) CREATE CLEARANCE CHECKLIST
   async createClearanceChecklist(dto: CreateClearanceChecklistDto, user: any) {
     // Only HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can create clearance checklist.',
       );
@@ -4880,7 +4936,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Authorization and department-specific rules
-    if (!user || !user.role) {
+    // changed - user.role to user.roles (array)
+    if (!user || !user.roles || user.roles.length === 0) {
       throw new ForbiddenException(
         'Unauthorized clearance update. missing user/role',
       );
@@ -4921,8 +4978,10 @@ Due: ${context.dueDate}`
 
     // Department-specific permissions/authorization
     const dept = dto.department;
-    const role = user.role;
+    // changed - user.role to user.roles (array)
+    const roles = user.roles || [];
 
+    // changed - use roles.some() to check array of roles
     const hasPermission = (() => {
       switch (dept) {
         case 'LINE_MANAGER':
@@ -4934,42 +4993,42 @@ Due: ${context.dueDate}`
           )
             return true;
           return (
-            role === SystemRole.DEPARTMENT_HEAD ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.DEPARTMENT_HEAD) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'IT':
           return (
-            role === SystemRole.SYSTEM_ADMIN || role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.SYSTEM_ADMIN) || roles.includes(SystemRole.HR_MANAGER)
           );
         case 'FINANCE':
           return (
-            role === SystemRole.FINANCE_STAFF ||
-            role === SystemRole.PAYROLL_MANAGER ||
-            role === SystemRole.PAYROLL_SPECIALIST ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.FINANCE_STAFF) ||
+            roles.includes(SystemRole.PAYROLL_MANAGER) ||
+            roles.includes(SystemRole.PAYROLL_SPECIALIST) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'FACILITIES':
           return (
-            role === SystemRole.HR_ADMIN ||
-            role === SystemRole.SYSTEM_ADMIN ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.HR_ADMIN) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'ADMIN':
           return (
-            role === SystemRole.HR_ADMIN ||
-            role === SystemRole.HR_MANAGER ||
-            role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_ADMIN) ||
+            roles.includes(SystemRole.HR_MANAGER) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN)
           );
         case 'HR':
           // HR employees can update, but final APPROVED must be performed by HR_MANAGER
           return (
-            role === SystemRole.HR_EMPLOYEE ||
-            role === SystemRole.HR_MANAGER ||
-            role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_EMPLOYEE) ||
+            roles.includes(SystemRole.HR_MANAGER) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN)
           );
         default:
           return (
-            role === SystemRole.HR_MANAGER || role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_MANAGER) || roles.includes(SystemRole.SYSTEM_ADMIN)
           );
       }
     })();
@@ -4997,10 +5056,11 @@ Due: ${context.dueDate}`
     }
 
     // Special enforcement: HR final APPROVED must be by HR_MANAGER explicitly
+    // changed - use roles.includes() instead of role ===
     if (
       dept === 'HR' &&
       dto.status === ApprovalStatus.APPROVED &&
-      role !== SystemRole.HR_MANAGER
+      !roles.includes(SystemRole.HR_MANAGER)
     ) {
       throw new ForbiddenException('Only HR Manager can finalize HR approval');
     }
@@ -5131,7 +5191,8 @@ Due: ${context.dueDate}`
 
   // 8) MANUAL COMPLETE
   async markChecklistCompleted(checklistId: string, user: any) {
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can manually complete checklist.',
       );
@@ -5843,7 +5904,8 @@ Due: ${context.dueDate}`
   // 10) FUNCTION TO MAKE EMPLOYEE INACTIVE (SYSTEM ADMIN)
   async revokeSystemAccess(dto: RevokeSystemAccessDto, user: any) {
     // Only SYSTEM_ADMIN can do this
-    if (!user || user.role !== SystemRole.SYSTEM_ADMIN) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.SYSTEM_ADMIN)) {
       throw new ForbiddenException(
         'Only System Admin can revoke system access.',
       );

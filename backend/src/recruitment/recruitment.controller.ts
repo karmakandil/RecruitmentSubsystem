@@ -42,6 +42,8 @@ import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
 import { RolesGuard } from '../common/guards/roles.guard';
+// changed - added JwtAuthGuard import
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
@@ -127,7 +129,7 @@ export class RecruitmentController {
   updateJobTemplate(@Param('id') id: string, @Body() dto: any) {
     return this.service.updateJobTemplate(id, dto);
   }
-
+//--------------------------APPLICATION--------------------------------------------------
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
   @Post('application')
@@ -195,8 +197,8 @@ export class RecruitmentController {
   ) {
     return this.service.updateInterviewStatus(id, dto);
   }
-
-  @UseGuards(RolesGuard)
+////////////////change////////////////
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
@@ -209,7 +211,8 @@ export class RecruitmentController {
     @Body() dto: { score: number; comments?: string },
     @Req() req: any,
   ) {
-    const interviewerId = req.user?.id || req.user?._id;
+    //////////////////////////change/////////////////////
+    const interviewerId = req.user?.userId || req.user?.id || req.user?._id;
     if (!interviewerId) {
       throw new BadRequestException('Interviewer ID not found in request');
     }
@@ -254,6 +257,7 @@ export class RecruitmentController {
     return this.service.finalizeOffer(id, dto);
   }
 
+  // changed - modified to accept either file upload OR manual JSON body for testing
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('offer/:id/upload-contract')
@@ -261,15 +265,29 @@ export class RecruitmentController {
   async uploadContractDocument(
     @Param('id') offerId: string,
     @UploadedFile() file: any,
-    @Body('documentType') documentType?: DocumentType,
+    @Body() body: any,
   ) {
+    // Parse body - handles both form-data and JSON
+    const documentType = body?.documentType || DocumentType.CONTRACT;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
     return this.service.uploadContractDocument(
       offerId,
       file,
-      documentType || DocumentType.CONTRACT,
+      documentType,
+      manualDocumentData,
     );
   }
 
+  // changed - modified to accept either file upload OR manual entry for testing
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('offer/:id/upload-form')
@@ -277,9 +295,21 @@ export class RecruitmentController {
   async uploadCandidateForm(
     @Param('id') offerId: string,
     @UploadedFile() file: any,
-    @Body('documentType') documentType: DocumentType,
+    @Body() body: any,
   ) {
-    return this.service.uploadCandidateForm(offerId, file, documentType);
+    // Parse body - handles both form-data and manual entry
+    const documentType = body?.documentType || DocumentType.ID;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
+    return this.service.uploadCandidateForm(offerId, file, documentType, manualDocumentData);
   }
 
   @UseGuards(RolesGuard)
@@ -292,11 +322,18 @@ export class RecruitmentController {
     return this.service.createEmployeeFromContract(offerId, dto);
   }
 
+  // changed - pass contractId from DTO to service
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding')
   async createOnboarding(@Body() createOnboardingDto: CreateOnboardingDto) {
-    return this.service.createOnboarding(createOnboardingDto);
+    return this.service.createOnboarding(
+      createOnboardingDto,
+      undefined, // contractSigningDate
+      undefined, // startDate
+      undefined, // workEmail
+      createOnboardingDto.contractId, // contractId from DTO
+    );
   }
 
   @UseGuards(RolesGuard)
@@ -376,6 +413,7 @@ export class RecruitmentController {
     return this.service.deleteOnboarding(id);
   }
 
+  // changed - modified to accept either file upload OR manual entry for testing
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task/:taskIndex/upload')
@@ -384,13 +422,26 @@ export class RecruitmentController {
     @Param('id') onboardingId: string,
     @Param('taskIndex') taskIndex: string,
     @UploadedFile() file: any,
-    @Body('documentType') documentType: DocumentType,
+    @Body() body: any,
   ) {
+    // Parse body - handles both form-data and manual entry
+    const documentType = body?.documentType || DocumentType.ID;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
     return this.service.uploadTaskDocument(
       onboardingId,
       parseInt(taskIndex, 10),
       file,
       documentType,
+      manualDocumentData,
     );
   }
 
@@ -552,8 +603,9 @@ export class RecruitmentController {
       dto.notes,
     );
   }
-
-  @UseGuards(RolesGuard)
+//--------------------------OFFBOARDING--------------------------------------------------
+  // changed - added JwtAuthGuard to parse JWT token
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/termination')
   createTerminationRequest(
     @Body() dto: CreateTerminationRequestDto,
@@ -562,21 +614,24 @@ export class RecruitmentController {
     return this.service.createTerminationRequest(dto, req.user);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/my-resignation')
   @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
   getMyResignationRequests(@Req() req: any) {
     return this.service.getMyResignationRequests(req.user);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/termination/:id')
   @Roles(SystemRole.HR_MANAGER)
   getTerminationRequest(@Param('id') id: string) {
     return this.service.getTerminationRequestById(id);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/termination/:id/status')
   @Roles(SystemRole.HR_MANAGER)
   updateTerminationStatus(
@@ -587,7 +642,8 @@ export class RecruitmentController {
     return this.service.updateTerminationStatus(id, dto, req.user);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/termination/:id')
   @Roles(SystemRole.HR_MANAGER)
   updateTerminationDetails(
@@ -598,7 +654,8 @@ export class RecruitmentController {
     return this.service.updateTerminationDetails(id, dto, req.user);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/clearance')
   @Roles(SystemRole.HR_MANAGER)
   createClearanceChecklist(
@@ -608,21 +665,24 @@ export class RecruitmentController {
     return this.service.createClearanceChecklist(dto, req.user);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/clearance/send-reminders')
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   sendClearanceReminders(@Body() opts: { force?: boolean } = { force: false }) {
     return this.service.sendClearanceReminders(opts);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/clearance/employee/:employeeId')
   @Roles(SystemRole.HR_MANAGER)
   getChecklistByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.getChecklistByEmployee(employeeId);
   }
 
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/clearance/:id/item')
   @Roles(
     SystemRole.HR_MANAGER,
@@ -641,6 +701,8 @@ export class RecruitmentController {
     return this.service.updateClearanceItemStatus(checklistId, dto, req.user);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/clearance/:id/complete')
   @Roles(SystemRole.HR_MANAGER)
   markChecklistCompleted(@Param('id') checklistId: string, @Req() req: any) {
@@ -648,6 +710,8 @@ export class RecruitmentController {
   }
 
   // 3) Appraisal view for offboarding (latest appraisal of employee)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/appraisal/:employeeId')
   @Roles(SystemRole.HR_MANAGER)
   getLatestAppraisal(@Param('employeeId') employeeId: string) {
@@ -655,6 +719,8 @@ export class RecruitmentController {
   }
 
   // 4) SYSTEM ACCESS REVOCATION
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/system-revoke')
   @Roles(SystemRole.SYSTEM_ADMIN)
   revokeAccess(@Body() dto: RevokeSystemAccessDto, @Req() req: any) {
