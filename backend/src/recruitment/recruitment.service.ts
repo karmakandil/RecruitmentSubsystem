@@ -84,6 +84,8 @@ import {
   CreateTerminationRequestDto,
   UpdateTerminationStatusDto,
   UpdateTerminationDetailsDto,
+  SubmitResignationDto,
+  TerminateEmployeeDto,
 } from './dto/termination-request.dto';
 
 import {
@@ -4441,6 +4443,181 @@ Due: ${context.dueDate}`
     throw new ForbiddenException('Unsupported termination initiator.');
   }
 
+  // ============================================================================
+  // NEW CHANGES: SUBMIT RESIGNATION - Any employee type can resign themselves
+  // Implements OFF-018: Employee can request resignation with reasoning
+  // ============================================================================
+  /**
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to submit their own resignation. No role restrictions - only requirement is
+   * that the user is a valid employee in the system.
+   */
+  async submitResignation(dto: SubmitResignationDto, user: any) {
+    // Guard: user must be authenticated with a valid token
+    if (!user) {
+      throw new ForbiddenException('You must be logged in to submit a resignation.');
+    }
+
+    // Get employee number from JWT token
+    const employeeNumber = user.employeeNumber;
+    if (!employeeNumber) {
+      throw new BadRequestException(
+        'Employee number not found in token. Please log in again.',
+      );
+    }
+
+    // Find the employee by their own employeeNumber from token
+    const employee = await this.employeeModel
+      .findOne({ employeeNumber })
+      .exec();
+
+    if (!employee) {
+      throw new NotFoundException(
+        'Your employee profile was not found. Please contact HR.',
+      );
+    }
+
+    // Check if employee already has a pending resignation
+    const existingResignation = await this.terminationModel
+      .findOne({
+        employeeId: employee._id,
+        initiator: TerminationInitiation.EMPLOYEE,
+        status: { $in: [TerminationStatus.PENDING, TerminationStatus.UNDER_REVIEW] },
+      })
+      .exec();
+
+    if (existingResignation) {
+      throw new BadRequestException(
+        'You already have a pending resignation request. Please wait for HR to process it.',
+      );
+    }
+
+    // Create the resignation request
+    const resignation = await this.terminationModel.create({
+      employeeId: employee._id,
+      initiator: TerminationInitiation.EMPLOYEE, // Always 'employee' for resignations
+      reason: dto.reason,
+      employeeComments: dto.comments,
+      terminationDate: dto.requestedLastDay
+        ? new Date(dto.requestedLastDay)
+        : undefined,
+      status: TerminationStatus.PENDING,
+      contractId: employee._id, // Using employee._id as dummy ObjectId (no separate contract entity)
+    });
+
+    return {
+      message: 'Resignation submitted successfully. HR will review your request.',
+      resignation,
+    };
+  }
+
+  // ============================================================================
+  // NEW CHANGES: TERMINATE EMPLOYEE BY HR - Only HR Manager can terminate based on performance
+  // Implements OFF-001: HR Manager initiates termination based on performance
+  // ============================================================================
+  /**
+   * Allows HR Manager to terminate an employee based on poor performance.
+   * Checks that the employee has an appraisal record with a low score (< 2.5).
+   */
+  async terminateEmployeeByHR(dto: TerminateEmployeeDto, user: any) {
+    // Guard: Only HR Manager can terminate employees
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
+      throw new ForbiddenException(
+        'Only HR Manager can terminate employees.',
+      );
+    }
+
+    // Validate employeeId format
+    if (
+      !dto.employeeId ||
+      typeof dto.employeeId !== 'string' ||
+      dto.employeeId.trim().length === 0
+    ) {
+      throw new BadRequestException(
+        'Employee ID (employeeNumber) is required and must be a non-empty string.',
+      );
+    }
+
+    // Find employee by employeeNumber
+    const employee = await this.employeeModel
+      .findOne({ employeeNumber: dto.employeeId })
+      .exec();
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with ID "${dto.employeeId}" not found.`,
+      );
+    }
+
+    // HR Manager cannot terminate themselves
+    if (user.employeeNumber === dto.employeeId) {
+      throw new ForbiddenException(
+        'You cannot terminate yourself. Please use the resignation endpoint instead.',
+      );
+    }
+
+    // Check if employee already has a pending termination
+    const existingTermination = await this.terminationModel
+      .findOne({
+        employeeId: employee._id,
+        initiator: { $in: [TerminationInitiation.HR, TerminationInitiation.MANAGER] },
+        status: { $in: [TerminationStatus.PENDING, TerminationStatus.UNDER_REVIEW] },
+      })
+      .exec();
+
+    if (existingTermination) {
+      throw new BadRequestException(
+        'This employee already has a pending termination request.',
+      );
+    }
+
+    // ============================================================================
+    // PERFORMANCE CHECK: Employee must have low performance score to be terminated
+    // ============================================================================
+    const latestRecord = await this.appraisalRecordModel
+      .findOne({ employeeProfileId: employee._id })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!latestRecord) {
+      throw new ForbiddenException(
+        'Cannot terminate: employee has no appraisal record on file.',
+      );
+    }
+
+    if (latestRecord.totalScore === undefined || latestRecord.totalScore === null) {
+      throw new ForbiddenException(
+        'Cannot terminate: employee appraisal has no total score.',
+      );
+    }
+
+    // Rule: only allow termination if totalScore < 2.5
+    if (latestRecord.totalScore >= 2.5) {
+      throw new ForbiddenException(
+        `Cannot terminate: employee performance score (${latestRecord.totalScore}) is not low enough for termination. Score must be below 2.5.`,
+      );
+    }
+
+    // Create the termination request
+    const termination = await this.terminationModel.create({
+      employeeId: employee._id,
+      initiator: TerminationInitiation.HR, // Always 'hr' for HR-initiated terminations
+      reason: dto.reason || `Termination due to poor performance (score: ${latestRecord.totalScore})`,
+      hrComments: dto.hrComments,
+      terminationDate: dto.terminationDate
+        ? new Date(dto.terminationDate)
+        : undefined,
+      status: TerminationStatus.PENDING,
+      contractId: employee._id,
+    });
+
+    return {
+      message: `Termination request created for employee ${dto.employeeId}.`,
+      performanceScore: latestRecord.totalScore,
+      termination,
+    };
+  }
+
   // 2) GET TERMINATION REQUEST
   async getTerminationRequestById(id: string) {
     if (!Types.ObjectId.isValid(id)) {
@@ -4455,37 +4632,41 @@ Due: ${context.dueDate}`
     return termination;
   }
 
-  // 2b) GET MY RESIGNATION REQUESTS (for employees)
+  // ============================================================================
+  // NEW CHANGES - FIXED: GET MY RESIGNATION REQUESTS - Any employee type can track
+  // Implements OFF-019: Employee can track resignation request status
+  // Removed role check - was only allowing DEPARTMENT_EMPLOYEE before
+  // ============================================================================
+  /**
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to view their own resignation/termination requests.
+   */
   async getMyResignationRequests(user: any) {
-    // changed - user.role to user.roles (array)
-    if (!user || !user.roles || user.roles.length === 0) {
-      throw new ForbiddenException('Unauthorized');
-    }
-
-    // Only EMPLOYEE role can call this endpoint to fetch their own resignations
-    // changed - user.role to user.roles.includes()
-    if (!user.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE)) {
-      throw new ForbiddenException(
-        'Only employees can access their resignation requests.',
-      );
+    // Guard: user must be authenticated (no role check - any employee type)
+    if (!user) {
+      throw new ForbiddenException('You must be logged in to view your requests.');
     }
 
     const employeeNumber = user.employeeNumber;
     if (!employeeNumber) {
-      throw new BadRequestException('Employee number not present in token');
+      throw new BadRequestException(
+        'Employee number not found in token. Please log in again.',
+      );
     }
 
     const employee = await this.employeeModel
       .findOne({ employeeNumber })
       .exec();
     if (!employee) {
-      throw new NotFoundException('Employee profile not found');
+      throw new NotFoundException('Your employee profile was not found.');
     }
 
+    // Return all termination/resignation requests for this employee
     const requests = await this.terminationModel
       .find({ employeeId: employee._id })
       .sort({ createdAt: -1 })
       .exec();
+    
     return requests;
   }
 
@@ -4889,6 +5070,9 @@ Due: ${context.dueDate}`
   // This ensures proper workflow: all departments must sign off before final pay processing.
 
   // 6) GET CHECKLIST BY EMPLOYEE (employeeNumber)
+  // ============================================================================
+  // NEW CHANGES FOR OFFBOARDING: Now supports both _id and employeeNumber
+  // ============================================================================
   async getChecklistByEmployee(employeeId: string) {
     // Validate employeeId format
     if (
@@ -4897,16 +5081,25 @@ Due: ${context.dueDate}`
       employeeId.trim().length === 0
     ) {
       throw new BadRequestException(
-        'Employee ID (employeeNumber) is required and must be a non-empty string',
+        'Employee ID (_id or employeeNumber) is required and must be a non-empty string',
       );
     }
 
-    const employee = await this.employeeModel
-      .findOne({ employeeNumber: employeeId })
-      .exec();
+    // Try to find employee by _id first (if valid ObjectId), then by employeeNumber
+    let employee;
+    if (Types.ObjectId.isValid(employeeId)) {
+      employee = await this.employeeModel.findById(employeeId).exec();
+    }
+    
+    // If not found by _id, try by employeeNumber
+    if (!employee) {
+      employee = await this.employeeModel
+        .findOne({ employeeNumber: employeeId })
+        .exec();
+    }
 
     if (!employee) {
-      throw new NotFoundException('Employee not found.');
+      throw new NotFoundException('Employee not found. Provide valid _id or employeeNumber.');
     }
 
     const termination = await this.terminationModel.findOne({

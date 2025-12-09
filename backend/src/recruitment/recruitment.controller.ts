@@ -52,11 +52,14 @@ import {
   CreateTerminationRequestDto,
   UpdateTerminationStatusDto,
   UpdateTerminationDetailsDto,
+  SubmitResignationDto,
+  TerminateEmployeeDto,
 } from './dto/termination-request.dto';
 
 import {
   CreateClearanceChecklistDto,
   UpdateClearanceItemStatusDto,
+  TriggerFinalSettlementDto,
 } from './dto/clearance-checklist.dto';
 
 import { RevokeSystemAccessDto } from './dto/system-access.dto';
@@ -604,6 +607,47 @@ export class RecruitmentController {
     );
   }
 //--------------------------OFFBOARDING--------------------------------------------------
+
+  // ============================================================================
+  // NEW CHANGES: RESIGNATION ENDPOINT - Any employee type can resign themselves
+  // Implements OFF-018: Employee can request resignation with reasoning
+  // ============================================================================
+  /**
+   * POST /recruitment/offboarding/resign
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to submit their own resignation. No role restrictions.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('offboarding/resign')
+  submitResignation(
+    @Body() dto: SubmitResignationDto,
+    @Req() req: any,
+  ) {
+    return this.service.submitResignation(dto, req.user);
+  }
+
+  // ============================================================================
+  // NEW CHANGES: TERMINATE ENDPOINT - Only HR Manager can terminate employees
+  // Implements OFF-001: HR Manager initiates termination based on performance
+  // ============================================================================
+  /**
+   * POST /recruitment/offboarding/terminate
+   * Allows HR Manager to terminate an employee based on poor performance.
+   * Requires performance score < 2.5.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.HR_MANAGER)
+  @Post('offboarding/terminate')
+  terminateEmployee(
+    @Body() dto: TerminateEmployeeDto,
+    @Req() req: any,
+  ) {
+    return this.service.terminateEmployeeByHR(dto, req.user);
+  }
+
+  // ============================================================================
+  // LEGACY: Original termination endpoint (kept for backwards compatibility)
+  // ============================================================================
   // changed - added JwtAuthGuard to parse JWT token
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/termination')
@@ -614,10 +658,13 @@ export class RecruitmentController {
     return this.service.createTerminationRequest(dto, req.user);
   }
 
-  // changed - added JwtAuthGuard
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // ============================================================================
+  // NEW CHANGES - FIXED: Any employee type can track their resignation
+  // Implements OFF-019: Employee can track resignation request status
+  // Removed @Roles(SystemRole.DEPARTMENT_EMPLOYEE) restriction
+  // ============================================================================
+  @UseGuards(JwtAuthGuard)
   @Get('offboarding/my-resignation')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
   getMyResignationRequests(@Req() req: any) {
     return this.service.getMyResignationRequests(req.user);
   }
@@ -725,5 +772,19 @@ export class RecruitmentController {
   @Roles(SystemRole.SYSTEM_ADMIN)
   revokeAccess(@Body() dto: RevokeSystemAccessDto, @Req() req: any) {
     return this.service.revokeSystemAccess(dto, req.user);
+  }
+
+  // ============================================================================
+  // NEW CHANGES FOR OFFBOARDING: Manual Final Settlement Trigger (OFF-013)
+  // Triggers benefits termination and final pay calculation
+  // ============================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post('offboarding/final-settlement')
+  @Roles(SystemRole.HR_MANAGER)
+  triggerFinalSettlement(
+    @Body() dto: TriggerFinalSettlementDto,
+    @Req() req: any,
+  ) {
+    return this.service.triggerFinalSettlement(dto.employeeId, dto.terminationId);
   }
 }

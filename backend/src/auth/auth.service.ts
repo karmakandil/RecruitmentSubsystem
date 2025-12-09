@@ -123,6 +123,12 @@ export class AuthService {
       permissions: user.permissions,
       userType:
         user.userType || (user.employeeNumber ? 'employee' : 'candidate'),
+      // ========================================================================
+      // NEW CHANGES FOR OFFBOARDING: Added employeeNumber to JWT payload
+      // Required for OFF-018 (Employee Resignation) and OFF-001 (HR Termination)
+      // The resignation endpoint needs employeeNumber from token to identify user
+      // ========================================================================
+      employeeNumber: user.employeeNumber || null,
     };
 
     return {
