@@ -310,6 +310,11 @@ export class LeavesService {
     const newCategory = new this.leaveCategoryModel(createLeaveCategoryDto);
     return await newCategory.save();
   }
+
+  async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
+    return await this.leaveCategoryModel.find().exec();
+  }
+
   // LeaveRequest
 
   // Checks if any date in the range [from, to] overlaps with blocked periods in the calendar for that year
