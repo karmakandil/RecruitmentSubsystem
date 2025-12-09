@@ -30,7 +30,7 @@ import { PayrollConfigurationModule } from '../payroll-configuration/payroll-con
 import { TimeManagementModule } from '../time-management/time-management.module';
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
 import { LeavesModule } from '../leaves/leaves.module';
-//import { RecruitmentModule } from '../recruitment/recruitment.module';
+import { RecruitmentModule } from '../recruitment/recruitment.module';
 import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
 
 @Module({
