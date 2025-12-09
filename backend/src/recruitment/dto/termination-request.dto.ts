@@ -51,3 +51,47 @@ export class UpdateTerminationDetailsDto {
   @IsDateString()
   terminationDate?: string;
 }
+
+// ============================================================================
+// NEW CHANGES: DTOs for separate resignation and termination endpoints
+// Added to support OFF-018 (Employee Resignation) and OFF-001 (HR Termination)
+// These allow ANY employee type to resign, not just DEPARTMENT_EMPLOYEE
+// ============================================================================
+
+/**
+ * DTO for employee resignation - ANY employee type can resign themselves
+ * Used with POST /offboarding/resign
+ * No employeeId needed - we get it from the JWT token
+ */
+export class SubmitResignationDto {
+  @IsString()
+  reason: string;
+
+  @IsOptional()
+  @IsString()
+  comments?: string;
+
+  @IsOptional()
+  @IsDateString()
+  requestedLastDay?: string; // When the employee wants their last day to be
+}
+
+/**
+ * DTO for HR Manager to terminate an employee based on performance
+ * Used with POST /offboarding/terminate
+ */
+export class TerminateEmployeeDto {
+  @IsString()
+  employeeId: string; // employeeNumber of the employee to terminate, e.g. "EMP-001"
+
+  @IsString()
+  reason: string;
+
+  @IsOptional()
+  @IsString()
+  hrComments?: string;
+
+  @IsOptional()
+  @IsDateString()
+  terminationDate?: string;
+}
