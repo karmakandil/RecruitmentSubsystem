@@ -5,6 +5,7 @@ export type LeaveEntitlementDocument = HydratedDocument<LeaveEntitlement>;
 
 @Schema({ timestamps: true })
 export class LeaveEntitlement {
+
   // The employee whose entitlement this is
   @Prop({ type: Types.ObjectId, ref: 'EmployeeProfile', required: true })
   employeeId: Types.ObjectId;

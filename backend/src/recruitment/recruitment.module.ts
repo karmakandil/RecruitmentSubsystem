@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RecruitmentController } from './recruitment.controller';
 import { RecruitmentService } from './recruitment.service';
@@ -80,8 +80,8 @@ import { LeavesModule } from '../leaves/leaves.module';
     ]),
     EmployeeProfileModule,
     OrganizationStructureModule,
-    PayrollExecutionModule,
-    TimeManagementModule,
+    forwardRef(() => PayrollExecutionModule),
+    forwardRef(() => TimeManagementModule),
     PayrollConfigurationModule,
     LeavesModule,
   ],

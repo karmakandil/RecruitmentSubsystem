@@ -238,6 +238,15 @@ export class LeaveController {
   ) {
     return await this.leavesService.createLeaveCategory(createLeaveCategoryDto);
   }
+
+
+@Get('categories')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
+  async getLeaveCategories() {
+    return await this.leavesService.getLeaveCategories();
+  }
+
   @Post('type')
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_ADMIN, SystemRole.LEGAL_POLICY_ADMIN)

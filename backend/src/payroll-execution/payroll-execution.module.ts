@@ -37,10 +37,10 @@ import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profil
   imports: [
     forwardRef(() => PayrollTrackingModule),
     PayrollConfigurationModule,
-    TimeManagementModule,
+    forwardRef(() => TimeManagementModule),
     EmployeeProfileModule,
     LeavesModule,
-    //RecruitmentModule,
+    forwardRef(() => RecruitmentModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '1h' },

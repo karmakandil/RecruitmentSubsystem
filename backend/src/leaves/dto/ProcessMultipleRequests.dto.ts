@@ -11,3 +11,4 @@ export class ProcessMultipleRequestsDto {
   @IsBoolean()
   approved: boolean;
 }
+

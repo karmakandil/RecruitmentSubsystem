@@ -1,12 +1,6 @@
-import {
-  IsNumber,
-  IsArray,
-  IsOptional,
-  ValidateNested,
-  IsISO8601,
-  IsString,
-} from 'class-validator';
+import { IsNumber, IsArray, IsOptional, ValidateNested, IsISO8601, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
+
 
 class BlockedPeriodDto {
   @IsISO8601()
