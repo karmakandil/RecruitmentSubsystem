@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../lib/hooks/use-auth";
-import { getDashboardByRole } from "../../lib/utils/role-utils";
+import { useAuth } from "../../../lib/hooks/use-auth";
+import { getDashboardByRole } from "../../../lib/utils/role-utils";
 
 export default function DashboardRedirect() {
   const router = useRouter();
@@ -25,3 +25,4 @@ export default function DashboardRedirect() {
 
   return null;
 }
+
