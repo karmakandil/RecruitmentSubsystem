@@ -188,3 +188,50 @@ export interface CreateCalendarDto {
   blockedPeriods?: BlockedPeriod[];
 }
 
+// ============================================================================
+// Phase 2: Leave Request Types
+// ============================================================================
+// These types are used for employee leave request functionality (Phase 2)
+// Note: LeaveType interface already exists above, but Phase 2 uses a simplified version
+export interface CreateLeaveRequestDto {
+  employeeId: string;
+  leaveTypeId: string;
+  dates: {
+    from: Date | string;
+    to: Date | string;
+  };
+  durationDays: number;
+  justification?: string;
+  attachmentId?: string;
+}
+export interface UpdateLeaveRequestDto {
+  leaveTypeId?: string;
+  dates?: {
+    from: Date | string;
+    to: Date | string;
+  };
+  durationDays?: number;
+  justification?: string;
+  attachmentId?: string;
+}
+export interface LeaveRequest {
+  _id: string;
+  employeeId: string;
+  leaveTypeId: string | LeaveType;
+  dates: {
+    from: Date | string;
+    to: Date | string;
+  };
+  durationDays: number;
+  justification?: string;
+  attachmentId?: string;
+  status: string;
+  approvalFlow?: Array<{
+    role: string;
+    status: string;
+    decidedBy?: string;
+    decidedAt?: Date | string;
+  }>;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+}

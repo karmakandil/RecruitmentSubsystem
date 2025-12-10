@@ -954,14 +954,15 @@ export class LeavesService {
       );
     }
 
-    // Atomically add personalized entitlement: increase accruedActual and decrease remaining
+    // Atomically add personalized entitlement: increase both accruedActual and remaining
+    // This gives the employee extra days beyond their normal policy
     const updated = await this.leaveEntitlementModel
       .findByIdAndUpdate(
         entitlement._id,
         {
           $inc: {
             accruedActual: personalizedEntitlement,
-            remaining: -personalizedEntitlement,
+            remaining: personalizedEntitlement,
           },
         },
         { new: true },
@@ -1035,6 +1036,18 @@ export class LeavesService {
 
   //leave type
 
+  async getLeaveTypes(): Promise<LeaveTypeDocument[]> {
+    return await this.leaveTypeModel.find().exec();
+  }
+
+  async getLeaveTypeById(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return leaveType;
+  }
+
   async createLeaveType(
     createLeaveTypeDto: CreateLeaveTypeDto,
   ): Promise<LeaveTypeDocument> {
@@ -1056,10 +1069,18 @@ export class LeavesService {
       .findByIdAndUpdate(id, updateLeaveTypeDto, { new: true })
       .exec();
     if (!updatedLeaveType) {
-      throw new Error(`LeaveType with ID ${id} not found`);
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
     }
 
     return updatedLeaveType;
+  }
+
+  async deleteLeaveType(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return await this.leaveTypeModel.findByIdAndDelete(id).exec() as LeaveTypeDocument;
   }
   // REQ-013: Get pending requests for manager review
   // async getPendingRequestsForManager(managerId: string): Promise<LeaveRequestDocument[]> {

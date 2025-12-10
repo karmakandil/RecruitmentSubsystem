@@ -90,6 +90,8 @@ export function getDashboardByRole(role: string): string {
     case SystemRole.SYSTEM_ADMIN:
     case SystemRole.HR_ADMIN:
       return "/dashboard/admin";
+    case SystemRole.HR_MANAGER:           // da el ana mezawedaa jana hendy
+      return "/dashboard/hr-manager";
 
     case SystemRole.HR_MANAGER:
     case SystemRole.HR_EMPLOYEE:
