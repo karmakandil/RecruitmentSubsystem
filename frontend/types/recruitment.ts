@@ -1,0 +1,293 @@
+// Enums
+export enum ApplicationStatus {
+  SUBMITTED = 'submitted',
+  IN_PROCESS = 'in_process',
+  OFFER = 'offer',
+  HIRED = 'hired',
+  REJECTED = 'rejected',
+}
+
+export enum ApplicationStage {
+  SCREENING = 'screening',
+  DEPARTMENT_INTERVIEW = 'department_interview',
+  HR_INTERVIEW = 'hr_interview',
+  OFFER = 'offer',
+}
+
+export enum InterviewStatus {
+  SCHEDULED = 'scheduled',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
+
+export enum InterviewMethod {
+  ONSITE = 'onsite',
+  VIDEO = 'video',
+  PHONE = 'phone',
+}
+
+export enum OfferResponseStatus {
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+  PENDING = 'pending',
+}
+
+export enum OfferFinalStatus {
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  PENDING = 'pending',
+}
+
+export enum OnboardingTaskStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+}
+
+export enum DocumentType {
+  CONTRACT = 'contract',
+  ID = 'id',
+  RESUME = 'resume',
+  CERTIFICATE = 'certificate',
+  OTHER = 'other',
+}
+
+// Main Types
+export interface JobTemplate {
+  _id: string;
+  title: string;
+  department: string;
+  description: string;
+  requirements: string[];
+  responsibilities: string[];
+  qualifications: string[];
+  experienceLevel: string;
+  employmentType: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface JobRequisition {
+  _id: string;
+  templateId: string;
+  template?: JobTemplate;
+  openings: number;
+  location?: string;
+  hiringManagerId?: string;
+  status: string;
+  published: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Application {
+  _id: string;
+  candidateId: string;
+  candidate?: any; // Candidate profile
+  requisitionId: string;
+  requisition?: JobRequisition;
+  assignedHr?: string;
+  status: ApplicationStatus;
+  stage?: ApplicationStage;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Interview {
+  _id: string;
+  applicationId: string;
+  application?: Application;
+  stage: ApplicationStage;
+  scheduledDate: string;
+  method?: InterviewMethod;
+  panel?: string[];
+  videoLink?: string;
+  status: InterviewStatus;
+  feedback?: InterviewFeedback[];
+  averageScore?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InterviewFeedback {
+  interviewerId: string;
+  interviewer?: any;
+  score: number;
+  comments?: string;
+  submittedAt: string;
+}
+
+export interface Offer {
+  _id: string;
+  applicationId: string;
+  application?: Application;
+  candidateId: string;
+  candidate?: any;
+  grossSalary: number;
+  signingBonus?: number;
+  benefits?: string[];
+  conditions?: string;
+  insurances?: string;
+  content?: string;
+  role?: string;
+  deadline: string;
+  applicantResponse?: OfferResponseStatus;
+  finalStatus?: OfferFinalStatus;
+  contractDocumentId?: string;
+  candidateFormDocumentId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OnboardingTask {
+  name: string;
+  department: string;
+  status: OnboardingTaskStatus;
+  deadline?: string;
+  documentId?: string;
+  notes?: string;
+}
+
+export interface Onboarding {
+  _id: string;
+  employeeId: string;
+  employee?: any;
+  contractId?: string;
+  tasks: OnboardingTask[];
+  startDate?: string;
+  completionDate?: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Document {
+  _id: string;
+  documentType: DocumentType;
+  fileName: string;
+  filePath: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  nationalId?: string;
+  documentDescription?: string;
+}
+
+// DTOs
+export interface CreateJobRequisitionDto {
+  templateId: string;
+  openings: number;
+  location?: string;
+  hiringManagerId?: string;
+}
+
+export interface CreateApplicationDto {
+  candidateId: string;
+  requisitionId: string;
+  assignedHr?: string;
+  consentGiven: boolean;
+}
+
+export interface UpdateApplicationStatusDto {
+  status: ApplicationStatus;
+}
+
+export interface ScheduleInterviewDto {
+  applicationId: string;
+  stage: ApplicationStage;
+  scheduledDate: string;
+  method?: InterviewMethod;
+  panel?: string[];
+  videoLink?: string;
+}
+
+export interface UpdateInterviewStatusDto {
+  status: InterviewStatus;
+}
+
+export interface SubmitInterviewFeedbackDto {
+  score: number;
+  comments?: string;
+}
+
+export interface CreateOfferDto {
+  applicationId: string;
+  candidateId: string;
+  grossSalary: number;
+  signingBonus?: number;
+  benefits?: string[];
+  conditions?: string;
+  insurances?: string;
+  content?: string;
+  role?: string;
+  deadline: string;
+}
+
+export interface RespondToOfferDto {
+  applicantResponse: OfferResponseStatus;
+}
+
+export interface FinalizeOfferDto {
+  finalStatus: OfferFinalStatus;
+}
+
+export interface CreateOnboardingDto {
+  employeeId: string;
+  contractId?: string;
+  tasks: OnboardingTask[];
+}
+
+export interface UpdateOnboardingDto {
+  tasks?: OnboardingTask[];
+  startDate?: string;
+  completionDate?: string;
+}
+
+export interface UpdateOnboardingTaskDto {
+  status?: OnboardingTaskStatus;
+  notes?: string;
+}
+
+// Resignation types
+export interface SubmitResignationDto {
+  effectiveDate: string;
+  reason: string;
+}
+
+export interface TerminationRequest {
+  _id: string;
+  employeeId: string;
+  employee?: any;
+  effectiveDate: string;
+  reason: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Clearance types
+export interface ClearanceChecklist {
+  _id: string;
+  terminationRequestId: string;
+  employeeId: string;
+  items: ClearanceItem[];
+  status: string;
+  completedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ClearanceItem {
+  department: string;
+  item: string;
+  status: string;
+  completedBy?: string;
+  completedAt?: string;
+  notes?: string;
+}
+
+export interface UpdateClearanceItemStatusDto {
+  itemIndex: number;
+  status: string;
+  notes?: string;
+}
+
