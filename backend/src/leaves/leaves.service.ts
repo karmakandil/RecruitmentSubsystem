@@ -33,6 +33,7 @@ import {
   EmployeeProfile,
   EmployeeProfileDocument,
 } from '../employee-profile/models/employee-profile.schema';
+import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
 // import { PositionAssignment, PositionAssignmentDocument } from '../organization-structure/models/position-assignment.schema';
 // import { Position, PositionDocument } from '../organization-structure/models/position.schema';
 
@@ -940,6 +941,17 @@ export class LeavesService {
     }
   }
 
+  // Helper: Calculate remaining balance consistently
+  // Formula: remaining = accruedRounded + carryForward - taken - pending
+  private calculateRemaining(entitlement: LeaveEntitlementDocument): number {
+    return (
+      entitlement.accruedRounded +
+      entitlement.carryForward -
+      entitlement.taken -
+      entitlement.pending
+    );
+  }
+
   //next method
   async assignPersonalizedEntitlement(
     employeeId: string,
@@ -1000,13 +1012,18 @@ export class LeavesService {
 
         // Check if reset date has passed
         if (resetDateOnly <= today) {
-          // Reset remaining balance
-          let newRemaining = entitlement.yearlyEntitlement - entitlement.taken;
-
-          // Add carry forward if allowed
+          // Get policy to check carry-forward settings
           const leavePolicy = await this.leavePolicyModel
             .findOne({ leaveTypeId: entitlement.leaveTypeId })
             .exec();
+
+          // Start with yearly entitlement, subtract taken and pending
+          let newRemaining =
+            entitlement.yearlyEntitlement -
+            entitlement.taken -
+            entitlement.pending;
+
+          // Add carry forward if allowed
           if (
             leavePolicy?.carryForwardAllowed &&
             entitlement.carryForward > 0
@@ -1018,8 +1035,14 @@ export class LeavesService {
           const nextReset = new Date(resetDate);
           nextReset.setFullYear(nextReset.getFullYear() + 1);
 
+          // Reset all accrual-related fields and carry-forward
           await this.updateLeaveEntitlement(entitlement._id.toString(), {
+            accruedActual: 0,
+            accruedRounded: 0,
+            carryForward: 0, // Reset carry-forward after using it
             remaining: newRemaining,
+            taken: 0, // Reset taken (or keep for history - adjust based on requirements)
+            pending: 0, // Reset pending
             lastAccrualDate: new Date(),
             nextResetDate: nextReset,
           });
@@ -1447,19 +1470,26 @@ export class LeavesService {
     );
 
     // BR 32: Proper balance calculation - move from pending to taken atomically
-    await this.leaveEntitlementModel
+    const updated = await this.leaveEntitlementModel
       .findByIdAndUpdate(
         entitlement._id,
         {
           $inc: {
             pending: -leaveRequest.durationDays,
             taken: leaveRequest.durationDays,
-            remaining: -leaveRequest.durationDays,
           },
         },
         { new: true },
       )
       .exec();
+
+    if (!updated) {
+      throw new Error('Failed to update entitlement');
+    }
+
+    // Recalculate remaining using helper method
+    updated.remaining = this.calculateRemaining(updated);
+    await updated.save();
   }
 
   // Phase 2: REQ-030, N-053 - Notify stakeholders
@@ -1913,6 +1943,62 @@ export class LeavesService {
     notes?: string,
   ): Promise<any> {
     try {
+      // BR 11: Check if employee is on unpaid leave or suspended
+      const employee = await this.employeeProfileModel
+        .findById(employeeId)
+        .exec();
+      
+      if (!employee) {
+        throw new Error(`Employee ${employeeId} not found`);
+      }
+
+      // Check employee status (BR 11: pause accrual during suspension or on leave)
+      if (
+        employee.status === EmployeeStatus.SUSPENDED ||
+        employee.status === EmployeeStatus.ON_LEAVE
+      ) {
+        return {
+          success: false,
+          employeeId,
+          leaveTypeId,
+          accrualAmount,
+          accrualType,
+          reason: `Accrual skipped: Employee is ${employee.status}`,
+          effectiveDate: new Date(),
+          notes,
+        };
+      }
+
+      // Check for approved unpaid leave requests that overlap with today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const unpaidLeave = await this.leaveRequestModel
+        .findOne({
+          employeeId: new Types.ObjectId(employeeId),
+          status: LeaveStatus.APPROVED,
+          startDate: { $lte: today },
+          endDate: { $gte: today },
+          // Note: Assuming unpaid leave types have a specific code or flag
+          // You may need to check leaveType.isUnpaid or similar field
+        })
+        .populate('leaveTypeId')
+        .exec();
+
+      if (unpaidLeave) {
+        // Check if this is an unpaid leave type (you may need to add this field to LeaveType)
+        // For now, we'll skip if there's any approved leave on the accrual date
+        return {
+          success: false,
+          employeeId,
+          leaveTypeId,
+          accrualAmount,
+          accrualType,
+          reason: 'Accrual skipped: Employee is on approved leave',
+          effectiveDate: new Date(),
+          notes,
+        };
+      }
+
       const entitlement = await this.getLeaveEntitlement(
         employeeId,
         leaveTypeId,
@@ -1934,14 +2020,20 @@ export class LeavesService {
             $inc: {
               accruedActual: accrualAmount,
               accruedRounded: roundedAmount,
-              remaining: roundedAmount,
             },
             $set: { lastAccrualDate: new Date() },
           },
           { new: true },
         )
         .exec();
-      if (updated) entitlement.remaining = updated.remaining;
+
+      if (!updated) {
+        throw new Error('Failed to update entitlement');
+      }
+
+      // Recalculate remaining using helper method
+      updated.remaining = this.calculateRemaining(updated);
+      await updated.save();
 
       return {
         success: true,
@@ -1950,7 +2042,7 @@ export class LeavesService {
         accrualAmount,
         accrualType,
         previousBalance,
-        newBalance: entitlement.remaining,
+        newBalance: updated.remaining,
         effectiveDate: new Date(),
         notes,
       };
@@ -1977,9 +2069,61 @@ export class LeavesService {
       const results: any[] = [];
       let successful = 0;
       let failed = 0;
+      let skipped = 0;
 
       for (const entitlement of entitlements) {
         try {
+          // BR 11: Check if employee is on unpaid leave or suspended
+          const employee = await this.employeeProfileModel
+            .findById(entitlement.employeeId)
+            .exec();
+
+          if (!employee) {
+            failed++;
+            results.push({
+              employeeId: entitlement.employeeId,
+              status: 'failed',
+              error: 'Employee not found',
+            });
+            continue;
+          }
+
+          // Check employee status (BR 11: pause accrual during suspension or on leave)
+          if (
+            employee.status === EmployeeStatus.SUSPENDED ||
+            employee.status === EmployeeStatus.ON_LEAVE
+          ) {
+            skipped++;
+            results.push({
+              employeeId: entitlement.employeeId,
+              status: 'skipped',
+              reason: `Employee is ${employee.status}`,
+            });
+            continue;
+          }
+
+          // Check for approved unpaid leave requests that overlap with today
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const unpaidLeave = await this.leaveRequestModel
+            .findOne({
+              employeeId: entitlement.employeeId,
+              status: LeaveStatus.APPROVED,
+              startDate: { $lte: today },
+              endDate: { $gte: today },
+            })
+            .exec();
+
+          if (unpaidLeave) {
+            skipped++;
+            results.push({
+              employeeId: entitlement.employeeId,
+              status: 'skipped',
+              reason: 'Employee is on approved leave',
+            });
+            continue;
+          }
+
           const previousBalance = entitlement.remaining;
 
           // Get policy for rounding rule
@@ -2000,7 +2144,6 @@ export class LeavesService {
                 $inc: {
                   accruedActual: accrualAmount,
                   accruedRounded: roundedAmount,
-                  remaining: roundedAmount,
                 },
                 $set: {
                   lastAccrualDate: new Date(),
@@ -2010,11 +2153,19 @@ export class LeavesService {
             )
             .exec();
 
+          if (!updated) {
+            throw new Error('Failed to update entitlement');
+          }
+
+          // Recalculate remaining using helper method
+          updated.remaining = this.calculateRemaining(updated);
+          await updated.save();
+
           results.push({
             employeeId: entitlement.employeeId,
             status: 'success',
             previousBalance,
-            newBalance: updated?.remaining, // ✅ actual stored value after update
+            newBalance: updated.remaining,
             accrualAmount,
             accrualType,
           });
@@ -2032,6 +2183,7 @@ export class LeavesService {
       return {
         successful,
         failed,
+        skipped,
         total: entitlements.length,
         details: results,
       };
@@ -2064,9 +2216,32 @@ export class LeavesService {
       let successful = 0;
       let failed = 0;
 
+      // Get policy to check maxCarryForward
+      const leavePolicy = await this.leavePolicyModel
+        .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+        .exec();
+
+      const maxCarryForward = leavePolicy?.maxCarryForward || 0;
+
       for (const entitlement of entitlements) {
         try {
-          const carryForwardAmount = Math.min(entitlement.remaining, 10); // Max 10 days carry forward
+          // Use maxCarryForward from policy instead of hardcoded 10
+          const carryForwardAmount = Math.min(
+            entitlement.remaining,
+            maxCarryForward,
+          );
+
+          // Only process if there's something to carry forward
+          if (carryForwardAmount <= 0) {
+            results.push({
+              employeeId: entitlement.employeeId,
+              status: 'skipped',
+              reason: 'No remaining balance to carry forward',
+              carryForwardAmount: 0,
+              newBalance: entitlement.remaining,
+            });
+            continue;
+          }
 
           // Atomically set carryForward and decrement remaining, and get updated doc back
           const updated = await this.leaveEntitlementModel
@@ -2080,12 +2255,20 @@ export class LeavesService {
             )
             .exec();
 
+          if (!updated) {
+            throw new Error('Failed to update entitlement');
+          }
+
+          // Recalculate remaining to ensure consistency
+          updated.remaining = this.calculateRemaining(updated);
+          await updated.save();
+
           results.push({
             employeeId: entitlement.employeeId,
             status: 'success',
             carryForwardAmount,
             expiringAmount: 0, // you can change this later if you track expired days
-            newBalance: updated?.remaining, // ✅ actual updated remaining from DB
+            newBalance: updated.remaining,
           });
           successful++;
         } catch (err) {
@@ -2146,25 +2329,42 @@ export class LeavesService {
           throw new Error('Invalid adjustment type');
       }
 
-      // Recalculate remaining when we changed accruedActual
+      // Update accruedRounded if we changed accruedActual
       if (adjustmentType === 'suspension' || adjustmentType === 'restoration') {
-        entitlement.remaining =
-          entitlement.yearlyEntitlement -
-          entitlement.taken +
-          entitlement.accruedActual;
+        // Get policy for rounding rule
+        const leavePolicy = await this.leavePolicyModel
+          .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+          .exec();
+        const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+        entitlement.accruedRounded = this.applyRoundingRule(
+          entitlement.accruedActual,
+          roundingRule,
+        );
       }
-
-      // Clamp to avoid negative remaining
-      entitlement.remaining = Math.max(0, entitlement.remaining);
 
       // Save and get the updated doc back
       const updated = await this.updateLeaveEntitlement(
         entitlement._id.toString(),
         {
           accruedActual: entitlement.accruedActual,
-          remaining: entitlement.remaining,
+          accruedRounded: entitlement.accruedRounded,
+          remaining: adjustmentType === 'reduction' || adjustmentType === 'adjustment'
+            ? entitlement.remaining
+            : undefined, // Will be recalculated below
         },
       );
+
+      if (!updated) {
+        throw new Error('Failed to update entitlement');
+      }
+
+      // Recalculate remaining using helper method for consistency
+      updated.remaining = this.calculateRemaining(updated);
+      
+      // Clamp to avoid negative remaining (optional - depends on business rules)
+      // updated.remaining = Math.max(0, updated.remaining);
+      
+      await updated.save();
 
       return {
         success: true,
