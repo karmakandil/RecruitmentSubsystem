@@ -231,7 +231,8 @@ export class RecruitmentService {
       const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       console.log('🆔 Generated requisition ID:', requisitionId);
       
-      // Build job requisition data
+      // Build job requisition data - only include fields that have values
+      // This ensures optional fields are completely omitted if not provided
       const jobRequisitionData: any = {
         requisitionId,
         templateId: new Types.ObjectId(dto.templateId), // Convert string to ObjectId
@@ -239,22 +240,25 @@ export class RecruitmentService {
         publishStatus: 'draft',
       };
 
-      // Only include optional fields if they have values
-      if (dto.location && typeof dto.location === 'string' && dto.location.trim()) {
-        jobRequisitionData.location = dto.location.trim();
+      // Only include optional fields if they have valid values
+      // Using explicit checks to ensure fields are completely omitted when not provided
+      const trimmedLocation = dto.location?.trim();
+      if (trimmedLocation) {
+        jobRequisitionData.location = trimmedLocation;
       }
-      // Only include hiringManagerId if it's provided and is a valid non-empty string
-      if (dto.hiringManagerId && typeof dto.hiringManagerId === 'string' && dto.hiringManagerId.trim()) {
-        // Convert string to ObjectId for proper Mongoose handling
-        jobRequisitionData.hiringManagerId = new Types.ObjectId(dto.hiringManagerId.trim());
+      
+      // Only include hiringManagerId if it's a valid non-empty string
+      // Completely omit it from the object if not provided to avoid any validation issues
+      const trimmedHiringManagerId = dto.hiringManagerId?.trim();
+      if (trimmedHiringManagerId && Types.ObjectId.isValid(trimmedHiringManagerId)) {
+        jobRequisitionData.hiringManagerId = new Types.ObjectId(trimmedHiringManagerId);
       }
-      // Explicitly ensure hiringManagerId is not in the object if not provided
-      // This prevents Mongoose from trying to validate undefined/null values
 
-      console.log('💾 Saving job requisition:', jobRequisitionData);
-      // Create and save job requisition
-      const jobRequisition = new this.jobModel(jobRequisitionData);
-      const saved = await jobRequisition.save();
+      console.log('💾 Saving job requisition:', JSON.stringify(jobRequisitionData, null, 2));
+      console.log('💾 hiringManagerId in data?', 'hiringManagerId' in jobRequisitionData);
+      
+      // Use create() method which handles optional fields better than new + save()
+      const saved = await this.jobModel.create(jobRequisitionData);
       console.log('✅ Job requisition saved:', saved._id);
       
       // Fetch the template separately to include in response
