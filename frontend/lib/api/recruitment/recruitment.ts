@@ -444,7 +444,9 @@ export const recruitmentApi = {
   
   // ✅ Accessible: No role restriction (any authenticated employee)
   submitResignation: async (data: SubmitResignationDto): Promise<TerminationRequest> => {
-    return await api.post("/recruitment/offboarding/resign", data);
+    const response = await api.post("/recruitment/offboarding/resign", data);
+    // Backend returns { message, resignation }, extract resignation
+    return response.resignation || response;
   },
 
   // ✅ Accessible: No role restriction (any authenticated employee)

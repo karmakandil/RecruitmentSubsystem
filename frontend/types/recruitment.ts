@@ -272,17 +272,29 @@ export interface UpdateOnboardingTaskDto {
 
 // Resignation types
 export interface SubmitResignationDto {
-  effectiveDate: string;
   reason: string;
+  comments?: string;
+  requestedLastDay?: string; // When the employee wants their last day to be
+}
+
+export enum TerminationStatus {
+  PENDING = 'pending',
+  UNDER_REVIEW = 'under_review',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
 }
 
 export interface TerminationRequest {
   _id: string;
   employeeId: string;
   employee?: any;
-  effectiveDate: string;
+  initiator?: string;
   reason: string;
-  status: string;
+  employeeComments?: string;
+  hrComments?: string;
+  status: TerminationStatus | string;
+  terminationDate?: string; // This is the requested last day for resignations
+  contractId?: string;
   createdAt?: string;
   updatedAt?: string;
 }
