@@ -67,27 +67,50 @@ export interface JobTemplate {
   updatedAt?: string;
 }
 
+// CHANGED - Updated interface to match backend schema (was using 'published: boolean', now using 'publishStatus')
 export interface JobRequisition {
   _id: string;
-  templateId: string;
+  // CHANGED - Added requisitionId field
+  requisitionId?: string;
+  // CHANGED - templateId can now be string or populated JobTemplate
+  templateId: string | JobTemplate;
+  // CHANGED - Added template alias for populated templateId
   template?: JobTemplate;
   openings: number;
   location?: string;
   hiringManagerId?: string;
-  status: string;
-  published: boolean;
+  // CHANGED - Changed from 'published: boolean' to 'publishStatus' to match backend
+  publishStatus: 'draft' | 'published' | 'closed';
+  // CHANGED - Added postingDate field
+  postingDate?: string;
+  // CHANGED - Added expiryDate field
+  expiryDate?: string;
+  // CHANGED - Added statistics object from backend
+  statistics?: {
+    totalApplications: number;
+    hired: number;
+    inProcess: number;
+    offer: number;
+    filledPositions: number;
+    availablePositions: number;
+    progress: number;
+    isFilled: boolean;
+  };
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface Application {
   _id: string;
-  candidateId: string;
+  // CHANGED - candidateId can be string or populated object after .populate('candidateId')
+  candidateId: string | { _id: string; [key: string]: any };
   candidate?: any; // Candidate profile
   requisitionId: string;
   requisition?: JobRequisition;
   assignedHr?: string;
   status: ApplicationStatus;
+  // CHANGED - Added currentStage field to match backend schema
+  currentStage?: ApplicationStage;
   stage?: ApplicationStage;
   createdAt?: string;
   updatedAt?: string;

@@ -178,12 +178,14 @@ export default function JobDetailPage() {
                     </div>
                   )}
 
+                  {/* CHANGED - Using publishStatus instead of published boolean */}
                   <div className="pt-6 border-t">
-                    {job.published && user?.userType === "candidate" ? (
+                    {/* CHANGED - Check publishStatus === 'published' instead of job.published */}
+                    {job.publishStatus === 'published' && user?.userType === "candidate" ? (
                       <Button onClick={() => setIsApplyModalOpen(true)} size="lg" className="w-full md:w-auto">
                         Apply for this Position
                       </Button>
-                    ) : !job.published ? (
+                    ) : job.publishStatus !== 'published' ? (
                       <p className="text-gray-500">This job is not currently accepting applications.</p>
                     ) : null}
                   </div>

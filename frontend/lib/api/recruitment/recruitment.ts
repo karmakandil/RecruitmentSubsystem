@@ -463,5 +463,30 @@ export const recruitmentApi = {
   ): Promise<any> => {
     return await api.patch(`/recruitment/offboarding/clearance/${checklistId}/item`, data);
   },
+
+  // ============================================
+  // CHANGED - SYSTEM ACCESS MANAGEMENT (System Admin)
+  // ============================================
+
+  // CHANGED - Added: ✅ Accessible: SYSTEM_ADMIN (OFF-007: Revoke system access)
+  revokeSystemAccess: async (
+    employeeId: string,
+    reason: string
+  ): Promise<any> => {
+    return await api.patch("/recruitment/offboarding/system-revoke", {
+      employeeId,
+      reason,
+    });
+  },
+
+  // CHANGED - Added: Get all employees for access management
+  getAllEmployees: async (): Promise<any[]> => {
+    return await api.get("/employee-profile");
+  },
+
+  // CHANGED - Added: Get employee by ID for access management
+  getEmployeeById: async (employeeId: string): Promise<any> => {
+    return await api.get(`/employee-profile/${employeeId}`);
+  },
 };
 

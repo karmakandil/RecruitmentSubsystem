@@ -25,9 +25,14 @@ export default function MyApplicationsPage() {
     try {
       setLoading(true);
       const allApplications = await recruitmentApi.getApplications();
-      const candidateApplications = allApplications.filter(
-        (app) => app.candidateId === user?.id || app.candidateId === user?.userId
-      );
+      // CHANGED - Handle candidateId being either a string or populated object
+      const candidateApplications = allApplications.filter((app) => {
+        // CHANGED - candidateId could be a string or populated object after .populate()
+        const appCandidateId = typeof app.candidateId === 'object' 
+          ? (app.candidateId as any)?._id?.toString() 
+          : app.candidateId;
+        return appCandidateId === user?.id || appCandidateId === user?.userId;
+      });
       setApplications(candidateApplications);
     } catch (error: any) {
       showToast(error.message || "Failed to load applications", "error");

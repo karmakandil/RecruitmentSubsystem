@@ -27,7 +27,8 @@ export default function RecruitmentPage() {
     try {
       setLoading(true);
       const jobs = await recruitmentApi.getJobRequisitions();
-      const publishedJobs = jobs.filter((job) => job.published);
+      // CHANGED - Filter using publishStatus === 'published' instead of job.published
+      const publishedJobs = jobs.filter((job) => job.publishStatus === 'published');
       setJobRequisitions(publishedJobs);
     } catch (error: any) {
       showToast(error.message || "Failed to load job openings", "error");
@@ -43,6 +44,8 @@ export default function RecruitmentPage() {
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
   const isHREmployee = user?.roles?.includes(SystemRole.HR_EMPLOYEE);
   const isRecruiter = user?.roles?.includes(SystemRole.RECRUITER);
+  // CHANGED - Added System Admin role check
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
 
   return (
     <ProtectedRoute>
@@ -345,8 +348,9 @@ export default function RecruitmentPage() {
                             {job.template?.description || "No description available"}
                           </p>
                           <div className="flex items-center justify-between">
+                            {/* CHANGED - Using publishStatus instead of published boolean */}
                             <span className="text-sm text-gray-500">
-                              {job.openings} {job.openings === 1 ? "opening" : "openings"} • {job.published ? "Published" : "Draft"}
+                              {job.openings} {job.openings === 1 ? "opening" : "openings"} • {job.publishStatus === 'published' ? "Published" : job.publishStatus === 'closed' ? "Closed" : "Draft"}
                             </span>
                             <Link href={`/dashboard/recruitment/jobs/${job._id}`}>
                               <Button size="sm">View Details</Button>
@@ -360,6 +364,42 @@ export default function RecruitmentPage() {
               </div>
             )}
           </>
+        )}
+
+        {/* CHANGED - System Admin View (ONB-009, ONB-013, OFF-007) */}
+        {isSystemAdmin && (
+          <div className="mt-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">System Administration</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Access Management</CardTitle>
+                  <CardDescription>
+                    Provision or revoke system access for employees (ONB-009, OFF-007)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/access-management">
+                    <Button className="w-full">Manage Access</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Onboarding</CardTitle>
+                  <CardDescription>
+                    View and manage new hire onboarding tasks
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/hr-onboarding">
+                    <Button className="w-full">View Onboarding</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         )}
       </div>
     </ProtectedRoute>

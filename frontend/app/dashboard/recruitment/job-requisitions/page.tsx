@@ -161,10 +161,12 @@ export default function JobRequisitionsPage() {
                       <span className="text-gray-500">Openings:</span>
                       <span className="font-medium">{job.openings}</span>
                     </div>
+                    {/* CHANGED - Using publishStatus instead of published boolean */}
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Published:</span>
-                      <span className={job.published ? "text-green-600" : "text-gray-400"}>
-                        {job.published ? "Yes" : "No"}
+                      <span className="text-gray-500">Status:</span>
+                      {/* CHANGED - Check publishStatus instead of published */}
+                      <span className={job.publishStatus === 'published' ? "text-green-600" : job.publishStatus === 'closed' ? "text-red-600" : "text-gray-400"}>
+                        {job.publishStatus === 'published' ? "Published" : job.publishStatus === 'closed' ? "Closed" : "Draft"}
                       </span>
                     </div>
                   </div>
@@ -172,7 +174,8 @@ export default function JobRequisitionsPage() {
                     <Link href={`/dashboard/recruitment/jobs/${job._id}`} className="flex-1">
                       <Button variant="outline" size="sm" className="w-full">View</Button>
                     </Link>
-                    {!job.published && (
+                    {/* CHANGED - Check publishStatus === 'draft' instead of !job.published */}
+                    {job.publishStatus === 'draft' && (
                       <Button
                         variant="outline"
                         size="sm"
