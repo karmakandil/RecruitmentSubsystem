@@ -229,7 +229,7 @@ export class LeaveController {
     return await this.leavesService.deleteLeaveAdjustment(id);
   }
 
-  // Leave Type Endpoints
+  // Leave Category Endpoints
   @Post('category')
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_ADMIN, SystemRole.LEGAL_POLICY_ADMIN)
@@ -239,12 +239,26 @@ export class LeaveController {
     return await this.leavesService.createLeaveCategory(createLeaveCategoryDto);
   }
 
-
-@Get('categories')
+  @Get('categories')
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
   async getLeaveCategories() {
     return await this.leavesService.getLeaveCategories();
+  }
+
+  // Leave Type Endpoints
+  @Get('types')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
+  async getLeaveTypes() {
+    return await this.leavesService.getLeaveTypes();
+  }
+
+  @Get('type/:id')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
+  async getLeaveTypeById(@Param('id') id: string) {
+    return await this.leavesService.getLeaveTypeById(id);
   }
 
   @Post('type')
@@ -262,6 +276,13 @@ export class LeaveController {
     @Body() updateLeaveTypeDto: UpdateLeaveTypeDto,
   ) {
     return await this.leavesService.updateLeaveType(id, updateLeaveTypeDto);
+  }
+
+  @Delete('type/:id')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_ADMIN, SystemRole.LEGAL_POLICY_ADMIN)
+  async deleteLeaveType(@Param('id') id: string) {
+    return await this.leavesService.deleteLeaveType(id);
   }
 
   // Phase 2: Leave Request Approval Endpoints

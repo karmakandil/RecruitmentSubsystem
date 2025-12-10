@@ -311,7 +311,7 @@ export class LeavesService {
     return await newCategory.save();
   }
 
-async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
+  async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
     return await this.leaveCategoryModel.find().exec();
   }
 
@@ -752,6 +752,12 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
     return updatedLeaveRequest;
   }
 
+    
+    
+
+  
+  
+
   // Phase 2: REQ-022 - Manager reject leave request
   async rejectLeaveRequest(
     rejectLeaveRequestDto: RejectLeaveRequestDto,
@@ -877,8 +883,12 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       );
     }
 
-    return leaveEntitlement;
+  if (!leaveEntitlement) {
+    throw new NotFoundException("Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found" );
   }
+
+  return leaveEntitlement;
+}
 
   async updateLeaveEntitlement(
     id: string,
@@ -944,14 +954,15 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       );
     }
 
-    // Atomically add personalized entitlement: increase accruedActual and decrease remaining
+    // Atomically add personalized entitlement: increase both accruedActual and remaining
+    // This gives the employee extra days beyond their normal policy
     const updated = await this.leaveEntitlementModel
       .findByIdAndUpdate(
         entitlement._id,
         {
           $inc: {
             accruedActual: personalizedEntitlement,
-            remaining: -personalizedEntitlement,
+            remaining: personalizedEntitlement,
           },
         },
         { new: true },
@@ -1025,6 +1036,18 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
 
   //leave type
 
+  async getLeaveTypes(): Promise<LeaveTypeDocument[]> {
+    return await this.leaveTypeModel.find().exec();
+  }
+
+  async getLeaveTypeById(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return leaveType;
+  }
+
   async createLeaveType(
     createLeaveTypeDto: CreateLeaveTypeDto,
   ): Promise<LeaveTypeDocument> {
@@ -1046,10 +1069,18 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       .findByIdAndUpdate(id, updateLeaveTypeDto, { new: true })
       .exec();
     if (!updatedLeaveType) {
-      throw new Error(`LeaveType with ID ${id} not found`);
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
     }
 
     return updatedLeaveType;
+  }
+
+  async deleteLeaveType(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return await this.leaveTypeModel.findByIdAndDelete(id).exec() as LeaveTypeDocument;
   }
   // REQ-013: Get pending requests for manager review
   // async getPendingRequestsForManager(managerId: string): Promise<LeaveRequestDocument[]> {
