@@ -1,9 +1,10 @@
+// auth/dashboard-redirect/page.tsx - Update this function
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../lib/hooks/use-auth";
-import { getDashboardByRole } from "../../../lib/utils/role-utils";
+import { getPrimaryDashboard } from "../../../lib/utils/role-utils"; // Use the new function
 
 export default function DashboardRedirect() {
   const router = useRouter();
@@ -15,12 +16,9 @@ export default function DashboardRedirect() {
       return;
     }
 
-    // ✅ roles is an array
-    const primaryRole = user?.roles?.[0];
-
-    if (primaryRole) {
-      router.replace(getDashboardByRole(primaryRole));
-    }
+    // Use the new function that handles multiple roles
+    const dashboardPath = getPrimaryDashboard(user);
+    router.replace(dashboardPath);
   }, [user, isAuthenticated, router]);
 
   return null;

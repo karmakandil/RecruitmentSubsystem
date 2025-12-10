@@ -18,6 +18,9 @@ export const authApi = {
     if (response.access_token && response.user) {
       localStorage.setItem("auth_token", response.access_token);
       localStorage.setItem("user", JSON.stringify(response.user));
+      if (typeof document !== "undefined") {
+        document.cookie = `auth_token=${response.access_token}; path=/; SameSite=Lax`;
+      }
       return {
         access_token: response.access_token,
         user: response.user,
@@ -36,13 +39,16 @@ export const authApi = {
     if (response.access_token && response.user) {
       localStorage.setItem("auth_token", response.access_token);
       localStorage.setItem("user", JSON.stringify(response.user));
+      if (typeof document !== "undefined") {
+        document.cookie = `auth_token=${response.access_token}; path=/; SameSite=Lax`;
+      }
     }
 
     return {
-      message: response.message,
+      message: response.message || "Success",
       data: {
-        access_token: response.access_token,
-        user: response.user,
+        access_token: response.access_token || "",
+        user: response.user as User,
       },
       success: true,
     };
@@ -51,6 +57,9 @@ export const authApi = {
   logout: async (): Promise<void> => {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("user");
+    if (typeof document !== "undefined") {
+      document.cookie = "auth_token=; path=/; Max-Age=0; SameSite=Lax";
+    }
   },
 
   isAuthenticated: (): boolean => {

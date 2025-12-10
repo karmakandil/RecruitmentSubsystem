@@ -44,6 +44,11 @@ export class CreateOnboardingDto {
   @IsMongoId()
   employeeId: Types.ObjectId;
 
+  // changed - added contractId field for onboarding
+  @IsOptional()
+  @IsMongoId()
+  contractId?: Types.ObjectId;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OnboardingTaskDto)
