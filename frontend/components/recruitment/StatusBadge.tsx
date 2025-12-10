@@ -3,7 +3,7 @@
 import { ApplicationStatus, InterviewStatus, OnboardingTaskStatus } from "@/types/recruitment";
 
 interface StatusBadgeProps {
-  status: string;
+  status: string | undefined | null;
   type?: "application" | "interview" | "onboarding";
 }
 
@@ -55,12 +55,22 @@ export function StatusBadge({ status, type = "application" }: StatusBadgeProps) 
     return "bg-gray-100 text-gray-800";
   };
 
-  const formatStatus = (status: string): string => {
+  const formatStatus = (status: string | undefined | null): string => {
+    if (!status) return "Unknown";
     return status
       .split("_")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(" ");
   };
+
+  // Handle undefined/null status
+  if (!status) {
+    return (
+      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        Unknown
+      </span>
+    );
+  }
 
   return (
     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getColor()}`}>

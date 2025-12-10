@@ -55,7 +55,8 @@ export default function JobDetailPage() {
 
     try {
       setApplying(true);
-      const applicationData: CreateApplicationDto = {
+      // Backend expects consentGiven in the body along with CreateApplicationDto
+      const applicationData: CreateApplicationDto & { consentGiven: boolean } = {
         candidateId: user.id || user.userId || "",
         requisitionId: job!._id,
         consentGiven: true,

@@ -3,15 +3,24 @@ import {
   JobRequisition,
   Application,
   CreateApplicationDto,
+  UpdateApplicationStatusDto,
   Interview,
+  ScheduleInterviewDto,
+  UpdateInterviewStatusDto,
   SubmitInterviewFeedbackDto,
   Offer,
+  CreateOfferDto,
   RespondToOfferDto,
+  FinalizeOfferDto,
   Onboarding,
+  CreateOnboardingDto,
+  UpdateOnboardingDto,
+  UpdateOnboardingTaskDto,
   JobTemplate,
   SubmitResignationDto,
   TerminationRequest,
   UpdateClearanceItemStatusDto,
+  CreateEmployeeFromContractDto,
 } from "../../../types/recruitment";
 
 export const recruitmentApi = {
@@ -34,6 +43,21 @@ export const recruitmentApi = {
     return await api.get(`/recruitment/job/${id}/preview`);
   },
 
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  createJobRequisition: async (data: any): Promise<JobRequisition> => {
+    return await api.post("/recruitment/job", data);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  updateJobRequisitionStatus: async (id: string, status: string): Promise<JobRequisition> => {
+    return await api.patch(`/recruitment/job/${id}/status`, { status });
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  publishJobRequisition: async (id: string): Promise<JobRequisition> => {
+    return await api.post(`/recruitment/job/${id}/publish`);
+  },
+
   // ============================================
   // JOB TEMPLATES
   // ============================================
@@ -46,6 +70,16 @@ export const recruitmentApi = {
   // ✅ Accessible: No role restriction
   getJobTemplateById: async (id: string): Promise<JobTemplate> => {
     return await api.get(`/recruitment/job-template/${id}`);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  createJobTemplate: async (data: any): Promise<JobTemplate> => {
+    return await api.post("/recruitment/job-template", data);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  updateJobTemplate: async (id: string, data: any): Promise<JobTemplate> => {
+    return await api.put(`/recruitment/job-template/${id}`, data);
   },
 
   // ============================================
@@ -70,6 +104,19 @@ export const recruitmentApi = {
     return await api.get(`/recruitment/application?${params.toString()}`);
   },
 
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  getRankedApplications: async (requisitionId: string): Promise<Application[]> => {
+    return await api.get(`/recruitment/application/ranked/${requisitionId}`);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  updateApplicationStatus: async (
+    id: string,
+    data: UpdateApplicationStatusDto
+  ): Promise<Application> => {
+    return await api.patch(`/recruitment/application/${id}/status`, data);
+  },
+
   // ============================================
   // INTERVIEWS
   // ============================================
@@ -84,6 +131,38 @@ export const recruitmentApi = {
     return await api.get(`/recruitment/interview/${interviewId}/score`);
   },
 
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, RECRUITER, SYSTEM_ADMIN
+  scheduleInterview: async (data: ScheduleInterviewDto): Promise<Interview> => {
+    return await api.post("/recruitment/interview", data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, RECRUITER, SYSTEM_ADMIN
+  updateInterviewStatus: async (
+    id: string,
+    data: UpdateInterviewStatusDto
+  ): Promise<Interview> => {
+    return await api.patch(`/recruitment/interview/${id}/status`, data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, RECRUITER, SYSTEM_ADMIN
+  submitInterviewFeedback: async (
+    interviewId: string,
+    data: SubmitInterviewFeedbackDto
+  ): Promise<any> => {
+    return await api.post(`/recruitment/interview/${interviewId}/feedback`, data);
+  },
+
+  // ✅ Accessible: No role restriction (to get interview by ID)
+  getInterviewById: async (id: string): Promise<Interview> => {
+    // Note: Backend doesn't have direct endpoint, but we can get feedback which includes interview data
+    // For now, we'll need to get interviews through applications
+    // This is a placeholder - actual implementation depends on backend
+    return await api.get(`/recruitment/interview/${id}/feedback`).then((feedback) => {
+      // Return interview structure from feedback
+      return feedback as any;
+    });
+  },
+
   // ============================================
   // OFFERS
   // ============================================
@@ -94,6 +173,24 @@ export const recruitmentApi = {
     data: RespondToOfferDto
   ): Promise<Offer> => {
     return await api.patch(`/recruitment/offer/${id}/respond`, data);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  createOffer: async (data: CreateOfferDto): Promise<Offer> => {
+    return await api.post("/recruitment/offer", data);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  finalizeOffer: async (id: string, data: FinalizeOfferDto): Promise<Offer> => {
+    return await api.patch(`/recruitment/offer/${id}/finalize`, data);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  createEmployeeFromContract: async (
+    offerId: string,
+    data: CreateEmployeeFromContractDto
+  ): Promise<any> => {
+    return await api.post(`/recruitment/offer/${offerId}/create-employee`, data);
   },
 
   // ✅ Accessible: JOB_CANDIDATE (included in allowed roles)
@@ -189,6 +286,121 @@ export const recruitmentApi = {
     );
   },
 
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  getAllOnboardings: async (): Promise<Onboarding[]> => {
+    return await api.get("/recruitment/onboarding");
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  getOnboardingStats: async (): Promise<any> => {
+    return await api.get("/recruitment/onboarding/stats");
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  createOnboarding: async (data: CreateOnboardingDto): Promise<Onboarding> => {
+    return await api.post("/recruitment/onboarding", data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  updateOnboarding: async (
+    id: string,
+    data: UpdateOnboardingDto
+  ): Promise<Onboarding> => {
+    return await api.put(`/recruitment/onboarding/${id}`, data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  updateOnboardingTask: async (
+    id: string,
+    taskIndex: number,
+    data: UpdateOnboardingTaskDto
+  ): Promise<Onboarding> => {
+    return await api.patch(`/recruitment/onboarding/${id}/task/${taskIndex}`, data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  addTaskToOnboarding: async (id: string, taskDto: any): Promise<Onboarding> => {
+    return await api.post(`/recruitment/onboarding/${id}/task`, taskDto);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  removeTaskFromOnboarding: async (id: string, taskIndex: number): Promise<void> => {
+    return await api.delete(`/recruitment/onboarding/${id}/task/${taskIndex}`);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  deleteOnboarding: async (id: string): Promise<void> => {
+    return await api.delete(`/recruitment/onboarding/${id}`);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  sendOnboardingReminders: async (): Promise<any> => {
+    return await api.post("/recruitment/onboarding/send-reminders");
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  provisionSystemAccess: async (
+    employeeId: string,
+    taskIndex: number
+  ): Promise<any> => {
+    return await api.post(
+      `/recruitment/onboarding/${employeeId}/provision-access/${taskIndex}`
+    );
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  reserveEquipment: async (
+    employeeId: string,
+    equipmentType: string,
+    equipmentDetails: any
+  ): Promise<any> => {
+    return await api.post(`/recruitment/onboarding/${employeeId}/reserve-equipment`, {
+      equipmentType,
+      equipmentDetails,
+    });
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  scheduleAccessProvisioning: async (
+    employeeId: string,
+    startDate: string,
+    endDate?: string
+  ): Promise<any> => {
+    return await api.post(`/recruitment/onboarding/${employeeId}/schedule-access`, {
+      startDate,
+      endDate,
+    });
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  triggerPayrollInitiation: async (
+    employeeId: string,
+    contractSigningDate: string,
+    grossSalary: number
+  ): Promise<any> => {
+    return await api.post(`/recruitment/onboarding/${employeeId}/trigger-payroll`, {
+      contractSigningDate,
+      grossSalary,
+    });
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  processSigningBonus: async (
+    employeeId: string,
+    signingBonus: number,
+    contractSigningDate: string
+  ): Promise<any> => {
+    return await api.post(`/recruitment/onboarding/${employeeId}/process-bonus`, {
+      signingBonus,
+      contractSigningDate,
+    });
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  cancelOnboarding: async (employeeId: string, reason: string): Promise<any> => {
+    return await api.post(`/recruitment/onboarding/${employeeId}/cancel`, { reason });
+  },
+
   // ============================================
   // CANDIDATE REFERRALS
   // ============================================
@@ -209,6 +421,20 @@ export const recruitmentApi = {
       consentGiven,
       consentType,
       notes,
+    });
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  tagCandidateAsReferral: async (
+    candidateId: string,
+    referringEmployeeId?: string,
+    role?: string,
+    level?: string
+  ): Promise<any> => {
+    return await api.post(`/recruitment/candidate/${candidateId}/referral`, {
+      referringEmployeeId,
+      role,
+      level,
     });
   },
 

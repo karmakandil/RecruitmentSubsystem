@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/recruitment/StatusBadge";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { SystemRole } from "@/types";
 import { ProtectedRoute } from "@/components/auth/protected-route";
+import { isHRStaff } from "@/lib/utils/role-utils";
 
 export default function RecruitmentPage() {
   const { user } = useAuth();
@@ -38,6 +39,10 @@ export default function RecruitmentPage() {
   const isCandidate = user?.userType === "candidate" || user?.roles?.includes(SystemRole.JOB_CANDIDATE);
   const isEmployee = user?.userType === "employee";
   const isDepartmentHead = user?.roles?.includes(SystemRole.DEPARTMENT_HEAD);
+  const isHR = isHRStaff(user);
+  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
+  const isHREmployee = user?.roles?.includes(SystemRole.HR_EMPLOYEE);
+  const isRecruiter = user?.roles?.includes(SystemRole.RECRUITER);
 
   return (
     <ProtectedRoute>
@@ -191,7 +196,7 @@ export default function RecruitmentPage() {
         )}
 
         {/* Department Head View */}
-        {isDepartmentHead && (
+        {isDepartmentHead && !isHR && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -217,6 +222,144 @@ export default function RecruitmentPage() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* HR Manager/Employee/Recruiter View */}
+        {isHR && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Job Requisitions</CardTitle>
+                    <CardDescription>Create and manage job postings</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/job-requisitions">
+                      <Button className="w-full">Manage Jobs</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Applications</CardTitle>
+                  <CardDescription>Review and manage candidate applications</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/applications">
+                    <Button className="w-full">View Applications</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Interviews</CardTitle>
+                  <CardDescription>Schedule and manage interviews</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/hr-interviews">
+                    <Button className="w-full">Manage Interviews</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Offers</CardTitle>
+                    <CardDescription>Create and manage job offers</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/hr-offers">
+                      <Button className="w-full">Manage Offers</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(isHRManager || isHREmployee) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Onboarding</CardTitle>
+                    <CardDescription>Manage new hire onboarding</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/hr-onboarding">
+                      <Button className="w-full">Manage Onboarding</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(isHREmployee || isHRManager) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Referrals</CardTitle>
+                    <CardDescription>Tag and track candidate referrals</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/referrals">
+                      <Button className="w-full">Manage Referrals</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {isHRManager && (
+              <div className="mt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">All Job Requisitions</h2>
+                
+                {loading ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">Loading job requisitions...</p>
+                  </div>
+                ) : jobRequisitions.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <p className="text-gray-500">No job requisitions available.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {jobRequisitions.map((job) => (
+                      <Card key={job._id} className="hover:shadow-lg transition-shadow">
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <CardTitle className="text-xl">
+                                {job.template?.title || "Job Opening"}
+                              </CardTitle>
+                              <CardDescription className="mt-1">
+                                {job.template?.department || "Department"} • {job.location || "Location TBD"}
+                              </CardDescription>
+                            </div>
+                            <StatusBadge status={job.status} type="application" />
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-gray-600 mb-4 line-clamp-3">
+                            {job.template?.description || "No description available"}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500">
+                              {job.openings} {job.openings === 1 ? "opening" : "openings"} • {job.published ? "Published" : "Draft"}
+                            </span>
+                            <Link href={`/dashboard/recruitment/jobs/${job._id}`}>
+                              <Button size="sm">View Details</Button>
+                            </Link>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </ProtectedRoute>

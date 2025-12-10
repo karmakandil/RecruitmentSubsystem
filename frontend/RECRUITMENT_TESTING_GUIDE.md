@@ -14,14 +14,21 @@ You need accounts with the following roles:
 - **JOB_CANDIDATE** (userType: "candidate")
 - **DEPARTMENT_EMPLOYEE** (userType: "employee")
 - **DEPARTMENT_HEAD** (userType: "employee" with DEPARTMENT_HEAD role)
+- **HR_MANAGER** (userType: "employee" with HR_MANAGER role)
+- **HR_EMPLOYEE** (userType: "employee" with HR_EMPLOYEE role)
+- **RECRUITER** (userType: "employee" with RECRUITER role)
 
 ### 3. Test Data Setup
 Before testing, ensure you have:
+- ✅ At least 1 job template (for HR to create requisitions)
 - ✅ At least 1 published job requisition
 - ✅ Job requisition with a valid template (title, description, requirements)
 - ✅ For candidates: existing applications (optional, for viewing)
 - ✅ For employees: existing referrals (optional, for viewing)
 - ✅ For department heads: clearance checklists (optional, for viewing)
+- ✅ For HR: at least 1 application in "in_process" status (for interview scheduling)
+- ✅ For HR: at least 1 application in "offer" status (for offer management)
+- ✅ For HR: at least 1 accepted offer with uploaded contract (for onboarding)
 
 ---
 
@@ -423,6 +430,484 @@ Before testing, ensure you have:
 
 ---
 
+## **ROLE 4: HR_MANAGER**
+
+### Test 4.1: Access Recruitment Dashboard (HR Manager)
+**Steps:**
+1. Log in as an HR Manager user
+2. Navigate to `/dashboard/recruitment`
+
+**Expected Results:**
+- ✅ Page loads without errors
+- ✅ Shows HR Manager-specific view
+- ✅ Displays 6 quick access cards:
+  - Job Requisitions
+  - Applications
+  - Interviews
+  - Offers
+  - Onboarding
+  - Referrals
+- ✅ Shows "All Job Requisitions" section below with all jobs (published and draft)
+- ✅ Each job card shows: title, department, location, openings, status, published status
+
+**Verify:**
+- Role-based view works correctly
+- All HR management features visible
+- Job requisitions list shows all jobs (not just published)
+
+---
+
+### Test 4.2: Create Job Requisition
+**Steps:**
+1. Navigate to `/dashboard/recruitment/job-requisitions`
+2. Click "Create Job Requisition"
+3. Fill out the form:
+   - Select a job template (required)
+   - Enter number of openings (required, minimum 1)
+   - Enter location (optional)
+   - Enter hiring manager ID (optional)
+4. Click "Create"
+
+**Expected Results:**
+- ✅ Modal opens with form
+- ✅ Job template dropdown shows available templates
+- ✅ Form validation:
+  - Template required
+  - Openings must be at least 1
+- ✅ On submit:
+  - Shows success toast
+  - Modal closes
+  - New requisition appears in list
+  - Status is "draft" by default
+- ✅ New requisition card shows all entered information
+
+**Verify:**
+- Requisition is created in backend
+- Default status is correct
+- All fields save correctly
+
+---
+
+### Test 4.3: Publish Job Requisition
+**Steps:**
+1. From job requisitions page, find an unpublished requisition
+2. Click "Publish" button
+3. Confirm the action
+
+**Expected Results:**
+- ✅ "Publish" button only shows for unpublished jobs
+- ✅ On publish:
+  - Shows success toast
+  - Job status updates
+  - Job becomes visible to candidates
+  - "Publish" button disappears (job is now published)
+
+**Verify:**
+- Published status updates correctly
+- Job appears in candidate view
+- Cannot publish already published jobs
+
+---
+
+### Test 4.4: Update Job Requisition Status
+**Steps:**
+1. From job requisitions page, find a requisition
+2. Update its status (if status update feature is available)
+3. Verify status change
+
+**Expected Results:**
+- ✅ Status can be updated (if feature implemented)
+- ✅ Status badge updates immediately
+- ✅ Success toast appears
+
+**Verify:**
+- Status persists after page refresh
+- Status changes reflect in backend
+
+---
+
+### Test 4.5: Manage Applications
+**Steps:**
+1. Navigate to `/dashboard/recruitment/applications`
+2. View all applications
+3. Filter by job requisition (if multiple exist)
+4. Click "Update Status" on an application
+5. Select new status and submit
+
+**Expected Results:**
+- ✅ Page loads with all applications
+- ✅ Filter dropdown shows all job requisitions
+- ✅ Each application card shows:
+  - Job title and candidate name
+  - Current status badge
+  - Progress bar
+  - Current stage
+  - Applied date
+- ✅ Status update modal:
+  - Shows current status
+  - Dropdown with all status options
+  - Update button
+- ✅ On update:
+  - Shows success toast
+  - Status badge updates
+  - Progress bar updates
+  - Application list refreshes
+
+**Verify:**
+- Filter works correctly
+- Status updates persist
+- Progress percentage recalculates
+- All status options available
+
+---
+
+### Test 4.6: Create Job Offer
+**Steps:**
+1. Navigate to `/dashboard/recruitment/hr-offers`
+2. Find an application with status "offer" or "in_process"
+3. Click "Create Offer"
+4. Fill out offer form:
+   - Gross salary (required)
+   - Signing bonus (optional)
+   - Offer deadline (required)
+5. Click "Create Offer"
+
+**Expected Results:**
+- ✅ Modal opens with offer form
+- ✅ Form validation:
+  - Gross salary required and > 0
+  - Deadline required (future date)
+- ✅ On submit:
+  - Shows success toast
+  - Modal closes
+  - Offer is created
+  - Candidate can now see the offer
+
+**Verify:**
+- Offer is created in backend
+- Candidate receives notification (if implemented)
+- Offer appears in candidate's offers page
+
+---
+
+### Test 4.7: Finalize Offer
+**Steps:**
+1. From offers page, find an offer that needs finalization
+2. Click "Finalize Offer" (if available)
+3. Select final status (Approved/Rejected/Pending)
+4. Submit
+
+**Expected Results:**
+- ✅ Finalize modal opens
+- ✅ Status dropdown shows: Approved, Rejected, Pending
+- ✅ On submit:
+  - Shows success toast
+  - Offer final status updates
+  - If approved, option to create employee appears
+
+**Verify:**
+- Final status persists
+- Approved offers can create employees
+- Rejected offers are marked appropriately
+
+---
+
+### Test 4.8: Create Employee from Contract
+**Steps:**
+1. From offers page, find an offer with accepted status and uploaded contract
+2. Click "Create Employee" (if available)
+3. Fill out employee form:
+   - Start date (required)
+   - Work email (optional)
+   - Employee number (optional)
+4. Submit
+
+**Expected Results:**
+- ✅ Modal opens with employee creation form
+- ✅ Form validation:
+  - Start date required (future date)
+- ✅ On submit:
+  - Shows success toast
+  - Employee profile created
+  - Onboarding can be initiated
+
+**Verify:**
+- Employee is created in backend
+- Employee profile accessible
+- Ready for onboarding setup
+
+---
+
+### Test 4.9: Manage Onboarding
+**Steps:**
+1. Navigate to `/dashboard/recruitment/hr-onboarding`
+2. Click "Create Onboarding"
+3. Fill out form:
+   - Employee ID (required)
+   - Contract ID (optional)
+4. Submit
+5. After creation, click "Add Task" on the onboarding
+6. Fill out task form:
+   - Task name (required)
+   - Department (required)
+   - Deadline (optional)
+7. Submit
+
+**Expected Results:**
+- ✅ Create onboarding modal opens
+- ✅ Form validation works
+- ✅ On submit:
+  - Shows success toast
+  - New onboarding appears in list
+- ✅ Add task modal opens
+- ✅ Task form validation works
+- ✅ On submit:
+  - Task added to onboarding
+  - Progress bar updates
+  - Task appears in task list
+
+**Verify:**
+- Onboarding created successfully
+- Tasks can be added
+- Progress percentage calculates correctly
+
+---
+
+### Test 4.10: Update Onboarding Task Status
+**Steps:**
+1. From onboarding page, find an onboarding with tasks
+2. Change a task's status using the dropdown
+3. Verify status update
+
+**Expected Results:**
+- ✅ Status dropdown available for each task
+- ✅ Options: Pending, In Progress, Completed
+- ✅ On change:
+  - Status updates immediately
+  - Progress bar recalculates
+  - Success toast appears (if implemented)
+
+**Verify:**
+- Status persists after page refresh
+- Progress percentage updates correctly
+- All status transitions work
+
+---
+
+### Test 4.11: Send Onboarding Reminders
+**Steps:**
+1. From onboarding page, click "Send Reminders" button
+2. Verify reminders are sent
+
+**Expected Results:**
+- ✅ Button is visible
+- ✅ On click:
+  - Shows success toast
+  - Reminders sent to all pending tasks
+  - Notification sent (if implemented)
+
+**Verify:**
+- Reminders are triggered
+- No errors occur
+- Success message appears
+
+---
+
+## **ROLE 5: HR_EMPLOYEE**
+
+### Test 5.1: Access Recruitment Dashboard (HR Employee)
+**Steps:**
+1. Log in as an HR Employee user
+2. Navigate to `/dashboard/recruitment`
+
+**Expected Results:**
+- ✅ Page loads without errors
+- ✅ Shows HR Employee-specific view
+- ✅ Displays 5 quick access cards:
+  - Applications
+  - Interviews
+  - Onboarding
+  - Referrals
+- ✅ Does NOT show "Job Requisitions" or "Offers" (HR Manager only)
+
+**Verify:**
+- Role-based view works correctly
+- Only appropriate features visible
+- No HR Manager-only features shown
+
+---
+
+### Test 5.2: Manage Applications (HR Employee)
+**Steps:**
+1. Navigate to `/dashboard/recruitment/applications`
+2. Follow same steps as Test 4.5
+
+**Expected Results:**
+- ✅ Same functionality as HR Manager for applications
+- ✅ Can view, filter, and update application status
+
+**Verify:**
+- All application management features work
+- Status updates function correctly
+
+---
+
+### Test 5.3: Schedule Interviews (HR Employee)
+**Steps:**
+1. Navigate to `/dashboard/recruitment/hr-interviews`
+2. Find an application in "in_process" or "submitted" status
+3. Click "Schedule Interview"
+4. Fill out interview form:
+   - Interview stage (required)
+   - Scheduled date & time (required)
+   - Interview method (required)
+   - Video link (if method is video)
+5. Submit
+
+**Expected Results:**
+- ✅ Modal opens with interview scheduling form
+- ✅ Stage dropdown shows: Screening, Department Interview, HR Interview, Offer
+- ✅ Method dropdown shows: Onsite, Video, Phone
+- ✅ Date/time picker works correctly
+- ✅ Video link field appears only for video method
+- ✅ Form validation:
+  - All required fields validated
+  - Date must be in future
+- ✅ On submit:
+  - Shows success toast
+  - Interview scheduled
+  - Candidate notified (if implemented)
+  - Interview appears in system
+
+**Verify:**
+- Interview is created in backend
+- Date/time saved correctly
+- Method and stage saved correctly
+- Video link saved if provided
+
+---
+
+### Test 5.4: Submit Interview Feedback (HR Employee)
+**Steps:**
+1. From interviews page, find an application with scheduled interview
+2. Click "Submit Feedback"
+3. Fill out feedback form:
+   - Score (0-10, required)
+   - Comments (optional)
+4. Submit
+
+**Expected Results:**
+- ✅ Modal opens with feedback form
+- ✅ Score input accepts 0-10
+- ✅ Comments textarea available
+- ✅ Form validation:
+  - Score required and between 0-10
+- ✅ On submit:
+  - Shows success toast
+  - Feedback saved
+  - Average score updates (if calculated)
+
+**Verify:**
+- Feedback is saved in backend
+- Score is recorded correctly
+- Comments are saved
+- Feedback can be viewed later
+
+---
+
+### Test 5.5: Tag Candidate as Referral (HR Employee)
+**Steps:**
+1. Navigate to `/dashboard/recruitment/referrals`
+2. Find a candidate in the "Tag Candidates" section
+3. Click "Tag as Referral"
+4. Fill out form:
+   - Role (optional)
+   - Level (optional)
+5. Submit
+
+**Expected Results:**
+- ✅ Tagging section visible at top of page
+- ✅ List of candidates/applications shown
+- ✅ Modal opens with tagging form
+- ✅ On submit:
+  - Shows success toast
+  - Candidate tagged as referral
+  - Referral appears in referrals list
+
+**Verify:**
+- Referral is created in backend
+- Tagged candidate appears in referrals
+- Referral information saved correctly
+
+---
+
+### Test 5.6: Manage Onboarding (HR Employee)
+**Steps:**
+1. Navigate to `/dashboard/recruitment/hr-onboarding`
+2. Follow same steps as Test 4.9 and Test 4.10
+
+**Expected Results:**
+- ✅ Same functionality as HR Manager for onboarding
+- ✅ Can create onboarding, add tasks, update status
+- ✅ Can send reminders
+
+**Verify:**
+- All onboarding features work
+- Task management functions correctly
+
+---
+
+## **ROLE 6: RECRUITER**
+
+### Test 6.1: Access Recruitment Dashboard (Recruiter)
+**Steps:**
+1. Log in as a Recruiter user
+2. Navigate to `/dashboard/recruitment`
+
+**Expected Results:**
+- ✅ Page loads without errors
+- ✅ Shows Recruiter-specific view
+- ✅ Displays 3 quick access cards:
+  - Applications
+  - Interviews
+  - Referrals
+- ✅ Similar to HR Employee view
+
+**Verify:**
+- Role-based view works correctly
+- Appropriate features visible
+
+---
+
+### Test 6.2: Schedule Interviews (Recruiter)
+**Steps:**
+1. Navigate to `/dashboard/recruitment/hr-interviews`
+2. Follow same steps as Test 5.3
+
+**Expected Results:**
+- ✅ Same functionality as HR Employee for interviews
+- ✅ Can schedule interviews
+- ✅ Can submit feedback
+
+**Verify:**
+- Interview scheduling works
+- Feedback submission works
+
+---
+
+### Test 6.3: Submit Interview Feedback (Recruiter)
+**Steps:**
+1. Follow same steps as Test 5.4
+
+**Expected Results:**
+- ✅ Same functionality as HR Employee
+- ✅ Can submit feedback and scores
+
+**Verify:**
+- Feedback submission works correctly
+
+---
+
 ## 🔍 General Testing Scenarios
 
 ### Test G.1: Navigation
@@ -537,6 +1022,11 @@ Before testing, ensure you have:
    - Application (consent)
    - Resignation (date, reason)
    - Clearance (status)
+   - Job Requisition (template, openings)
+   - Interview Scheduling (stage, date, method)
+   - Offer Creation (salary, deadline)
+   - Onboarding Creation (employee ID)
+   - Task Creation (name, department)
 
 **Expected Results:**
 - ✅ Required fields validated
@@ -544,20 +1034,12 @@ Before testing, ensure you have:
 - ✅ Submit disabled until valid
 - ✅ Date pickers work correctly
 - ✅ File uploads validate file types
+- ✅ Number inputs validate ranges
+- ✅ Dropdowns require selection
 
 ---
 
 ## 🐛 Known Limitations to Test
-
-### Limitation 1: Employee Referral Tagging
-- **Status:** View-only (tagging requires HR_EMPLOYEE/HR_MANAGER role)
-- **Test:** Verify employees can view referrals but cannot tag new ones
-- **Expected:** Note displayed about backend requirement
-
-### Limitation 2: Department Head Interview Feedback
-- **Status:** View-only (feedback submission requires HR_EMPLOYEE/HR_MANAGER/RECRUITER)
-- **Test:** Verify department heads can view interviews but cannot submit feedback
-- **Expected:** Note displayed about backend requirement
 
 ---
 
@@ -590,6 +1072,39 @@ Before testing, ensure you have:
 - [ ] Update clearance item status
 - [ ] Add notes to clearance items
 
+### HR Manager Features
+- [ ] Access recruitment dashboard (HR Manager view)
+- [ ] Create job requisition
+- [ ] Update job requisition status
+- [ ] Publish job requisition
+- [ ] View all job requisitions
+- [ ] Manage applications (view, filter, update status)
+- [ ] Create job offer
+- [ ] Finalize offer
+- [ ] Create employee from contract
+- [ ] Create onboarding
+- [ ] Add tasks to onboarding
+- [ ] Update task status
+- [ ] Send onboarding reminders
+- [ ] View onboarding statistics
+
+### HR Employee Features
+- [ ] Access recruitment dashboard (HR Employee view)
+- [ ] Manage applications (view, filter, update status)
+- [ ] Schedule interviews
+- [ ] Update interview status
+- [ ] Submit interview feedback
+- [ ] Tag candidates as referrals
+- [ ] Create onboarding
+- [ ] Manage onboarding tasks
+- [ ] Send onboarding reminders
+
+### Recruiter Features
+- [ ] Access recruitment dashboard (Recruiter view)
+- [ ] Schedule interviews
+- [ ] Submit interview feedback
+- [ ] View applications
+
 ### General
 - [ ] Navigation works
 - [ ] Error handling
@@ -599,20 +1114,24 @@ Before testing, ensure you have:
 - [ ] Status badges
 - [ ] Toast notifications
 - [ ] Form validation
+- [ ] Role-based access control
+- [ ] API error handling
 
 ---
 
 ## 📝 Test Report Template
 
 For each test, document:
-1. **Test ID:** (e.g., Test 1.1)
-2. **Role:** (Candidate/Employee/Department Head)
-3. **Feature:** (e.g., "Apply for Job")
+1. **Test ID:** (e.g., Test 1.1, Test 4.5)
+2. **Role:** (Candidate/Employee/Department Head/HR Manager/HR Employee/Recruiter)
+3. **Feature:** (e.g., "Apply for Job", "Create Job Requisition")
 4. **Steps Taken:**
 5. **Expected Result:**
 6. **Actual Result:**
 7. **Status:** ✅ Pass / ❌ Fail / ⚠️ Partial
 8. **Notes:** (Any issues, bugs, or observations)
+9. **Screenshots:** (If applicable)
+10. **Browser/Device:** (e.g., Chrome/Desktop, Safari/Mobile)
 
 ---
 
@@ -625,6 +1144,13 @@ For each test, document:
 5. **Navigation:** Verify all links work and routes are correct
 6. **Responsive:** Test on multiple screen sizes
 7. **Performance:** Check for slow loading or lag
+8. **Form Validation:** Ensure all required fields are validated
+9. **Date/Time Handling:** Verify date pickers work and dates are formatted correctly
+10. **File Uploads:** Check file size limits and type validation
+11. **Modal Behavior:** Ensure modals open/close correctly and don't overlap
+12. **Status Updates:** Verify status changes reflect immediately and persist
+13. **Progress Calculations:** Check that progress bars update correctly
+14. **Filter/Search:** Ensure filtering works correctly with multiple criteria
 
 ---
 
@@ -636,6 +1162,56 @@ If you encounter issues:
 3. Check network tab for failed requests
 4. Verify user role and permissions
 5. Check test data exists in database
+6. Verify role assignments in user profile
+7. Check API endpoint URLs match backend routes
+8. Verify authentication token is valid
+
+---
+
+## 🎯 Testing Priority Order
+
+### Phase 1: Core Candidate Flow (Start Here)
+1. Test 1.1 - 1.8 (Candidate features)
+   - This is the primary user flow
+   - Ensures basic functionality works
+
+### Phase 2: Employee & Department Head
+2. Test 2.1 - 2.4 (Employee features)
+3. Test 3.1 - 3.3 (Department Head features)
+   - Secondary user flows
+   - Verify role-based access
+
+### Phase 3: HR Management (Critical)
+4. Test 4.1 - 4.11 (HR Manager features)
+5. Test 5.1 - 5.6 (HR Employee features)
+6. Test 6.1 - 6.3 (Recruiter features)
+   - Core management functionality
+   - Most complex features
+
+### Phase 4: Integration & Edge Cases
+7. Test G.1 - G.8 (General scenarios)
+   - Cross-cutting concerns
+   - Error handling and edge cases
+
+---
+
+## 📊 Testing Statistics
+
+After completing all tests, track:
+- **Total Tests:** 50+ test cases
+- **Passed:** ___
+- **Failed:** ___
+- **Partial:** ___
+- **Coverage:** ___%
+
+**Roles Tested:**
+- ✅ JOB_CANDIDATE: 8 tests
+- ✅ DEPARTMENT_EMPLOYEE: 4 tests
+- ✅ DEPARTMENT_HEAD: 3 tests
+- ✅ HR_MANAGER: 11 tests
+- ✅ HR_EMPLOYEE: 6 tests
+- ✅ RECRUITER: 3 tests
+- ✅ General: 8 tests
 
 ---
 

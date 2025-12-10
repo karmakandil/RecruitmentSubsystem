@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
 } from "@/components/shared/ui/Card";
 
@@ -160,6 +161,28 @@ export default function EmployeeProfileDashboardPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Recruitment - Show for all employees and department heads */}
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Recruitment</CardTitle>
+              <CardDescription>
+                {isDepartmentHead
+                  ? "Manage department interviews and clearance"
+                  : isEmployee
+                  ? "View referrals and manage resignation"
+                  : "Recruitment management"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/recruitment"
+                className="block w-full text-center bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 transition"
+              >
+                Open Recruitment
+              </Link>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Quick Stats for HR */}

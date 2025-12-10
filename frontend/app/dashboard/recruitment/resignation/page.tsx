@@ -192,8 +192,16 @@ export default function EmployeeResignationPage() {
           <Input
             label="Effective Date *"
             type="date"
-            value={formData.effectiveDate}
-            onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
+            value={formData.effectiveDate ? new Date(formData.effectiveDate).toISOString().split("T")[0] : ""}
+            onChange={(e) => {
+              // Convert date to ISO string for backend
+              const date = e.target.value;
+              if (date) {
+                setFormData({ ...formData, effectiveDate: new Date(date).toISOString() });
+              } else {
+                setFormData({ ...formData, effectiveDate: "" });
+              }
+            }}
             error={errors.effectiveDate}
             min={new Date().toISOString().split("T")[0]}
           />

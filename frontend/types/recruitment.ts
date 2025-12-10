@@ -291,3 +291,9 @@ export interface UpdateClearanceItemStatusDto {
   notes?: string;
 }
 
+export interface CreateEmployeeFromContractDto {
+  startDate: string;
+  workEmail?: string;
+  employeeNumber?: string;
+}
+
