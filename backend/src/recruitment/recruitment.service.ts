@@ -18,6 +18,7 @@ import { Application } from './models/application.schema';
 import { Interview } from './models/interview.schema';
 import { Offer } from './models/offer.schema';
 import { CreateJobRequisitionDto } from './dto/job-requisition.dto';
+import { CreateJobTemplateDto, UpdateJobTemplateDto } from './dto/job-template.dto';
 import {
   CreateApplicationDto,
   UpdateApplicationStatusDto,
@@ -196,51 +197,127 @@ export class RecruitmentService {
   async createJobRequisition(
     dto: CreateJobRequisitionDto,
   ): Promise<JobRequisition> {
-    if (!Types.ObjectId.isValid(dto.templateId)) {
-      throw new BadRequestException('Invalid template ID format');
-    }
+    try {
+      console.log('📥 Creating job requisition with data:', dto);
+      
+      // Validate templateId
+      if (!dto.templateId || !Types.ObjectId.isValid(dto.templateId)) {
+        console.error('❌ Invalid template ID:', dto.templateId);
+        throw new BadRequestException('Invalid template ID format');
+      }
 
-    const template = await this.jobTemplateModel.findById(dto.templateId);
-    if (!template) {
-      throw new NotFoundException('Job template not found');
-    }
+      // Check if template exists
+      console.log('🔍 Checking template existence...');
+      const templateExists = await this.jobTemplateModel.findById(dto.templateId);
+      if (!templateExists) {
+        console.error('❌ Template not found:', dto.templateId);
+        throw new NotFoundException('Job template not found');
+      }
+      console.log('✅ Template found');
 
-    if (dto.openings <= 0 || !Number.isInteger(dto.openings)) {
-      throw new BadRequestException('Openings must be a positive integer');
-    }
+      // Validate openings
+      if (!dto.openings || dto.openings <= 0 || !Number.isInteger(dto.openings)) {
+        console.error('❌ Invalid openings:', dto.openings);
+        throw new BadRequestException('Openings must be a positive integer');
+      }
 
-    if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
-      throw new BadRequestException('Invalid hiring manager ID format');
-    }
+      // Validate hiringManagerId if provided
+      if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
+        console.error('❌ Invalid hiring manager ID:', dto.hiringManagerId);
+        throw new BadRequestException('Invalid hiring manager ID format');
+      }
 
-    const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const jobRequisition = new this.jobModel({
-      requisitionId,
-      templateId: dto.templateId,
-      openings: dto.openings,
-      location: dto.location,
-      hiringManagerId: dto.hiringManagerId || null,
-      publishStatus: 'draft',
-    });
-    return jobRequisition.save();
+      // Generate unique requisition ID
+      const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log('🆔 Generated requisition ID:', requisitionId);
+      
+      // Build job requisition data
+      const jobRequisitionData: any = {
+        requisitionId,
+        templateId: new Types.ObjectId(dto.templateId), // Convert string to ObjectId
+        openings: dto.openings,
+        publishStatus: 'draft',
+      };
+
+      // Only include optional fields if they have values
+      if (dto.location && typeof dto.location === 'string' && dto.location.trim()) {
+        jobRequisitionData.location = dto.location.trim();
+      }
+      // Only include hiringManagerId if it's provided and is a valid non-empty string
+      if (dto.hiringManagerId && typeof dto.hiringManagerId === 'string' && dto.hiringManagerId.trim()) {
+        // Convert string to ObjectId for proper Mongoose handling
+        jobRequisitionData.hiringManagerId = new Types.ObjectId(dto.hiringManagerId.trim());
+      }
+      // Explicitly ensure hiringManagerId is not in the object if not provided
+      // This prevents Mongoose from trying to validate undefined/null values
+
+      console.log('💾 Saving job requisition:', jobRequisitionData);
+      // Create and save job requisition
+      const jobRequisition = new this.jobModel(jobRequisitionData);
+      const saved = await jobRequisition.save();
+      console.log('✅ Job requisition saved:', saved._id);
+      
+      // Fetch the template separately to include in response
+      console.log('📋 Fetching template...');
+      const jobTemplateDoc = await this.jobTemplateModel.findById(dto.templateId);
+      const jobTemplate: any = jobTemplateDoc ? jobTemplateDoc.toObject() : null;
+      
+      // Get the saved requisition as plain object
+      console.log('📥 Fetching saved requisition...');
+      const populatedDoc = await this.jobModel.findById(saved._id);
+      if (!populatedDoc) {
+        console.error('❌ Failed to retrieve saved requisition');
+        throw new NotFoundException('Failed to retrieve created job requisition');
+      }
+      
+      const populated: any = populatedDoc.toObject();
+      
+      // Add template to response for frontend compatibility
+      if (jobTemplate && jobTemplate._id) {
+        populated.template = jobTemplate;
+        populated.templateId = jobTemplate._id.toString();
+      }
+      
+      console.log('✅ Returning populated requisition');
+      return populated;
+    } catch (error) {
+      // Re-throw known exceptions
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        console.error('⚠️ Known exception:', error.message);
+        throw error;
+      }
+      
+      // Handle Mongoose validation errors
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'ValidationError') {
+        const validationError = error as any;
+        const errorMessages = Object.keys(validationError.errors || {}).map(
+          (key) => `${key}: ${validationError.errors[key].message}`,
+        );
+        console.error('❌ Mongoose validation error:', errorMessages.join(', '));
+        throw new BadRequestException(
+          `Validation failed: ${errorMessages.join(', ')}`,
+        );
+      }
+      
+      // Log and wrap unexpected errors
+      console.error('❌ Unexpected error creating job requisition:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Failed to create job requisition',
+      );
+    }
   }
 
   // JobTemplate CRUD
-  async createJobTemplate(dto: any) {
-    if (
-      !dto.title ||
-      typeof dto.title !== 'string' ||
-      dto.title.trim().length === 0
-    ) {
+  async createJobTemplate(dto: CreateJobTemplateDto) {
+    // Validation is handled by class-validator in the DTO, but keeping additional checks for safety
+    if (!dto.title || dto.title.trim().length === 0) {
       throw new BadRequestException(
         'Title is required and must be a non-empty string',
       );
     }
-    if (
-      !dto.department ||
-      typeof dto.department !== 'string' ||
-      dto.department.trim().length === 0
-    ) {
+    if (!dto.department || dto.department.trim().length === 0) {
       throw new BadRequestException(
         'Department is required and must be a non-empty string',
       );
@@ -271,7 +348,7 @@ export class RecruitmentService {
     return template;
   }
 
-  async updateJobTemplate(id: string, dto: any) {
+  async updateJobTemplate(id: string, dto: UpdateJobTemplateDto) {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid job template ID format');
     }
@@ -282,16 +359,11 @@ export class RecruitmentService {
       throw new NotFoundException('Job Template not found');
     }
 
-    if (
-      dto.title !== undefined &&
-      (typeof dto.title !== 'string' || dto.title.trim().length === 0)
-    ) {
+    // Validation is handled by class-validator in the DTO, but keeping additional checks for safety
+    if (dto.title !== undefined && dto.title.trim().length === 0) {
       throw new BadRequestException('Title must be a non-empty string');
     }
-    if (
-      dto.department !== undefined &&
-      (typeof dto.department !== 'string' || dto.department.trim().length === 0)
-    ) {
+    if (dto.department !== undefined && dto.department.trim().length === 0) {
       throw new BadRequestException('Department must be a non-empty string');
     }
 
@@ -407,7 +479,8 @@ export class RecruitmentService {
           if (progress > maxProgress) maxProgress = progress;
         }
 
-        return {
+        // Map templateId to template for frontend compatibility
+        const result: any = {
           ...req,
           statistics: {
             totalApplications: totalApps,
@@ -420,6 +493,10 @@ export class RecruitmentService {
             isFilled: hiredCount >= req.openings,
           },
         };
+        if (req.templateId) {
+          result.template = req.templateId;
+        }
+        return result;
       }),
     );
 
@@ -430,9 +507,13 @@ export class RecruitmentService {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid job requisition ID format');
     }
-    const job = await this.jobModel.findById(id);
+    const job: any = await this.jobModel.findById(id).populate('templateId').lean();
     if (!job) {
       throw new NotFoundException('Job Requisition not found');
+    }
+    // Map templateId to template for frontend compatibility
+    if (job.templateId) {
+      job.template = job.templateId;
     }
     return job;
   }

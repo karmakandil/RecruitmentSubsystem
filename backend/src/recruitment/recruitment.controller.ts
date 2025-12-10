@@ -41,6 +41,7 @@ import {
 import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
+import { CreateJobTemplateDto, UpdateJobTemplateDto } from './dto/job-template.dto';
 import { RolesGuard } from '../common/guards/roles.guard';
 // changed - added JwtAuthGuard import
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -68,7 +69,7 @@ import { RevokeSystemAccessDto } from './dto/system-access.dto';
 export class RecruitmentController {
   constructor(private readonly service: RecruitmentService) {}
 
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job')
   createJob(@Body() dto: CreateJobRequisitionDto) {
@@ -110,7 +111,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job-template')
-  createJobTemplate(@Body() dto: any) {
+  createJobTemplate(@Body() dto: CreateJobTemplateDto) {
     return this.service.createJobTemplate(dto);
   }
 
@@ -129,7 +130,7 @@ export class RecruitmentController {
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Put('job-template/:id')
-  updateJobTemplate(@Param('id') id: string, @Body() dto: any) {
+  updateJobTemplate(@Param('id') id: string, @Body() dto: UpdateJobTemplateDto) {
     return this.service.updateJobTemplate(id, dto);
   }
 //--------------------------APPLICATION--------------------------------------------------
