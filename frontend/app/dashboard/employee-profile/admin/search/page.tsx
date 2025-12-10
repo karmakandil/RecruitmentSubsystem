@@ -24,6 +24,7 @@ import { Button } from "@/components/shared/ui/Button";
 import { Input } from "@/components/shared/ui/Input";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
+import { api } from "@/lib/api/client";
 import Link from "next/link";
 import {
   X,
@@ -57,36 +58,121 @@ export default function EmployeeManagementPage() {
   // Debounce timer ref
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Mock data for dropdowns (replace with API calls)
-  const [departments] = useState<any[]>([
-    { id: "dept1", name: "HR Department", code: "HR" },
-    { id: "dept2", name: "IT Department", code: "IT" },
-    { id: "dept3", name: "Finance", code: "FIN" },
-    { id: "dept4", name: "Sales", code: "SALES" },
-    { id: "dept5", name: "Marketing", code: "MKT" },
-  ]);
-
-  const [positions] = useState<any[]>([
-    { id: "pos1", title: "HR Manager", code: "HR-MGR" },
-    { id: "pos2", title: "Software Engineer", code: "SE" },
-    { id: "pos3", title: "Senior Developer", code: "SR-DEV" },
-    { id: "pos4", title: "Accountant", code: "ACC" },
-    { id: "pos5", title: "Sales Executive", code: "SALES-EXEC" },
-  ]);
-
-  const [payGrades] = useState<any[]>([
-    { id: "pg1", name: "Grade A", level: 1 },
-    { id: "pg2", name: "Grade B", level: 2 },
-    { id: "pg3", name: "Grade C", level: 3 },
-    { id: "pg4", name: "Grade D", level: 4 },
-    { id: "pg5", name: "Grade E", level: 5 },
-  ]);
-
   // Check authorization
   const isAuthorized = user?.roles?.some(
     (role) => role === SystemRole.HR_ADMIN || role === SystemRole.HR_MANAGER
   );
 
+  // Add to your component state:
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [positions, setPositions] = useState<any[]>([]);
+  const [payGrades, setPayGrades] = useState<any[]>([]);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+
+  // Add this useEffect to fetch real data:
+  useEffect(() => {
+    const fetchDropdownData = async () => {
+      if (!isAuthorized) return;
+
+      try {
+        setLoadingDropdowns(true);
+
+        console.log(
+          "🔍 Fetching departments from:",
+          "/organization-structure/departments?isActive=true"
+        );
+        console.log(
+          "🔍 Auth token available:",
+          !!localStorage.getItem("token")
+        );
+
+        // 1. Fetch departments with debugging
+        const deptResponse = await api.get(
+          "/organization-structure/departments?isActive=true"
+        );
+
+        console.log("📥 Departments API response:", deptResponse);
+        console.log("📥 Response type:", typeof deptResponse);
+        console.log("📥 Response keys:", Object.keys(deptResponse));
+
+        // Try different extraction patterns
+        let departmentsData = [];
+
+        if (Array.isArray(deptResponse)) {
+          departmentsData = deptResponse;
+        } else if (deptResponse && typeof deptResponse === "object") {
+          if (Array.isArray(deptResponse.data)) {
+            departmentsData = deptResponse.data;
+            console.log("✅ Found data in response.data");
+          } else if (
+            deptResponse.data &&
+            Array.isArray(deptResponse.data.data)
+          ) {
+            departmentsData = deptResponse.data.data;
+            console.log("✅ Found data in response.data.data");
+          } else if (Array.isArray(deptResponse.items)) {
+            departmentsData = deptResponse.items;
+            console.log("✅ Found data in response.items");
+          } else if (Array.isArray(deptResponse.content)) {
+            departmentsData = deptResponse.content;
+            console.log("✅ Found data in response.content");
+          }
+        }
+
+        console.log("📊 Extracted departments data:", departmentsData);
+        console.log("📊 Departments count:", departmentsData.length);
+
+        setDepartments(departmentsData);
+
+        // 2. Fetch positions
+        console.log("🔍 Fetching positions...");
+        const posResponse = await api.get(
+          "/organization-structure/positions?isActive=true"
+        );
+
+        console.log("📥 Positions API response:", posResponse);
+
+        let positionsData = [];
+        if (Array.isArray(posResponse)) {
+          positionsData = posResponse;
+        } else if (posResponse && typeof posResponse === "object") {
+          if (Array.isArray(posResponse.data)) {
+            positionsData = posResponse.data;
+          } else if (posResponse.data && Array.isArray(posResponse.data.data)) {
+            positionsData = posResponse.data.data;
+          }
+        }
+
+        console.log("📊 Extracted positions data:", positionsData);
+        setPositions(positionsData);
+
+        // 3. Mock pay grades for now
+        const mockPayGrades = [
+          { id: "pg1", name: "Grade A", level: 1 },
+          { id: "pg2", name: "Grade B", level: 2 },
+          { id: "pg3", name: "Grade C", level: 3 },
+        ];
+        setPayGrades(mockPayGrades);
+      } catch (error: any) {
+        console.error("❌ Error fetching dropdown data:", error);
+        console.error("❌ Error message:", error.message);
+        console.error("❌ Error response:", error.response);
+        console.error("❌ Error status:", error.response?.status);
+        console.error("❌ Error data:", error.response?.data);
+
+        showToast(
+          error.response?.data?.message ||
+            error.message ||
+            "Failed to load dropdown options",
+          "error"
+        );
+      } finally {
+        setLoadingDropdowns(false);
+      }
+    };
+
+    fetchDropdownData();
+  }, [isAuthorized, showToast]);
   // Load employees function - useCallback with stable dependencies
   const loadEmployees = useCallback(async () => {
     try {
@@ -364,17 +450,50 @@ export default function EmployeeManagementPage() {
   };
 
   // Export functions
+  // In your search page component
   const handleExportExcel = async () => {
     try {
-      const response = await employeeProfileApi.exportToExcel({
-        search: searchTerm,
-        status: statusFilter,
-        departmentId: departmentFilter,
-      });
+      // Validate and prepare params
+      const params: any = {};
+
+      if (searchTerm.trim()) {
+        params.search = searchTerm;
+      }
+
+      // Validate status against enum
+      if (
+        statusFilter &&
+        Object.values(EmployeeStatus).includes(statusFilter as EmployeeStatus)
+      ) {
+        params.status = statusFilter;
+      } else if (statusFilter) {
+        // If invalid status, don't send it
+        console.warn(`Invalid status filter: ${statusFilter}`);
+      }
+
+      // Validate departmentId as MongoDB ID (24 hex chars)
+      if (departmentFilter && /^[0-9a-fA-F]{24}$/.test(departmentFilter)) {
+        params.departmentId = departmentFilter;
+      } else if (departmentFilter) {
+        // If invalid department ID, don't send it
+        console.warn(`Invalid department ID format: ${departmentFilter}`);
+      }
+
+      console.log("📤 Exporting with params:", params);
+
+      const response = await employeeProfileApi.exportToExcel(params);
+
+      // The response should be { message: string, data: string (base64) }
+      const base64Data = response.data || response;
+
+      if (!base64Data || typeof base64Data !== "string") {
+        throw new Error("Invalid export data received");
+      }
+
       showToast("Excel export generated", "success");
 
       // Create download link
-      const dataStr = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${response}`;
+      const dataStr = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64Data}`;
       const link = document.createElement("a");
       link.href = dataStr;
       link.download = `employees_export_${
@@ -384,17 +503,25 @@ export default function EmployeeManagementPage() {
       link.click();
       document.body.removeChild(link);
     } catch (error: any) {
+      console.error("❌ Excel export error:", error);
       showToast(error.message || "Failed to export Excel", "error");
     }
   };
 
   const handleExportPdf = async (employeeId: string) => {
     try {
-      const response = await employeeProfileApi.exportToPdf(employeeId);
+      console.log("📤 Exporting PDF for employee:", employeeId);
+
+      const base64Data = await employeeProfileApi.exportToPdf(employeeId);
+
+      if (!base64Data || typeof base64Data !== "string") {
+        throw new Error("Invalid PDF data received");
+      }
+
       showToast("PDF generated for employee", "success");
 
       // Create download link
-      const dataStr = `data:application/pdf;base64,${response}`;
+      const dataStr = `data:application/pdf;base64,${base64Data}`;
       const link = document.createElement("a");
       link.href = dataStr;
       link.download = `employee_${employeeId}_${
@@ -404,6 +531,7 @@ export default function EmployeeManagementPage() {
       link.click();
       document.body.removeChild(link);
     } catch (error: any) {
+      console.error("❌ PDF export error:", error);
       showToast(error.message || "Failed to export PDF", "error");
     }
   };

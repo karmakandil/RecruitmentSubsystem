@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
+import { SystemRole } from "@/types";
 
 export default function Header() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export default function Header() {
   };
 
   const isHR = isHRAdminOrManager(user);
+  const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
+  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
 
   const navItemClass = (href: string) =>
     `text-sm font-medium transition-colors ${
@@ -35,7 +38,8 @@ export default function Header() {
 
         {isAuthenticated && (
           <nav className="flex items-center space-x-6">
-            {isHR && (
+            {/* HR Admin Navigation */}
+            {isHRAdmin && (
               <>
                 <Link
                   href="/dashboard/employee-profile/admin/search"
@@ -59,22 +63,66 @@ export default function Header() {
                 >
                   Team
                 </Link>
+
+                <Link
+                  href="/dashboard/admin"
+                  className={navItemClass("/dashboard/admin")}
+                >
+                  Admin
+                </Link>
+
+                {/* Optional: Additional Admin Links */}
+                <Link
+                  href="/dashboard/leaves"
+                  className={navItemClass("/dashboard/leaves")}
+                >
+                  Leaves
+                </Link>
               </>
             )}
 
-            <Link
-              href="/dashboard/employee-profile/my-profile"
-              className={navItemClass("/dashboard/employee-profile/my-profile")}
-            >
-              My Profile
-            </Link>
+            {/* HR Manager Navigation */}
+            {isHRManager && (
+              <>
+                <Link
+                  href="/dashboard/employee-profile/admin/search"
+                  className={navItemClass("/dashboard/employee-profile/admin")}
+                >
+                  Employees
+                </Link>
 
-            {isHR && (
+                <Link
+                  href="/dashboard/employee-profile/admin/approvals"
+                  className={navItemClass(
+                    "/dashboard/employee-profile/admin/approvals"
+                  )}
+                >
+                  Approvals
+                </Link>
+
+                <Link
+                  href="/dashboard/employee-profile/team"
+                  className={navItemClass("/dashboard/employee-profile/team")}
+                >
+                  Team
+                </Link>
+
+                <Link
+                  href="/dashboard/employee-profile/my-profile"
+                  className={navItemClass("/dashboard/employee-profile/my-profile")}
+                >
+                  My Profile
+                </Link>
+              </>
+            )}
+
+            {/* Regular Employee Navigation */}
+            {!isHR && (
               <Link
-                href="/dashboard/admin"
-                className={navItemClass("/dashboard/admin")}
+                href="/dashboard/employee-profile/my-profile"
+                className={navItemClass("/dashboard/employee-profile/my-profile")}
               >
-                Admin
+                My Profile
               </Link>
             )}
 

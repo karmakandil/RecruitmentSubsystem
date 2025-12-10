@@ -261,7 +261,13 @@ export const employeeProfileApi = {
     sortOrder?: string;
   }) => api.get<string>("/employee-profile/export/excel", { params }),
 
-  exportToPdf: (id: string) => api.get<string>(`/employee-profile/${id}/pdf`),
+  // In lib/api/employee-profile/employee-profile.ts
+  exportToPdf: async (id: string): Promise<string> => {
+    const response = await api.get<{ message: string; data: string }>(
+      `/employee-profile/${id}/pdf`
+    );
+    return response.data; // This should be the base64 string
+  },
 
   // Update contact info
   updateMyContact: (data: {
