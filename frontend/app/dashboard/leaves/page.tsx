@@ -5,10 +5,46 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LeavesPage() {
-  const { user } = useAuth();
-  useRequireAuth(SystemRole.HR_ADMIN);
+  const { user, isAuthenticated, loading } = useAuth();
+  const router = useRouter();
+
+  // Check if user is HR Admin, HR Manager, or Department Head
+  useEffect(() => {
+    if (!loading && isAuthenticated && user) {
+      const roles = user.roles || [];
+      const isHRAdmin = roles.includes(SystemRole.HR_ADMIN);
+      const isHRManager = roles.includes(SystemRole.HR_MANAGER);
+      const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
+      
+      if (!isHRAdmin && !isHRManager && !isDepartmentHead) {
+        // Redirect employees to the employee-facing leave page
+        router.replace("/dashboard/leaves/requests");
+        return;
+      }
+    }
+  }, [loading, isAuthenticated, user, router]);
+
+  // Only show admin page if user is HR Admin, HR Manager, or Department Head
+  const roles = user?.roles || [];
+  const isHRAdmin = roles.includes(SystemRole.HR_ADMIN);
+  const isHRManager = roles.includes(SystemRole.HR_MANAGER);
+  const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
+
+  // Show loading or redirect if not HR Admin, HR Manager, or Department Head
+  if (loading || !isAuthenticated || (!isHRAdmin && !isHRManager && !isDepartmentHead)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-6 py-8">
@@ -17,21 +53,60 @@ export default function LeavesPage() {
         <p className="text-gray-600 mt-1">Configure and manage leave policies, types, and entitlements</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
+      {/* Department Head Section */}
+      {isDepartmentHead && (
+        <Card className="mb-6 border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle>Leave Types</CardTitle>
-            <CardDescription>Manage leave types (Annual, Sick, etc.)</CardDescription>
+            <CardTitle className="text-blue-900">Manager Actions</CardTitle>
+            <CardDescription className="text-blue-700">
+              Review and approve leave requests from your team members
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Link 
-              href="/dashboard/leaves/types" 
+              href="/dashboard/leaves/requests/review" 
               className="text-blue-600 hover:underline font-medium"
             >
-              Manage Leave Types →
+              Review Pending Leave Requests →
             </Link>
           </CardContent>
         </Card>
+      )}
+
+      {/* HR Manager Section - Empty for now (different requirements) */}
+      {isHRManager && !isHRAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Leaves Management</CardTitle>
+            <CardDescription>
+              HR Manager leaves management features are coming soon
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600 text-center py-8">
+              This section is under development. HR Manager-specific leave management features will be available here.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* HR Admin Section */}
+      {isHRAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Leave Types</CardTitle>
+              <CardDescription>Manage leave types (Annual, Sick, etc.)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link 
+                href="/dashboard/leaves/types" 
+                className="text-blue-600 hover:underline font-medium"
+              >
+                Manage Leave Types →
+              </Link>
+            </CardContent>
+          </Card>
 
         <Card>
           <CardHeader>
@@ -122,8 +197,11 @@ export default function LeavesPage() {
             </Link>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
+
+
 

@@ -1,4 +1,8 @@
 // src/recruitment/dto/clearance-checklist.dto.ts
+// ============================================================================
+// NEW CHANGES FOR OFFBOARDING: Removed actorId and actorRole from DTOs
+// These values are now taken from JWT token (req.user) for security
+// ============================================================================
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApprovalStatus } from '../enums/approval-status.enum';
 
@@ -6,9 +10,7 @@ export class CreateClearanceChecklistDto {
   @IsString()
   terminationId: string; // maps to ClearanceChecklist.terminationId (ObjectId as string)
 
-  // simple "auth"
-  @IsString()
-  actorRole: string; // must be 'HR_MANAGER'
+  // actorRole removed - now checked via JWT token (user.roles)
 }
 
 export class UpdateClearanceItemStatusDto {
@@ -22,10 +24,17 @@ export class UpdateClearanceItemStatusDto {
   @IsString()
   comments?: string; // maps to items.comments
 
-  // for audit
+  // actorId removed - now taken from JWT token (user.userId)
+  // actorRole removed - now taken from JWT token (user.roles)
+}
+
+// ============================================================================
+// NEW CHANGES FOR OFFBOARDING: Final Settlement DTO (OFF-013)
+// ============================================================================
+export class TriggerFinalSettlementDto {
   @IsString()
-  actorId: string; // will go to items.updatedBy
+  employeeId: string; // Employee _id (ObjectId as string)
 
   @IsString()
-  actorRole: string; // must match department or be 'HR_MANAGER'
+  terminationId: string; // Termination request _id (ObjectId as string)
 }

@@ -696,9 +696,29 @@ export class EmployeeProfileService {
       filter.status = query.status;
     }
 
-    if (query.employeeId) {
-      filter.employeeProfileId = new Types.ObjectId(query.employeeId);
+    // FIXED: Handle empty string properly
+    const employeeId = query.employeeId;
+
+    // Check if employeeId exists and is a non-empty string
+    if (
+      employeeId &&
+      typeof employeeId === 'string' &&
+      employeeId.trim() !== ''
+    ) {
+      const trimmedId = employeeId.trim();
+
+      // Only add to filter if it's a valid MongoDB ObjectId
+      if (Types.ObjectId.isValid(trimmedId)) {
+        filter.employeeProfileId = new Types.ObjectId(trimmedId);
+      } else {
+        // If it's not a valid ObjectId, DO NOT add to filter
+        // This allows HR Admin to see all requests
+        console.log(
+          `⚠️ Invalid employeeId format: "${trimmedId}", skipping employee filter`,
+        );
+      }
     }
+    // If employeeId is undefined, null, empty string, or invalid - don't filter by employee
 
     if (query.startDate) {
       filter.submittedAt = { $gte: new Date(query.startDate) };
@@ -710,6 +730,8 @@ export class EmployeeProfileService {
         $lte: new Date(query.endDate),
       };
     }
+
+    console.log('🔍 Final MongoDB filter:', JSON.stringify(filter, null, 2));
 
     return this.changeRequestModel
       .find(filter)
@@ -766,6 +788,179 @@ export class EmployeeProfileService {
 
     if (!updatedRequest) {
       throw new NotFoundException('Change request not found after update');
+    }
+
+    if (updatedRequest.status === ProfileChangeStatus.APPROVED) {
+      try {
+        const raw = request.requestDescription || '';
+        console.log('🔍 Raw request description:', raw);
+
+        let payload: any = null;
+        if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+          try {
+            payload = JSON.parse(raw.trim());
+            console.log('✅ Parsed payload:', payload);
+          } catch (parseError: any) {
+            // Add type annotation
+            console.error('❌ JSON parse error:', parseError.message);
+            console.error('❌ Raw string:', raw);
+            payload = null;
+          }
+        } else {
+          console.log('⚠️ Request description is not JSON or empty');
+        }
+
+        if (payload && payload.type && payload.changes) {
+          console.log('📝 Payload has type:', payload.type);
+          console.log('📝 Payload changes:', payload.changes);
+
+          const allowedFields = [
+            'firstName',
+            'middleName',
+            'lastName',
+            'nationalId',
+            'maritalStatus',
+            'primaryPositionId',
+            'primaryDepartmentId',
+          ];
+
+          const changes: Record<string, any> = {};
+          for (const key of Object.keys(payload.changes)) {
+            if (allowedFields.includes(key)) {
+              changes[key] = payload.changes[key];
+              console.log(
+                `✅ Adding allowed field "${key}": ${payload.changes[key]}`,
+              );
+            } else {
+              console.log(`⚠️ Skipping non-allowed field "${key}"`);
+            }
+          }
+
+          console.log('📋 Final changes to apply:', changes);
+
+          if (Object.keys(changes).length > 0) {
+            const employeeId =
+              (updatedRequest.employeeProfileId as any)?._id?.toString() ||
+              (updatedRequest.employeeProfileId as any)?.toString();
+
+            console.log('👤 Employee ID to update:', employeeId);
+
+            if (employeeId) {
+              // Validate specific fields before applying
+              if (typeof changes.nationalId === 'string') {
+                const validNat = /^[0-9]{14}$/.test(changes.nationalId);
+                if (!validNat) {
+                  console.log(
+                    `❌ Invalid national ID format: ${changes.nationalId}`,
+                  );
+                  delete changes.nationalId;
+                }
+              }
+
+              if (typeof changes.maritalStatus === 'string') {
+                const allowedStatuses = [
+                  'SINGLE',
+                  'MARRIED',
+                  'DIVORCED',
+                  'WIDOWED',
+                ];
+                if (!allowedStatuses.includes(changes.maritalStatus)) {
+                  console.log(
+                    `❌ Invalid marital status: ${changes.maritalStatus}`,
+                  );
+                  delete changes.maritalStatus;
+                }
+              }
+
+              if (typeof changes.primaryPositionId === 'string') {
+                if (!Types.ObjectId.isValid(changes.primaryPositionId)) {
+                  console.log(
+                    `❌ Invalid position ID: ${changes.primaryPositionId}`,
+                  );
+                  delete changes.primaryPositionId;
+                }
+              }
+
+              if (typeof changes.primaryDepartmentId === 'string') {
+                if (!Types.ObjectId.isValid(changes.primaryDepartmentId)) {
+                  console.log(
+                    `❌ Invalid department ID: ${changes.primaryDepartmentId}`,
+                  );
+                  delete changes.primaryDepartmentId;
+                }
+              }
+
+              const nameChanged =
+                changes.firstName !== undefined ||
+                changes.middleName !== undefined ||
+                changes.lastName !== undefined;
+
+              if (nameChanged) {
+                console.log('👥 Name change detected');
+                const current = await this.employeeModel
+                  .findById(employeeId)
+                  .select('firstName middleName lastName')
+                  .lean()
+                  .exec();
+
+                console.log('📄 Current name:', current);
+
+                const fullName = [
+                  (changes.firstName ?? current?.firstName) as
+                    | string
+                    | undefined,
+                  (changes.middleName ?? current?.middleName) as
+                    | string
+                    | undefined,
+                  (changes.lastName ?? current?.lastName) as string | undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+
+                changes['fullName'] = fullName;
+                console.log('📝 New full name:', fullName);
+              }
+
+              console.log('🔄 Applying changes to employee:', employeeId);
+              console.log('📄 Final changes object:', changes);
+
+              // Apply the changes
+              const updatedEmployee = await this.employeeModel
+                .findByIdAndUpdate(employeeId, { $set: changes }, { new: true })
+                .select('-password')
+                .exec();
+
+              if (updatedEmployee) {
+                console.log('✅ Employee updated successfully!');
+                console.log('📄 Updated employee:', {
+                  id: updatedEmployee._id,
+                  firstName: updatedEmployee.firstName,
+                  lastName: updatedEmployee.lastName,
+                  fullName: updatedEmployee.fullName,
+                });
+              } else {
+                console.log('❌ Employee not found or update failed');
+              }
+            } else {
+              console.log('❌ No employee ID found');
+            }
+          } else {
+            console.log('⚠️ No allowed fields to update after filtering');
+          }
+        } else {
+          console.log('⚠️ No valid payload or changes found');
+        }
+      } catch (error: any) {
+        // Add type annotation
+        // DON'T SILENTLY IGNORE! Log the error
+        console.error('❌ ERROR applying profile changes:');
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+        // Re-throw or handle as needed
+        throw new BadRequestException(
+          `Failed to apply changes: ${error.message}`,
+        );
+      }
     }
 
     return updatedRequest;
