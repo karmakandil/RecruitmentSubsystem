@@ -146,6 +146,27 @@ export class RecruitmentController {
     return this.service.apply(dto, dto.consentGiven);
   }
 
+  // CHANGED - Added CV upload endpoint for candidates (REC-003)
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.JOB_CANDIDATE)
+  @Post('candidate/:candidateId/upload-cv')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async uploadCandidateCV(
+    @Param('candidateId') candidateId: string,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    // Parse body - handles both form-data and manual entry
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+    const resumeUrl = body?.resumeUrl;
+
+    const manualDocumentData = manualEntry ? {
+      resumeUrl,
+    } : undefined;
+
+    return this.service.uploadCandidateCV(candidateId, file, manualDocumentData);
+  }
+
   @UseGuards(RolesGuard)
   @Get('application')
   getAllApplications(
@@ -202,11 +223,11 @@ export class RecruitmentController {
     return this.service.updateInterviewStatus(id, dto);
   }
 ////////////////change////////////////
+  // CHANGED - Removed RECRUITER from feedback submission (per user story, only HR Employee can provide feedback)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
-    SystemRole.RECRUITER,
     SystemRole.SYSTEM_ADMIN,
   )
   @Post('interview/:id/feedback')
