@@ -1,53 +1,8 @@
 /**
- * ============================================================================
- * RECRUITMENT SERVICE - INTEGRATION POINTS DOCUMENTATION
- * ============================================================================
- *
- * This service integrates with the following subsystems:
- *
- * 1. EMPLOYEE PROFILE SERVICE (ACTIVE INTEGRATION)
- *    - Location: createEmployeeFromContract()
- *    - Purpose: Create employee profile from candidate data (ONB-002, REC-029)
- *    - Status: ✅ ACTIVE - Already integrated and working
- *
- * 2. PAYROLL EXECUTION SERVICE (PENDING INTEGRATION)
- *    - Locations:
- *      - triggerPayrollInitiation() - ONB-018 (REQ-PY-23)
- *      - processSigningBonus() - ONB-019 (REQ-PY-27)
- *    - Purpose: Automatically initiate payroll and process signing bonuses
- *    - Schema Reference: EmployeeSigningBonus, employeePayrollDetails
- *    - Status: ⏳ PENDING - Integration code commented out, ready to uncomment
- *
- * 3. TIME MANAGEMENT SERVICE (PENDING INTEGRATION)
- *    - Locations:
- *      - provisionSystemAccess() - ONB-009
- *      - scheduleAccessProvisioning() - ONB-013
- *    - Purpose: Provision clock access for time tracking
- *    - Schema Reference: AttendanceRecord
- *    - Status: ⏳ PENDING - Integration code commented out, ready to uncomment
- *
- * 4. ORGANIZATION STRUCTURE SERVICE (ACTIVE INTEGRATION)
- *    - Location: createEmployeeFromContract()
- *    - Purpose: Validate departments and positions exist and are active
- *    - Schema Reference: Department, Position, PositionAssignment
- *    - Status: ✅ ACTIVE - Validates department and position IDs when creating employees
- *
- * 5. IT SERVICE / CALENDAR SERVICE (PENDING INTEGRATION)
- *    - Location: scheduleInterview() - REC-011
- *    - Purpose: Send calendar invites to interview panel members
- *    - Status: ⏳ PENDING - Integration code commented out, ready to uncomment
- *
- * ============================================================================
- * INSTRUCTIONS FOR INTEGRATION:
- * ============================================================================
- * 1. Uncomment the import statements at the top of this file
- * 2. Uncomment the service injections in the constructor
- * 3. Uncomment the integration code blocks marked with "INTEGRATION:" comments
- * 4. Update the module imports in recruitment.module.ts
- * 5. Ensure the target services are exported from their respective modules
- * 6. Test each integration point individually
- *
- * ============================================================================
+ * Recruitment Service
+ * 
+ * Handles the complete employee lifecycle: recruitment, onboarding, and offboarding.
+ * Integrates with Employee Profile, Payroll Execution, Time Management, Organization Structure, and Leaves services.
  */
 
 import {
@@ -86,17 +41,12 @@ import { Document, DocumentDocument } from './models/document.schema';
 import * as fs from 'fs-extra';
 import { DocumentType } from './enums/document-type.enum';
 import { Response } from 'express';
-// ============= INTEGRATION IMPORTS =============
-// Employee Profile Service - Already integrated
 import { EmployeeProfileService } from '../employee-profile/employee-profile.service';
-// Payroll Execution Service - Integration pending (uncomment when ready)
-// import { PayrollExecutionService } from '../payroll-execution/payroll-execution.service';
-// Time Management Service - Integration pending (uncomment when ready)
-// import { TimeManagementService } from '../time-management/time-management.service';
-// Organization Structure Service - ACTIVE INTEGRATION
+import { PayrollExecutionService } from '../payroll-execution/payroll-execution.service';
+import { TimeManagementService } from '../time-management/services/time-management.service';
+import { PayrollConfigurationService } from '../payroll-configuration/payroll-configuration.service';
 import { OrganizationStructureService } from '../organization-structure/organization-structure.service';
-
-// ============= SCHEMA IMPORTS =============
+import { LeavesService } from '../leaves/leaves.service';
 import { Contract, ContractDocument } from './models/contract.schema';
 import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
 import { OfferResponseStatus } from './enums/offer-response-status.enum';
@@ -119,11 +69,9 @@ import {
 import { ApplicationStage } from './enums/application-stage.enum';
 import { ApplicationStatus } from './enums/application-status.enum';
 
-// ============= EXTERNAL SUBSYSTEM SCHEMA REFERENCES =============
-// These schemas exist in other subsystems and can be referenced when needed:
-// - Payroll Execution: EmployeeSigningBonus, employeePayrollDetails (from payroll-execution/models)
-// - Organization Structure: Department, Position (from organization-structure/models)
-// - Time Management: AttendanceRecord (from time-management/models)
+import { ConfigStatus } from '../payroll-configuration/enums/payroll-configuration-enums';
+import { BonusStatus } from '../payroll-execution/enums/payroll-execution-enum';
+import { ShiftAssignmentStatus } from '../time-management/models/enums/index';
 
 import { TerminationRequest } from './models/termination-request.schema';
 import { ClearanceChecklist } from './models/clearance-checklist.schema';
@@ -136,6 +84,8 @@ import {
   CreateTerminationRequestDto,
   UpdateTerminationStatusDto,
   UpdateTerminationDetailsDto,
+  SubmitResignationDto,
+  TerminateEmployeeDto,
 } from './dto/termination-request.dto';
 
 import {
@@ -153,13 +103,10 @@ import {
   EmployeeSystemRoleDocument,
 } from '../employee-profile/models/employee-system-role.schema';
 
-// NEW – performance linkage
 import {
   AppraisalRecord,
   AppraisalRecordDocument,
 } from '../performance/models/appraisal-record.schema';
-
-// System enums (EmployeeStatus already imported above, only import SystemRole here)
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 
 import { RevokeSystemAccessDto } from './dto/system-access.dto';
@@ -202,22 +149,12 @@ export class RecruitmentService {
     @InjectModel(ApplicationStatusHistory.name)
     private readonly applicationStatusHistoryModel: Model<ApplicationStatusHistoryDocument>,
 
-    // ============= INTEGRATED SERVICES =============
-    // Employee Profile Service - ACTIVE INTEGRATION
     private readonly employeeProfileService: EmployeeProfileService,
-
-    // Organization Structure Service - ACTIVE INTEGRATION
-    // For validating departments and positions exist and are active
     private readonly organizationStructureService: OrganizationStructureService,
-
-    // ============= PENDING INTEGRATIONS (Uncomment when services are ready) =============
-    // Payroll Execution Service - For ONB-018 (REQ-PY-23) and ONB-019 (REQ-PY-27)
-    // private readonly payrollExecutionService: PayrollExecutionService,
-
-    // Time Management Service - For ONB-009 (clock access provisioning)
-    // private readonly timeManagementService: TimeManagementService,
-
-    // ============= OFFBOARDING MODELS =============
+    private readonly payrollExecutionService: PayrollExecutionService,
+    private readonly payrollConfigurationService: PayrollConfigurationService,
+    private readonly timeManagementService: TimeManagementService,
+    private readonly leavesService: LeavesService,
     @InjectModel(TerminationRequest.name)
     private terminationModel: Model<TerminationRequest>,
 
@@ -235,7 +172,7 @@ export class RecruitmentService {
   ) {}
 
   private getErrorMessage(error: unknown): string {
-    if (error instanceof Error) return this.getErrorMessage(error);
+    if (error instanceof Error) return error.message;
     return String(error);
   }
 
@@ -256,29 +193,22 @@ export class RecruitmentService {
     return mapping[s] ?? 0;
   }
 
-  // ---------------------------------------------------
-  // JOB REQUISITIONS
-  // ---------------------------------------------------
   async createJobRequisition(
     dto: CreateJobRequisitionDto,
   ): Promise<JobRequisition> {
-    // Validate templateId
     if (!Types.ObjectId.isValid(dto.templateId)) {
       throw new BadRequestException('Invalid template ID format');
     }
 
-    // Validate that template exists
     const template = await this.jobTemplateModel.findById(dto.templateId);
     if (!template) {
       throw new NotFoundException('Job template not found');
     }
 
-    // Validate openings
     if (dto.openings <= 0 || !Number.isInteger(dto.openings)) {
       throw new BadRequestException('Openings must be a positive integer');
     }
 
-    // Validate hiringManagerId if provided
     if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
       throw new BadRequestException('Invalid hiring manager ID format');
     }
@@ -352,7 +282,6 @@ export class RecruitmentService {
       throw new NotFoundException('Job Template not found');
     }
 
-    // Validate update data if provided
     if (
       dto.title !== undefined &&
       (typeof dto.title !== 'string' || dto.title.trim().length === 0)
@@ -386,12 +315,10 @@ export class RecruitmentService {
       throw new NotFoundException('Job Requisition not found');
     }
 
-    // Cannot publish if already closed
     if (requisition.publishStatus === 'closed') {
       throw new BadRequestException('Cannot publish a closed job requisition');
     }
 
-    // Validate openings is greater than 0
     if (!requisition.openings || requisition.openings <= 0) {
       throw new BadRequestException(
         'Cannot publish job requisition: Number of openings must be greater than 0',
@@ -416,11 +343,87 @@ export class RecruitmentService {
     if (!job) {
       throw new NotFoundException('Job Requisition not found');
     }
-    return job;
+
+    const populatedJob = job.toObject ? job.toObject() : job;
+    if (!populatedJob.templateId) {
+      throw new BadRequestException(
+        'Job requisition is missing template. Cannot preview without template details.',
+      );
+    }
+
+    const totalApplications = await this.applicationModel.countDocuments({
+      requisitionId: id,
+    });
+    const filledPositions = await this.applicationModel.countDocuments({
+      requisitionId: id,
+      status: ApplicationStatus.HIRED,
+    });
+
+    return {
+      ...populatedJob,
+      preview: true,
+      template: populatedJob.templateId,
+      statistics: {
+        totalApplications,
+        filledPositions,
+        availablePositions: Math.max(0, populatedJob.openings - filledPositions),
+        isFilled: filledPositions >= populatedJob.openings,
+      },
+    };
   }
 
   async getAllJobRequisitions() {
-    return this.jobModel.find();
+    const requisitions = await this.jobModel
+      .find()
+      .populate('templateId')
+      //.populate('hiringManagerId')
+      .lean();
+
+    const enrichedRequisitions = await Promise.all(
+      requisitions.map(async (req: any) => {
+        const totalApps = await this.applicationModel.countDocuments({
+          requisitionId: req._id,
+        });
+        const hiredCount = await this.applicationModel.countDocuments({
+          requisitionId: req._id,
+          status: ApplicationStatus.HIRED,
+        });
+        const inProcessCount = await this.applicationModel.countDocuments({
+          requisitionId: req._id,
+          status: ApplicationStatus.IN_PROCESS,
+        });
+        const offerCount = await this.applicationModel.countDocuments({
+          requisitionId: req._id,
+          status: ApplicationStatus.OFFER,
+        });
+
+        let maxProgress = 0;
+        const applications = await this.applicationModel
+          .find({ requisitionId: req._id })
+          .select('currentStage')
+          .lean();
+        for (const app of applications) {
+          const progress = this.calculateProgress(app.currentStage);
+          if (progress > maxProgress) maxProgress = progress;
+        }
+
+        return {
+          ...req,
+          statistics: {
+            totalApplications: totalApps,
+            hired: hiredCount,
+            inProcess: inProcessCount,
+            offer: offerCount,
+            filledPositions: hiredCount,
+            availablePositions: Math.max(0, req.openings - hiredCount),
+            progress: maxProgress,
+            isFilled: hiredCount >= req.openings,
+          },
+        };
+      }),
+    );
+
+    return enrichedRequisitions;
   }
 
   async getJobRequisitionById(id: string) {
@@ -459,9 +462,6 @@ export class RecruitmentService {
       update.postingDate = new Date();
     }
 
-    // Note: Progress field is calculated but not stored in schema (as per constraint)
-    // Progress calculation is done dynamically when needed via calculateProgress()
-
     const updated = await this.jobModel.findByIdAndUpdate(id, update, {
       new: true,
     });
@@ -471,9 +471,6 @@ export class RecruitmentService {
     return updated;
   }
 
-  // ---------------------------------------------------
-  // APPLICATIONS
-  // ---------------------------------------------------
   async apply(
     dto: CreateApplicationDto,
     consentGiven: boolean = false,
@@ -551,11 +548,12 @@ export class RecruitmentService {
         'You have already applied to this position',
       );
     }
-
+////////////////////////////CHANGED///////////////////////////////////////////
+    // changed - convert strings to ObjectId to fix query matching
     const application = new this.applicationModel({
-      candidateId: dto.candidateId,
-      requisitionId: dto.requisitionId,
-      assignedHr: dto.assignedHr || undefined,
+      candidateId: new Types.ObjectId(dto.candidateId),
+      requisitionId: new Types.ObjectId(dto.requisitionId),
+      assignedHr: dto.assignedHr ? new Types.ObjectId(dto.assignedHr) : undefined,
       currentStage: ApplicationStage.SCREENING,
       status: ApplicationStatus.SUBMITTED,
     });
@@ -579,9 +577,7 @@ export class RecruitmentService {
       .populate('candidateId')
       .lean();
 
-    // BR: Referrals get preferential filtering (REC-030)
     if (prioritizeReferrals) {
-      // Get all referral candidate IDs
       const referralCandidates = await this.referralModel
         .find()
         .select('candidateId')
@@ -590,7 +586,6 @@ export class RecruitmentService {
         referralCandidates.map((ref: any) => ref.candidateId.toString()),
       );
 
-      // Separate referrals from non-referrals
       const referrals: any[] = [];
       const nonReferrals: any[] = [];
 
@@ -725,7 +720,7 @@ export class RecruitmentService {
             candidateName: candidate.firstName || 'Candidate',
             status: dto.status,
           },
-          { nonBlocking: true }, // Non-blocking - don't fail if email fails
+          { nonBlocking: true },
         );
       }
     } catch (e) {
@@ -826,7 +821,6 @@ export class RecruitmentService {
       );
     }
 
-    // Validate panel member IDs if provided
     if (dto.panel && Array.isArray(dto.panel)) {
       if (dto.panel.length === 0) {
         throw new BadRequestException('Panel must have at least one member');
@@ -863,7 +857,7 @@ export class RecruitmentService {
         await this.jobModel.findByIdAndUpdate(app.requisitionId, { progress });
       }
 
-      // REC-011: Send calendar invites to panel members and notify candidate
+      // REC-011: Notify candidate and panel members about interview scheduling
       const candidate = (app as any)?.candidateId;
       const interviewDate = scheduledDate.toLocaleString();
       const methodText = dto.method || 'TBD';
@@ -883,31 +877,24 @@ export class RecruitmentService {
               method: methodText,
               videoLink: dto.videoLink,
             },
-            { nonBlocking: true }, // Non-blocking - don't fail if email fails
+            { nonBlocking: true },
           );
         } catch (e) {
           console.warn('Failed to send candidate interview notification:', e);
         }
       }
 
-      // REC-011: Send email notifications to panel members
-      // Note: Calendar invites would require a calendar API (Google Calendar, Outlook, etc.)
-      // For now, we send email notifications with interview details
       if (dto.panel && dto.panel.length > 0) {
-        // Get job requisition details for context
         const jobRequisition = app?.requisitionId
           ? await this.jobModel.findById(app.requisitionId).lean().exec()
           : null;
         const positionTitle = (jobRequisition as any)?.title || 'Position';
 
-        // Send email notifications to each panel member using existing EmployeeProfileService
         for (const panelMemberId of dto.panel) {
           try {
-            // Use existing EmployeeProfileService to get panel member details
             const panelMember =
               await this.employeeProfileService.findOne(panelMemberId);
 
-            // Get email - prefer workEmail, fallback to personalEmail
             const panelMemberEmail =
               panelMember.workEmail || panelMember.personalEmail;
 
@@ -923,7 +910,7 @@ export class RecruitmentService {
                     candidate?.fullName || candidate?.firstName || 'Candidate',
                   position: positionTitle,
                 },
-                { nonBlocking: true }, // Non-blocking - don't fail if one email fails
+                { nonBlocking: true },
               );
             } else {
               console.warn(
@@ -931,7 +918,6 @@ export class RecruitmentService {
               );
             }
           } catch (error) {
-            // Non-blocking - log error but continue with other panel members
             console.warn(
               `Failed to send panel invitation to ${panelMemberId}:`,
               error,
@@ -940,7 +926,6 @@ export class RecruitmentService {
         }
       }
     } catch (e) {
-      // non-critical
       console.warn('Failed to send interview notifications:', e);
     }
 
@@ -957,8 +942,6 @@ export class RecruitmentService {
       throw new NotFoundException('Interview not found');
     }
 
-    // Validate status transition
-    // Cannot change status of completed or cancelled interviews
     if (interview.status === 'completed' && dto.status !== 'completed') {
       throw new BadRequestException(
         'Cannot change status of a completed interview',
@@ -993,20 +976,17 @@ export class RecruitmentService {
       throw new BadRequestException('Invalid candidate ID format');
     }
 
-    // Validate application exists
     const application = await this.applicationModel.findById(dto.applicationId);
     if (!application) {
       throw new NotFoundException('Application not found');
     }
 
-    // Validate candidate matches application
     if (application.candidateId.toString() !== dto.candidateId) {
       throw new BadRequestException(
         'Candidate ID does not match the application',
       );
     }
 
-    // Validate application is in valid status for offer
     if (application.status === ApplicationStatus.REJECTED) {
       throw new BadRequestException(
         'Cannot create offer for a rejected application',
@@ -1018,7 +998,6 @@ export class RecruitmentService {
       );
     }
 
-    // Check if offer already exists for this application
     const existingOffer = await this.offerModel.findOne({
       applicationId: new Types.ObjectId(dto.applicationId),
     });
@@ -1028,12 +1007,10 @@ export class RecruitmentService {
       );
     }
 
-    // Validate salary
     if (dto.grossSalary <= 0 || !Number.isFinite(dto.grossSalary)) {
       throw new BadRequestException('Gross salary must be a positive number');
     }
 
-    // Validate signing bonus if provided
     if (
       dto.signingBonus !== undefined &&
       (dto.signingBonus < 0 || !Number.isFinite(dto.signingBonus))
@@ -1043,7 +1020,6 @@ export class RecruitmentService {
       );
     }
 
-    // Convert ISO date string to Date object for proper storage
     const deadline = new Date(dto.deadline);
     if (isNaN(deadline.getTime())) {
       throw new BadRequestException(
@@ -1051,7 +1027,6 @@ export class RecruitmentService {
       );
     }
 
-    // Validate deadline is in the future
     if (deadline <= new Date()) {
       throw new BadRequestException('Deadline must be in the future');
     }
@@ -1118,21 +1093,18 @@ export class RecruitmentService {
       throw new NotFoundException('Offer not found');
     }
 
-    // Check if offer is already finalized
     if (offer.finalStatus !== OfferFinalStatus.PENDING) {
       throw new BadRequestException(
         `Cannot respond to offer: Offer has already been finalized with status: ${offer.finalStatus}.`,
       );
     }
 
-    // Check if offer deadline has passed
     if (offer.deadline && new Date(offer.deadline) < new Date()) {
       throw new BadRequestException(
         `Cannot respond to offer: The response deadline (${offer.deadline.toLocaleDateString()}) has passed. Please contact HR.`,
       );
     }
 
-    // Check if offer has already been responded to
     if (offer.applicantResponse !== OfferResponseStatus.PENDING) {
       throw new BadRequestException(
         `Offer has already been ${offer.applicantResponse}. Cannot change response.`,
@@ -1144,7 +1116,6 @@ export class RecruitmentService {
       candidateSignedAt: Date;
     }> = { applicantResponse: dto.applicantResponse };
 
-    // Track electronic signature when offer is accepted (REC-018)
     if (dto.applicantResponse === OfferResponseStatus.ACCEPTED) {
       updateData.candidateSignedAt = new Date();
     }
@@ -1188,8 +1159,6 @@ export class RecruitmentService {
       throw new NotFoundException('Offer not found');
     }
 
-    // Validate offer can be finalized
-    // Cannot finalize if candidate hasn't responded
     if (offer.applicantResponse === OfferResponseStatus.PENDING) {
       throw new BadRequestException(
         'Cannot finalize offer: Candidate has not responded yet. Please wait for candidate response.',
@@ -1278,6 +1247,7 @@ export class RecruitmentService {
       | 'offer_letter'
       | 'onboarding_welcome'
       | 'onboarding_reminder'
+      | 'onboarding_completed'
       | 'panel_invitation'
       | 'clearance_reminder'
       | 'access_revoked',
@@ -1327,7 +1297,6 @@ export class RecruitmentService {
           text = `Dear ${candidateName},\n\n`;
 
           if (context.status === ApplicationStatus.REJECTED) {
-            // REC-022: Automated rejection notification template
             text +=
               'Thank you for your interest in our company. After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n';
             text +=
@@ -1434,6 +1403,17 @@ export class RecruitmentService {
 
           text += 'Please complete these tasks as soon as possible.\n\n';
           text += 'Best regards,\nHR Team';
+          break;
+
+        case 'onboarding_completed':
+          // ONB-005: Completion notification for new hires
+          subject = 'Congratulations! Onboarding Completed';
+          text = `Dear ${context.employeeName || 'New Hire'},\n\n`;
+          text += `Congratulations! You have successfully completed all onboarding tasks.\n\n`;
+          text += `Your onboarding checklist is now complete, and you are ready to begin your journey with us.\n\n`;
+          text += `If you have any questions or need assistance, please don't hesitate to contact HR.\n\n`;
+          text += `Welcome aboard!\n\n`;
+          text += `Best regards,\nHR Team`;
           break;
 
         case 'panel_invitation':
@@ -1565,18 +1545,12 @@ Due: ${context.dueDate}`
     return this.sendEmailInternal(recipient, subject, text);
   }
 
-  // ============= ONBOARDING METHODS =============
-
-  /**
-   * ONB-001: Create onboarding task checklists
-   * BR: Triggered by offer acceptance; checklists customizable
-   * Auto-generates tasks for IT, Admin, and HR departments
-   */
   async createOnboarding(
     createOnboardingDto: CreateOnboardingDto,
     contractSigningDate?: Date,
     startDate?: Date,
     workEmail?: string,
+    contractId?: Types.ObjectId,
   ): Promise<any> {
     try {
       if (!Types.ObjectId.isValid(createOnboardingDto.employeeId.toString())) {
@@ -1589,6 +1563,59 @@ Due: ${context.dueDate}`
       if (existingOnboarding) {
         throw new BadRequestException(
           'Onboarding checklist already exists for this employee',
+        );
+      }
+
+      // Validate contractId if provided (required by schema)
+      let finalContractId: Types.ObjectId | null = null;
+      if (contractId) {
+        if (!Types.ObjectId.isValid(contractId.toString())) {
+          throw new BadRequestException('Invalid contract ID format');
+        }
+        // Verify contract exists
+        const contract = await this.contractModel.findById(contractId).lean();
+        if (!contract) {
+          throw new NotFoundException('Contract not found');
+        }
+        finalContractId = contractId;
+      } else {
+        // Try to find contract by employee's offer (if employee was created from contract)
+        // This is a fallback - ideally contractId should be provided
+        try {
+          const employee = await this.employeeProfileService.findOne(
+            createOnboardingDto.employeeId.toString(),
+          );
+          if (employee) {
+            // Try to find contract through offer -> candidate -> application chain
+            // This is best-effort; contractId should ideally be provided explicitly
+            const candidate = await this.candidateModel
+              .findOne({ personalEmail: (employee as any).personalEmail })
+              .lean();
+            if (candidate) {
+              const offer = await this.offerModel
+                .findOne({ candidateId: candidate._id })
+                .lean();
+              if (offer) {
+                const contract = await this.contractModel
+                  .findOne({ offerId: offer._id })
+                  .lean();
+                if (contract) {
+                  finalContractId = contract._id;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Non-critical - will use a placeholder if needed
+          console.warn('Could not auto-resolve contractId for onboarding:', e);
+        }
+      }
+
+      // If still no contractId found, we need to create a placeholder or throw error
+      // Since schema requires contractId, we'll throw an error if it's still missing
+      if (!finalContractId) {
+        throw new BadRequestException(
+          'Contract ID is required for onboarding. Please provide contractId or ensure contract exists for this employee.',
         );
       }
 
@@ -1694,6 +1721,7 @@ Due: ${context.dueDate}`
 
       const onboarding = new this.onboardingModel({
         employeeId: createOnboardingDto.employeeId,
+        contractId: finalContractId, // Required by schema
         tasks: tasks,
         completed: false,
       });
@@ -2097,11 +2125,13 @@ Due: ${context.dueDate}`
    * Upload document for onboarding task
    * ONB-007: Document upload for compliance
    */
+  // changed - modified to accept either file upload OR manual entry for testing
   async uploadTaskDocument(
     onboardingId: string,
     taskIndex: number,
     file: any,
     documentType: DocumentType,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
   ): Promise<any> {
     try {
       // 1. Validate ObjectId
@@ -2114,9 +2144,12 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid task index');
       }
 
-      // 3. Validate file exists
-      if (!file) {
-        throw new BadRequestException('No file uploaded');
+      // 3. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
       }
 
       // 4. Validate onboarding exists
@@ -2130,36 +2163,44 @@ Due: ${context.dueDate}`
         throw new BadRequestException('Invalid task index');
       }
 
-      // 6. Validate file type
-      const allowedTypes = [
-        'image/jpeg',
-        'image/jpg',
-        'image/png',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
+      let filePath: string;
 
-      if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
-        throw new BadRequestException(
-          'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
-        );
+      if (hasFile) {
+        // File upload flow
+        // 6. Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
+
+        // 7. Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
       }
-
-      // 7. Validate file size (5MB max)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (!file.size || file.size > maxSize) {
-        throw new BadRequestException('File size exceeds 5MB limit');
-      }
-
-      // 8. Validate file path exists
-      if (!file.path) {
-        throw new BadRequestException('File path is missing');
-      }
-
-      // 9. Use the file path that Multer already saved
-      // (Multer's diskStorage already saved the file for us)
-      const filePath = file.path;
 
       // 10. Create Document record
       const document = new this.documentModel({
@@ -2171,16 +2212,39 @@ Due: ${context.dueDate}`
 
       const savedDocument = await document.save();
 
-      // 11. Update task with documentId
+      // 10. Validate onboarding is not already completed
+      if (onboarding.completed) {
+        throw new BadRequestException(
+          'Cannot upload documents for a completed onboarding checklist',
+        );
+      }
+
+      // 11. Validate task is not already completed (unless re-uploading)
+      const task = onboarding.tasks[taskIndex];
+      if (task.status === OnboardingTaskStatus.COMPLETED && task.documentId) {
+        // Allow re-upload if needed (replace existing document)
+        // Delete old document reference (document file itself can be kept for audit)
+        console.log(
+          `Replacing existing document for task ${taskIndex}: ${task.documentId}`,
+        );
+      }
+
+      // 12. Update task with documentId
       onboarding.tasks[taskIndex].documentId = savedDocument._id;
 
-      // Auto-complete task if it was pending
+      // 13. Auto-complete task if it was pending (ONB-007: Document upload completes task)
       if (onboarding.tasks[taskIndex].status === OnboardingTaskStatus.PENDING) {
+        onboarding.tasks[taskIndex].status = OnboardingTaskStatus.COMPLETED;
+        onboarding.tasks[taskIndex].completedAt = new Date();
+      } else if (
+        onboarding.tasks[taskIndex].status === OnboardingTaskStatus.IN_PROGRESS
+      ) {
+        // If task was in progress, mark as completed
         onboarding.tasks[taskIndex].status = OnboardingTaskStatus.COMPLETED;
         onboarding.tasks[taskIndex].completedAt = new Date();
       }
 
-      // 12. Check if all tasks completed
+      // 14. Check if all tasks completed
       const allCompleted = onboarding.tasks.every(
         (task) => task.status === OnboardingTaskStatus.COMPLETED,
       );
@@ -2188,9 +2252,28 @@ Due: ${context.dueDate}`
       if (allCompleted) {
         onboarding.completed = true;
         onboarding.completedAt = new Date();
+
+        // ONB-005: Send completion notification
+        try {
+          const employee = await this.employeeProfileService.findOne(
+            onboarding.employeeId.toString(),
+          );
+          if (employee && (employee as any).personalEmail) {
+            await this.sendNotification(
+              'onboarding_completed',
+              (employee as any).personalEmail,
+              {
+                employeeName: (employee as any).firstName || 'New Hire',
+              },
+              { nonBlocking: true },
+            );
+          }
+        } catch (e) {
+          console.warn('Failed to send onboarding completion notification:', e);
+        }
       }
 
-      // 13. Save onboarding
+      // 15. Save onboarding
       const savedOnboarding = await onboarding.save();
 
       return {
@@ -2590,6 +2673,7 @@ Due: ${context.dueDate}`
           contractSigningDate,
           startDate,
           workEmail, // Pass work email to include in onboarding tasks
+          contract._id, // Pass contractId (required by schema)
         );
 
         // ONB-018: Automatically trigger payroll initiation
@@ -2654,6 +2738,269 @@ Due: ${context.dueDate}`
       throw new BadRequestException(
         'Failed to create employee from contract: ' +
           this.getErrorMessage(error),
+      );
+    }
+  }
+
+  // ============= CONTRACT DOCUMENT UPLOAD (ONB-007) =============
+
+  /**
+   * ONB-007: Candidate uploads signed contract and required forms/templates
+   * As a Candidate, I want to upload signed contract and candidate required forms and templates to initiate the onboarding process
+   * BR: Documents must be collected and verified by HR before first working day
+   */
+  // changed - modified to accept either file upload OR manual document data for testing
+  async uploadContractDocument(
+    offerId: string,
+    file: any,
+    documentType: DocumentType = DocumentType.CONTRACT,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
+  ): Promise<any> {
+    try {
+      // 1. Validate offerId
+      if (!Types.ObjectId.isValid(offerId)) {
+        throw new BadRequestException('Invalid offer ID format');
+      }
+
+      // 2. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
+      }
+
+      let filePath: string;
+
+      if (hasFile) {
+        // File upload flow
+        // 3. Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
+
+        // 4. Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
+      }
+
+      // 6. Get offer and validate
+      const offer = await this.offerModel.findById(offerId).lean();
+      if (!offer) {
+        throw new NotFoundException('Offer not found');
+      }
+
+      // 7. Validate offer is accepted
+      if (offer.applicantResponse !== OfferResponseStatus.ACCEPTED) {
+        throw new BadRequestException(
+          'Offer must be accepted before uploading signed contract',
+        );
+      }
+
+      // 8. Get candidate
+      const candidate = await this.candidateModel
+        .findById(offer.candidateId)
+        .lean();
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      // 9. Create Document record
+      const document = new this.documentModel({
+        ownerId: candidate._id,
+        type: documentType,
+        filePath: filePath,
+        uploadedAt: new Date(),
+      });
+
+      const savedDocument = await document.save();
+
+      // 10. Find or create contract
+      let contract = await this.contractModel
+        .findOne({ offerId: new Types.ObjectId(offerId) })
+        .lean();
+
+      if (!contract) {
+        // Create contract if it doesn't exist
+        contract = await this.contractModel.create({
+          offerId: new Types.ObjectId(offerId),
+          acceptanceDate: new Date(),
+          grossSalary: offer.grossSalary,
+          signingBonus: offer.signingBonus,
+          role: offer.role,
+          benefits: offer.benefits,
+          documentId: savedDocument._id,
+          employeeSignedAt: new Date(),
+        });
+      } else {
+        // Update existing contract with document
+        await this.contractModel.findByIdAndUpdate(contract._id, {
+          $set: {
+            documentId: savedDocument._id,
+            employeeSignedAt: new Date(),
+            acceptanceDate: contract.acceptanceDate || new Date(),
+          },
+        });
+        contract = await this.contractModel.findById(contract._id).lean();
+      }
+
+      return {
+        message: 'Contract document uploaded successfully',
+        document: savedDocument.toObject(),
+        contract: contract,
+        offerId: offerId,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to upload contract document: ' + this.getErrorMessage(error),
+      );
+    }
+  }
+
+  /**
+   * ONB-007: Candidate uploads required forms and templates
+   * Upload additional documents (ID, certifications, etc.) for onboarding
+   */
+  // changed - modified to accept either file upload OR manual entry for testing
+  async uploadCandidateForm(
+    offerId: string,
+    file: any,
+    documentType: DocumentType,
+    manualDocumentData?: { nationalId?: string; documentDescription?: string },
+  ): Promise<any> {
+    try {
+      // 1. Validate offerId
+      if (!Types.ObjectId.isValid(offerId)) {
+        throw new BadRequestException('Invalid offer ID format');
+      }
+
+      // 2. Check if we have file OR manual data
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && (manualDocumentData.nationalId || manualDocumentData.documentDescription);
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException('Either file upload or manual document data (nationalId/documentDescription) is required');
+      }
+
+      // 3. Validate document type (must be ID or CERTIFICATE for forms)
+      if (
+        documentType !== DocumentType.ID &&
+        documentType !== DocumentType.CERTIFICATE
+      ) {
+        throw new BadRequestException(
+          'Invalid document type for candidate form. Must be ID or CERTIFICATE',
+        );
+      }
+
+      let filePath: string;
+
+      if (hasFile) {
+        // File upload flow
+        // Validate file type
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Allowed: jpg, jpeg, png, pdf, doc, docx',
+          );
+        }
+
+        // Validate file size (5MB max)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!file.size || file.size > maxSize) {
+          throw new BadRequestException('File size exceeds 5MB limit');
+        }
+
+        filePath = file.path;
+      } else {
+        // Manual entry flow - create a descriptive filePath string
+        const parts: string[] = ['MANUAL_ENTRY'];
+        if (manualDocumentData?.nationalId) {
+          parts.push(`NationalID=${manualDocumentData.nationalId}`);
+        }
+        if (manualDocumentData?.documentDescription) {
+          parts.push(`Desc=${manualDocumentData.documentDescription}`);
+        }
+        filePath = parts.join(' | ');
+      }
+
+      // 7. Get offer and validate
+      const offer = await this.offerModel.findById(offerId).lean();
+      if (!offer) {
+        throw new NotFoundException('Offer not found');
+      }
+
+      // 8. Get candidate
+      const candidate = await this.candidateModel
+        .findById(offer.candidateId)
+        .lean();
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      // 9. Create Document record
+      const document = new this.documentModel({
+        ownerId: candidate._id,
+        type: documentType,
+        filePath: filePath,
+        uploadedAt: new Date(),
+      });
+
+      const savedDocument = await document.save();
+
+      return {
+        message: 'Candidate form uploaded successfully',
+        document: savedDocument.toObject(),
+        documentType: documentType,
+        offerId: offerId,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to upload candidate form: ' + this.getErrorMessage(error),
       );
     }
   }
@@ -2727,9 +3074,9 @@ Due: ${context.dueDate}`
     if (!Types.ObjectId.isValid(candidateId)) {
       throw new BadRequestException('Invalid candidate ID format');
     }
+    // changed - removed populate('referringEmployeeId') because 'User' model not registered
     return this.referralModel
       .find({ candidateId: new Types.ObjectId(candidateId) })
-      .populate('referringEmployeeId')
       .lean()
       .exec();
   }
@@ -2913,9 +3260,9 @@ Due: ${context.dueDate}`
       throw new BadRequestException('Invalid interview ID format');
     }
 
+    // changed - removed populate('interviewerId') because 'User' model not registered
     return this.assessmentResultModel
       .find({ interviewId: new Types.ObjectId(interviewId) })
-      .populate('interviewerId')
       .lean()
       .exec();
   }
@@ -3033,64 +3380,133 @@ Due: ${context.dueDate}`
    * ONB-005: Send reminders for overdue or upcoming tasks
    * BR: Reminders required
    */
+  /**
+   * ONB-005: Send reminders and notifications for onboarding tasks
+   * BR: Reminders required; track delivery and status accordingly
+   * As a New Hire, I want to receive reminders and notifications, so that I don't miss important onboarding tasks
+   */
   async sendOnboardingReminders(): Promise<void> {
     try {
+      // Get all incomplete onboardings
       const allOnboardings = await this.onboardingModel
         .find({ completed: false })
         .populate('employeeId')
         .lean();
 
+      if (!allOnboardings || allOnboardings.length === 0) {
+        console.log('No incomplete onboardings found for reminders');
+        return;
+      }
+
+      let remindersSent = 0;
+      let remindersFailed = 0;
+
       for (const onboarding of allOnboardings) {
-        const employee = (onboarding as any).employeeId;
-        if (!employee || !employee.personalEmail) continue;
+        try {
+          const employee = (onboarding as any).employeeId;
+          if (!employee) {
+            console.warn(
+              `Onboarding ${onboarding._id} has no associated employee`,
+            );
+            continue;
+          }
 
-        const overdueTasks =
-          onboarding.tasks?.filter((task: any) => {
-            if (
-              !task.deadline ||
-              task.status === OnboardingTaskStatus.COMPLETED
-            )
-              return false;
-            const deadline = new Date(task.deadline);
-            const now = new Date();
-            return deadline < now;
-          }) || [];
+          if (!employee.personalEmail) {
+            console.warn(
+              `Employee ${employee._id} has no personal email for reminders`,
+            );
+            continue;
+          }
 
-        const upcomingTasks =
-          onboarding.tasks?.filter((task: any) => {
-            if (
-              !task.deadline ||
-              task.status === OnboardingTaskStatus.COMPLETED
-            )
+          // Validate tasks array exists
+          if (!onboarding.tasks || !Array.isArray(onboarding.tasks)) {
+            console.warn(`Onboarding ${onboarding._id} has no tasks`);
+            continue;
+          }
+
+          const now = new Date();
+          const overdueTasks =
+            onboarding.tasks.filter((task: any) => {
+              // Skip completed tasks
+              if (task.status === OnboardingTaskStatus.COMPLETED) {
+                return false;
+              }
+
+              // Skip tasks without deadlines
+              if (!task.deadline) {
+                return false;
+              }
+
+              // Validate deadline is a valid date
+              const deadline = new Date(task.deadline);
+              if (isNaN(deadline.getTime())) {
+                console.warn(
+                  `Invalid deadline for task ${task.name} in onboarding ${onboarding._id}`,
+                );
+                return false;
+              }
+
+              // Task is overdue if deadline has passed
+              return deadline < now;
+            }) || [];
+
+          const upcomingTasks = onboarding.tasks.filter((task: any) => {
+            // Skip completed tasks
+            if (task.status === OnboardingTaskStatus.COMPLETED) {
               return false;
+            }
+
+            // Skip tasks without deadlines
+            if (!task.deadline) {
+              return false;
+            }
+
+            // Validate deadline is a valid date
             const deadline = new Date(task.deadline);
-            const now = new Date();
+            if (isNaN(deadline.getTime())) {
+              return false;
+            }
+
+            // Calculate days until deadline
             const daysUntilDeadline = Math.ceil(
               (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
             );
-            return daysUntilDeadline <= 2 && daysUntilDeadline > 0; // 2 days or less
+
+            // Upcoming tasks: due within 2 days (but not overdue)
+            return daysUntilDeadline <= 2 && daysUntilDeadline > 0;
           }) || [];
 
-        if (overdueTasks.length > 0 || upcomingTasks.length > 0) {
+          // Only send reminder if there are overdue or upcoming tasks
+          if (overdueTasks.length === 0 && upcomingTasks.length === 0) {
+            continue;
+          }
+
           // Format tasks for notification
-          const formattedOverdueTasks = overdueTasks.map((task: any) => ({
-            name: task.name,
-            department: task.department,
-          }));
+          const formattedOverdueTasks = overdueTasks.map((task: any) => {
+            const deadline = new Date(task.deadline);
+            const daysOverdue = Math.ceil(
+              (now.getTime() - deadline.getTime()) / (1000 * 60 * 60 * 24),
+            );
+            return {
+              name: task.name || 'Unnamed Task',
+              department: task.department || 'Unknown',
+              daysOverdue: daysOverdue,
+            };
+          });
 
           const formattedUpcomingTasks = upcomingTasks.map((task: any) => {
             const deadline = new Date(task.deadline);
             const daysLeft = Math.ceil(
-              (deadline.getTime() - new Date().getTime()) /
-                (1000 * 60 * 60 * 24),
+              (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
             );
             return {
-              name: task.name,
-              department: task.department,
+              name: task.name || 'Unnamed Task',
+              department: task.department || 'Unknown',
               daysLeft: daysLeft,
             };
           });
 
+          // Send notification
           try {
             await this.sendNotification(
               'onboarding_reminder',
@@ -3099,19 +3515,39 @@ Due: ${context.dueDate}`
                 employeeName: employee.firstName || 'New Hire',
                 overdueTasks: formattedOverdueTasks,
                 upcomingTasks: formattedUpcomingTasks,
+                totalOverdue: overdueTasks.length,
+                totalUpcoming: upcomingTasks.length,
               },
               { nonBlocking: true }, // Non-blocking - don't fail if email fails
             );
+            remindersSent++;
+            console.log(
+              `Reminder sent to ${employee.personalEmail} for onboarding ${onboarding._id}`,
+            );
           } catch (e) {
+            remindersFailed++;
             console.warn(
               `Failed to send reminder to ${employee.personalEmail}:`,
-              e,
+              this.getErrorMessage(e),
             );
           }
+        } catch (error) {
+          remindersFailed++;
+          console.error(
+            `Error processing reminder for onboarding ${onboarding._id}:`,
+            this.getErrorMessage(error),
+          );
         }
       }
+
+      console.log(
+        `Onboarding reminders completed: ${remindersSent} sent, ${remindersFailed} failed`,
+      );
     } catch (error) {
       console.error('Error sending onboarding reminders:', error);
+      throw new BadRequestException(
+        'Failed to send onboarding reminders: ' + this.getErrorMessage(error),
+      );
     }
   }
 
@@ -3148,56 +3584,69 @@ Due: ${context.dueDate}`
       task.status = OnboardingTaskStatus.IN_PROGRESS;
       await onboarding.save();
 
-      // ============= INTEGRATION: IT System & Time Management Service =============
-      // ONB-009: Provision system access (SSO/email/tools)
-      // BR: IT access automated
-      // TODO: Uncomment when IT service and Time Management Service are ready
+      // ============= INTEGRATION: Time Management Service =============
+      // ONB-009: Provision system access - Clock access provisioning
+      // BR: IT access automated (clock access via shift assignments)
+      // Note: IT Service is not available in the system - only clock access is provisioned
 
-      // Get employee details for provisioning
-      // const employee = await this.employeeProfileService.findOne(employeeId);
-      // if (!employee) {
-      //   throw new NotFoundException('Employee not found');
-      // }
+      // INTEGRATION: Time Management Service - Provision clock access
+      // ONB-009: Clock access should be provisioned for time tracking via shift assignment
+      let shiftAssignmentResult = null;
+      let shiftAssignmentNote = '';
 
-      // 1. Provision email account (work email should already be generated in createEmployeeFromContract)
-      // const workEmail = employee.workEmail;
-      // await this.itService.provisionEmailAccount({
-      //   employeeId: employeeId,
-      //   email: workEmail,
-      //   firstName: employee.firstName,
-      //   lastName: employee.lastName,
-      // });
+      try {
+        // Access models via database connection (models registered in TimeManagementModule)
+        const ShiftModel = this.jobModel.db.model('Shift');
+        const ShiftAssignmentModel = this.jobModel.db.model('ShiftAssignment');
 
-      // 2. Set up SSO access
-      // await this.itService.provisionSSOAccess({
-      //   employeeId: employeeId,
-      //   email: workEmail,
-      //   departmentId: employee.primaryDepartmentId,
-      // });
+        // Get employee details
+        const employee = await this.employeeProfileService.findOne(employeeId);
+        if (!employee) {
+          throw new NotFoundException('Employee not found');
+        }
 
-      // 3. Grant access to internal systems based on department/position
-      // await this.itService.grantSystemAccess({
-      //   employeeId: employeeId,
-      //   departmentId: employee.primaryDepartmentId,
-      //   positionId: employee.primaryPositionId,
-      // });
+        // Find an active shift to assign (use first available active shift)
+        const activeShiftRaw = await ShiftModel.findOne({ active: true }).lean().exec();
+        const activeShift = activeShiftRaw as any;
 
-      // 4. Allocate hardware (laptop, etc.)
-      // await this.itService.allocateHardware({
-      //   employeeId: employeeId,
-      //   departmentId: employee.primaryDepartmentId,
-      //   workType: employee.workType,
-      // });
+        if (activeShift && activeShift._id) {
+          // Create shift assignment for clock access
+          const shiftAssignment = new ShiftAssignmentModel({
+            employeeId: new Types.ObjectId(employeeId),
+            shiftId: new Types.ObjectId(activeShift._id),
+            departmentId: employee.primaryDepartmentId
+              ? new Types.ObjectId(employee.primaryDepartmentId.toString())
+              : undefined,
+            positionId: employee.primaryPositionId
+              ? new Types.ObjectId(employee.primaryPositionId.toString())
+              : undefined,
+            startDate: employee.dateOfHire || employee.contractStartDate || new Date(),
+            status: ShiftAssignmentStatus.PENDING, // Will be approved by HR/Manager later
+          });
 
-      // 5. INTEGRATION: Time Management Service - Provision clock access
-      // ONB-009: Clock access should be provisioned for time tracking
-      // await this.timeManagementService.provisionClockAccess({
-      //   employeeId: employeeId,
-      //   startDate: new Date(), // Or use onboarding start date
-      // });
+          shiftAssignmentResult = await shiftAssignment.save();
+          shiftAssignmentNote = `\n[INTEGRATION] Shift assignment created for clock access: ${shiftAssignmentResult._id.toString()}`;
+          console.log(
+            `Clock access provisioned for employee ${employeeId} via shift assignment ${shiftAssignmentResult._id}`,
+          );
+        } else {
+          console.warn(
+            `No active shift found. Clock access cannot be provisioned automatically for employee ${employeeId}. Please assign a shift manually.`,
+          );
+          shiftAssignmentNote =
+            '\n[INTEGRATION] Warning: No active shift found. Clock access requires manual shift assignment.';
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to provision clock access via shift assignment:',
+          this.getErrorMessage(error),
+        );
+        shiftAssignmentNote =
+          '\n[INTEGRATION] Warning: Failed to automatically create shift assignment. Manual assignment may be required.';
+      }
+
       // ============= END INTEGRATION =============
 
-      // For now, we simulate the process
       console.log(
         `Provisioning system access for employee ${employeeId}: ${task.name}`,
       );
@@ -3207,7 +3656,8 @@ Due: ${context.dueDate}`
       task.completedAt = new Date();
       task.notes =
         (task.notes || '') +
-        `\n[${new Date().toISOString()}] System access provisioned automatically.`;
+        `\n[${new Date().toISOString()}] System access provisioned automatically.` +
+        shiftAssignmentNote;
 
       await onboarding.save();
 
@@ -3373,10 +3823,10 @@ Due: ${context.dueDate}`
         }
       }
 
-      // ============= INTEGRATION: IT Service & Time Management Service =============
-      // ONB-013: Schedule automatic account provisioning and revocation
+      // ============= INTEGRATION: Time Management Service =============
+      // ONB-013: Schedule automatic clock access provisioning
       // BR: Provisioning and security must be consistent
-      // TODO: Uncomment when IT service and Time Management Service are ready
+      // Note: IT Service is not available in the system - only clock access scheduling is implemented
 
       const onboarding = await this.onboardingModel.findOne({
         employeeId: new Types.ObjectId(employeeId),
@@ -3385,36 +3835,68 @@ Due: ${context.dueDate}`
         throw new NotFoundException('Onboarding not found');
       }
 
-      // Get employee details
-      // const employee = await this.employeeProfileService.findOne(employeeId);
-      // if (!employee) {
-      //   throw new NotFoundException('Employee not found');
-      // }
+      // INTEGRATION: Time Management Service - Schedule clock access provisioning
+      // ONB-013: Schedule automatic shift assignment for clock access
+      let shiftSchedulingNote = '';
 
-      // 1. Schedule provisioning job for startDate
-      // await this.itService.scheduleProvisioning({
-      //   employeeId: employeeId,
-      //   scheduledDate: startDate,
-      //   workEmail: employee.workEmail,
-      //   departmentId: employee.primaryDepartmentId,
-      //   positionId: employee.primaryPositionId,
-      // });
+      try {
+        // Access models via database connection (models registered in TimeManagementModule)
+        const ShiftModel = this.jobModel.db.model('Shift');
+        const ShiftAssignmentModel = this.jobModel.db.model('ShiftAssignment');
 
-      // 2. Schedule revocation job for endDate (if provided) - for future offboarding
-      // if (endDate) {
-      //   await this.itService.scheduleRevocation({
-      //     employeeId: employeeId,
-      //     scheduledDate: endDate,
-      //     reason: 'Contract end date reached',
-      //   });
-      // }
+        // Get employee details
+        const employee = await this.employeeProfileService.findOne(employeeId);
+        if (employee) {
+          // Check if shift assignment already exists for this employee
+          const existingAssignment = await ShiftAssignmentModel.findOne({
+            employeeId: new Types.ObjectId(employeeId),
+            startDate: { $lte: startDateObj },
+            $or: [{ endDate: null }, { endDate: { $gte: startDateObj } }],
+          }).lean().exec();
 
-      // 3. INTEGRATION: Time Management Service - Schedule clock access provisioning
-      // await this.timeManagementService.scheduleClockAccessProvisioning({
-      //   employeeId: employeeId,
-      //   startDate: startDate,
-      //   endDate: endDate, // If provided, schedule revocation
-      // });
+          if (!existingAssignment) {
+            // Find an active shift to assign
+            const activeShiftRaw = await ShiftModel.findOne({ active: true }).lean().exec();
+            const activeShift = activeShiftRaw as any;
+
+            if (activeShift && activeShift._id) {
+              // Create shift assignment scheduled for startDate
+              const shiftAssignment = new ShiftAssignmentModel({
+                employeeId: new Types.ObjectId(employeeId),
+                shiftId: new Types.ObjectId(activeShift._id),
+                departmentId: employee.primaryDepartmentId
+                  ? new Types.ObjectId(employee.primaryDepartmentId.toString())
+                  : undefined,
+                positionId: employee.primaryPositionId
+                  ? new Types.ObjectId(employee.primaryPositionId.toString())
+                  : undefined,
+                startDate: startDateObj,
+                endDate: endDate ? new Date(endDate) : undefined,
+                status: ShiftAssignmentStatus.PENDING, // Will be approved by HR/Manager before startDate
+              });
+
+              await shiftAssignment.save();
+              shiftSchedulingNote = `\n[INTEGRATION] Shift assignment scheduled for clock access starting ${startDateObj.toISOString()}`;
+              console.log(
+                `Scheduled shift assignment for employee ${employeeId} starting ${startDateObj.toISOString()}`,
+              );
+            } else {
+              shiftSchedulingNote =
+                '\n[INTEGRATION] Warning: No active shift found. Clock access requires manual shift assignment.';
+            }
+          } else {
+            shiftSchedulingNote =
+              '\n[INTEGRATION] Note: Shift assignment already exists for this employee.';
+          }
+        }
+      } catch (error) {
+        console.warn(
+          'Failed to schedule clock access provisioning:',
+          this.getErrorMessage(error),
+        );
+        shiftSchedulingNote =
+          '\n[INTEGRATION] Warning: Failed to automatically schedule shift assignment. Manual assignment may be required.';
+      }
 
       // 4. Store scheduling information in onboarding tasks
       // Update IT tasks with scheduled dates
@@ -3432,7 +3914,8 @@ Due: ${context.dueDate}`
           task.deadline = startDateObj;
           task.notes =
             (task.notes || '') +
-            `\n[${new Date().toISOString()}] Scheduled for automatic provisioning on ${startDateObj.toISOString()}`;
+            `\n[${new Date().toISOString()}] Scheduled for automatic provisioning on ${startDateObj.toISOString()}` +
+            shiftSchedulingNote;
           if (endDate) {
             task.notes += `\n[${new Date().toISOString()}] Scheduled for automatic revocation on ${new Date(endDate).toISOString()}`;
           }
@@ -3514,53 +3997,34 @@ Due: ${context.dueDate}`
       // ============= INTEGRATION: Payroll Execution Service =============
       // ONB-018: Automatically handle payroll initiation based on contract signing day
       // BR: Payroll trigger automatic (REQ-PY-23)
-      // TODO: Uncomment when PayrollExecutionService is ready
+      // Note: Payroll runs are created for periods (monthly), not individual employees.
+      // Active employees are automatically included in payroll runs when they are processed.
+      // This integration ensures the employee is ready and will be included in future payroll runs.
 
-      // Get employee details
-      // const employee = await this.employeeProfileService.findOne(employeeId);
-      // if (!employee) {
-      //   throw new NotFoundException('Employee not found');
-      // }
+      // Get employee details to verify readiness
+      const employee = await this.employeeProfileService.findOne(employeeId);
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
 
-      // 1. Call payroll service to initiate payroll for the employee
-      // const payrollInitiationResult = await this.payrollExecutionService.initiateEmployeePayroll({
-      //   employeeId: employeeId,
-      //   baseSalary: grossSalary,
-      //   contractSigningDate: contractSigningDate,
-      //   startDate: employee.dateOfHire || contractSigningDate,
-      //   departmentId: employee.primaryDepartmentId,
-      //   positionId: employee.primaryPositionId,
-      //   payGradeId: employee.payGradeId,
-      // });
+      // Employee is ready for payroll inclusion:
+      // 1. Employee profile exists and is active
+      // 2. Contract has been signed with gross salary
+      // 3. Employee will be automatically included in payroll runs when processPayrollInitiation is called for the period
+      // PayrollExecutionService.processPayrollInitiation() creates payroll runs for periods and includes all active employees
 
-      // 2. Set up payroll cycle based on contract signing date
-      // await this.payrollExecutionService.setupPayrollCycle({
-      //   employeeId: employeeId,
-      //   startDate: contractSigningDate,
-      //   payrollRunId: payrollInitiationResult.payrollRunId, // If returned from initiation
-      // });
-
-      // 3. Configure salary and deductions (if needed)
-      // await this.payrollExecutionService.configureEmployeePayrollDetails({
-      //   employeeId: employeeId,
-      //   baseSalary: grossSalary,
-      //   // Additional configuration based on employee profile
-      // });
-
-      // For now, we mark the task and log the action
       payrollTask.status = OnboardingTaskStatus.COMPLETED;
       payrollTask.completedAt = new Date();
       payrollTask.notes =
         (payrollTask.notes || '') +
-        `\n[${new Date().toISOString()}] Payroll initiated automatically. ` +
+        `\n[${new Date().toISOString()}] Payroll readiness confirmed. ` +
+        `Employee will be automatically included in payroll runs when processPayrollInitiation() is called for the payroll period. ` +
         `Contract signed: ${contractSigningDate.toISOString()}, Gross Salary: ${grossSalary}`;
-      // Add integration result to notes when ready:
-      // `\n[INTEGRATION] Payroll Run ID: ${payrollInitiationResult.payrollRunId}`;
 
       await onboarding.save();
 
       console.log(
-        `Payroll initiation triggered for employee ${employeeId} (REQ-PY-23)`,
+        `Payroll readiness confirmed for employee ${employeeId} (REQ-PY-23). Employee will be included in payroll runs automatically.`,
       );
       // ============= END INTEGRATION =============
 
@@ -3640,44 +4104,83 @@ Due: ${context.dueDate}`
       // ============= INTEGRATION: Payroll Execution Service =============
       // ONB-019: Automatically process signing bonuses based on contract
       // BR: Bonuses treated as distinct payroll components (REQ-PY-27)
-      // TODO: Uncomment when PayrollExecutionService is ready
 
       // Get employee details
-      // const employee = await this.employeeProfileService.findOne(employeeId);
-      // if (!employee) {
-      //   throw new NotFoundException('Employee not found');
-      // }
+      const employee = await this.employeeProfileService.findOne(employeeId);
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
 
-      // 1. Call payroll service to process signing bonus
-      // Reference: EmployeeSigningBonus schema in payroll-execution/models/EmployeeSigningBonus.schema.ts
-      // const signingBonusResult = await this.payrollExecutionService.processSigningBonus({
-      //   employeeId: employeeId,
-      //   signingBonusAmount: signingBonus,
-      //   contractSigningDate: contractSigningDate,
-      //   paymentDate: contractSigningDate, // Or schedule for first payroll cycle
-      //   status: 'pending', // Will be updated to 'approved' or 'paid' by payroll service
-      // });
+      let signingBonusResult = null;
+      let integrationNote = '';
 
-      // 2. Add bonus as distinct payroll component
-      // The EmployeeSigningBonus record is created in the payroll-execution subsystem
-      // This creates a record in the employeeSigningBonus collection
+      // Find signing bonus configuration by position title
+      if (employee.primaryPositionId) {
+        try {
+          // Get position details
+          const position =
+            await this.organizationStructureService.getPositionById(
+              employee.primaryPositionId.toString(),
+            );
 
-      // 3. Schedule bonus payment (if not immediate)
-      // await this.payrollExecutionService.scheduleBonusPayment({
-      //   employeeId: employeeId,
-      //   signingBonusId: signingBonusResult.signingBonusId,
-      //   scheduledPaymentDate: contractSigningDate, // Or first payroll date
-      // });
+          if (position && position.title) {
+            // Find matching signing bonus configuration
+            const signingBonusesResult =
+              await this.payrollConfigurationService.findAllSigningBonuses({
+                status: ConfigStatus.APPROVED,
+                limit: 1000,
+              });
+            const approvedSigningBonuses = signingBonusesResult?.data || [];
 
-      // For now, we mark the task and log the action
+            const matchingConfig = approvedSigningBonuses.find(
+              (config: any) => config.positionName === position.title,
+            );
+
+            if (matchingConfig) {
+              // Use contract signing bonus amount if available, otherwise use configuration amount
+              const finalAmount =
+                signingBonus || matchingConfig.amount || 0;
+
+              // Create employee signing bonus using PayrollExecutionService
+              signingBonusResult =
+                await this.payrollExecutionService.createEmployeeSigningBonus(
+                  {
+                    employeeId: employeeId,
+                    signingBonusId: matchingConfig._id.toString(),
+                    givenAmount: finalAmount,
+                    status: BonusStatus.PENDING,
+                    paymentDate: contractSigningDate.toISOString(),
+                  },
+                  'system', // System-initiated, no specific user ID needed
+                );
+
+              integrationNote = `\n[INTEGRATION] Employee Signing Bonus created: ${signingBonusResult._id.toString()}`;
+            } else {
+              console.warn(
+                `No signing bonus configuration found for position: ${position.title}. Signing bonus from contract will not be processed automatically.`,
+              );
+              integrationNote =
+                '\n[INTEGRATION] Warning: No signing bonus configuration found for employee position. Manual processing may be required.';
+            }
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to process signing bonus integration:',
+            this.getErrorMessage(error),
+          );
+          integrationNote =
+            '\n[INTEGRATION] Warning: Failed to automatically create signing bonus record. Manual processing may be required.';
+        }
+      }
+
+      // Mark task and log the action
       bonusTask.status = OnboardingTaskStatus.COMPLETED;
       bonusTask.completedAt = new Date();
       bonusTask.notes =
         (bonusTask.notes || '') +
         `\n[${new Date().toISOString()}] Signing bonus processed automatically. ` +
-        `Amount: ${signingBonus}, Contract signed: ${contractSigningDate.toISOString()}`;
-      // Add integration result to notes when ready:
-      // `\n[INTEGRATION] Signing Bonus ID: ${signingBonusResult.signingBonusId}`;
+        `Amount: ${signingBonus}, Contract signed: ${contractSigningDate.toISOString()}` +
+        integrationNote;
 
       await onboarding.save();
 
@@ -3789,7 +4292,8 @@ Due: ${context.dueDate}`
   // 1) CREATE TERMINATION / RESIGNATION REQUEST
   async createTerminationRequest(dto: CreateTerminationRequestDto, user: any) {
     // Guard: user must be authenticated
-    if (!user || !user.role) {
+    // changed - user.role to user.roles (array)
+    if (!user || !user.roles || user.roles.length === 0) {
       throw new ForbiddenException('User role missing from token.');
     }
 
@@ -3826,7 +4330,8 @@ Due: ${context.dueDate}`
     // --- A) RESIGNATION: employee initiates their own request ---
     if (dto.initiator === TerminationInitiation.EMPLOYEE) {
       // Must be an EMPLOYEE in token
-      if (user.role !== SystemRole.DEPARTMENT_EMPLOYEE) {
+      // changed - user.role to user.roles.includes()
+      if (!user.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE)) {
         throw new ForbiddenException(
           'Only employees can initiate a resignation.',
         );
@@ -3861,7 +4366,8 @@ Due: ${context.dueDate}`
       dto.initiator === TerminationInitiation.MANAGER
     ) {
       // Only HR_MANAGER is allowed to do this
-      if (user.role !== SystemRole.HR_MANAGER) {
+      // changed - user.role to user.roles.includes()
+      if (!user.roles?.includes(SystemRole.HR_MANAGER)) {
         throw new ForbiddenException(
           'Only HR Manager can initiate termination based on performance.',
         );
@@ -3937,6 +4443,181 @@ Due: ${context.dueDate}`
     throw new ForbiddenException('Unsupported termination initiator.');
   }
 
+  // ============================================================================
+  // NEW CHANGES: SUBMIT RESIGNATION - Any employee type can resign themselves
+  // Implements OFF-018: Employee can request resignation with reasoning
+  // ============================================================================
+  /**
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to submit their own resignation. No role restrictions - only requirement is
+   * that the user is a valid employee in the system.
+   */
+  async submitResignation(dto: SubmitResignationDto, user: any) {
+    // Guard: user must be authenticated with a valid token
+    if (!user) {
+      throw new ForbiddenException('You must be logged in to submit a resignation.');
+    }
+
+    // Get employee number from JWT token
+    const employeeNumber = user.employeeNumber;
+    if (!employeeNumber) {
+      throw new BadRequestException(
+        'Employee number not found in token. Please log in again.',
+      );
+    }
+
+    // Find the employee by their own employeeNumber from token
+    const employee = await this.employeeModel
+      .findOne({ employeeNumber })
+      .exec();
+
+    if (!employee) {
+      throw new NotFoundException(
+        'Your employee profile was not found. Please contact HR.',
+      );
+    }
+
+    // Check if employee already has a pending resignation
+    const existingResignation = await this.terminationModel
+      .findOne({
+        employeeId: employee._id,
+        initiator: TerminationInitiation.EMPLOYEE,
+        status: { $in: [TerminationStatus.PENDING, TerminationStatus.UNDER_REVIEW] },
+      })
+      .exec();
+
+    if (existingResignation) {
+      throw new BadRequestException(
+        'You already have a pending resignation request. Please wait for HR to process it.',
+      );
+    }
+
+    // Create the resignation request
+    const resignation = await this.terminationModel.create({
+      employeeId: employee._id,
+      initiator: TerminationInitiation.EMPLOYEE, // Always 'employee' for resignations
+      reason: dto.reason,
+      employeeComments: dto.comments,
+      terminationDate: dto.requestedLastDay
+        ? new Date(dto.requestedLastDay)
+        : undefined,
+      status: TerminationStatus.PENDING,
+      contractId: employee._id, // Using employee._id as dummy ObjectId (no separate contract entity)
+    });
+
+    return {
+      message: 'Resignation submitted successfully. HR will review your request.',
+      resignation,
+    };
+  }
+
+  // ============================================================================
+  // NEW CHANGES: TERMINATE EMPLOYEE BY HR - Only HR Manager can terminate based on performance
+  // Implements OFF-001: HR Manager initiates termination based on performance
+  // ============================================================================
+  /**
+   * Allows HR Manager to terminate an employee based on poor performance.
+   * Checks that the employee has an appraisal record with a low score (< 2.5).
+   */
+  async terminateEmployeeByHR(dto: TerminateEmployeeDto, user: any) {
+    // Guard: Only HR Manager can terminate employees
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
+      throw new ForbiddenException(
+        'Only HR Manager can terminate employees.',
+      );
+    }
+
+    // Validate employeeId format
+    if (
+      !dto.employeeId ||
+      typeof dto.employeeId !== 'string' ||
+      dto.employeeId.trim().length === 0
+    ) {
+      throw new BadRequestException(
+        'Employee ID (employeeNumber) is required and must be a non-empty string.',
+      );
+    }
+
+    // Find employee by employeeNumber
+    const employee = await this.employeeModel
+      .findOne({ employeeNumber: dto.employeeId })
+      .exec();
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with ID "${dto.employeeId}" not found.`,
+      );
+    }
+
+    // HR Manager cannot terminate themselves
+    if (user.employeeNumber === dto.employeeId) {
+      throw new ForbiddenException(
+        'You cannot terminate yourself. Please use the resignation endpoint instead.',
+      );
+    }
+
+    // Check if employee already has a pending termination
+    const existingTermination = await this.terminationModel
+      .findOne({
+        employeeId: employee._id,
+        initiator: { $in: [TerminationInitiation.HR, TerminationInitiation.MANAGER] },
+        status: { $in: [TerminationStatus.PENDING, TerminationStatus.UNDER_REVIEW] },
+      })
+      .exec();
+
+    if (existingTermination) {
+      throw new BadRequestException(
+        'This employee already has a pending termination request.',
+      );
+    }
+
+    // ============================================================================
+    // PERFORMANCE CHECK: Employee must have low performance score to be terminated
+    // ============================================================================
+    const latestRecord = await this.appraisalRecordModel
+      .findOne({ employeeProfileId: employee._id })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!latestRecord) {
+      throw new ForbiddenException(
+        'Cannot terminate: employee has no appraisal record on file.',
+      );
+    }
+
+    if (latestRecord.totalScore === undefined || latestRecord.totalScore === null) {
+      throw new ForbiddenException(
+        'Cannot terminate: employee appraisal has no total score.',
+      );
+    }
+
+    // Rule: only allow termination if totalScore < 2.5
+    if (latestRecord.totalScore >= 2.5) {
+      throw new ForbiddenException(
+        `Cannot terminate: employee performance score (${latestRecord.totalScore}) is not low enough for termination. Score must be below 2.5.`,
+      );
+    }
+
+    // Create the termination request
+    const termination = await this.terminationModel.create({
+      employeeId: employee._id,
+      initiator: TerminationInitiation.HR, // Always 'hr' for HR-initiated terminations
+      reason: dto.reason || `Termination due to poor performance (score: ${latestRecord.totalScore})`,
+      hrComments: dto.hrComments,
+      terminationDate: dto.terminationDate
+        ? new Date(dto.terminationDate)
+        : undefined,
+      status: TerminationStatus.PENDING,
+      contractId: employee._id,
+    });
+
+    return {
+      message: `Termination request created for employee ${dto.employeeId}.`,
+      performanceScore: latestRecord.totalScore,
+      termination,
+    };
+  }
+
   // 2) GET TERMINATION REQUEST
   async getTerminationRequestById(id: string) {
     if (!Types.ObjectId.isValid(id)) {
@@ -3951,35 +4632,41 @@ Due: ${context.dueDate}`
     return termination;
   }
 
-  // 2b) GET MY RESIGNATION REQUESTS (for employees)
+  // ============================================================================
+  // NEW CHANGES - FIXED: GET MY RESIGNATION REQUESTS - Any employee type can track
+  // Implements OFF-019: Employee can track resignation request status
+  // Removed role check - was only allowing DEPARTMENT_EMPLOYEE before
+  // ============================================================================
+  /**
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to view their own resignation/termination requests.
+   */
   async getMyResignationRequests(user: any) {
-    if (!user || !user.role) {
-      throw new ForbiddenException('Unauthorized');
-    }
-
-    // Only EMPLOYEE role can call this endpoint to fetch their own resignations
-    if (user.role !== SystemRole.DEPARTMENT_EMPLOYEE) {
-      throw new ForbiddenException(
-        'Only employees can access their resignation requests.',
-      );
+    // Guard: user must be authenticated (no role check - any employee type)
+    if (!user) {
+      throw new ForbiddenException('You must be logged in to view your requests.');
     }
 
     const employeeNumber = user.employeeNumber;
     if (!employeeNumber) {
-      throw new BadRequestException('Employee number not present in token');
+      throw new BadRequestException(
+        'Employee number not found in token. Please log in again.',
+      );
     }
 
     const employee = await this.employeeModel
       .findOne({ employeeNumber })
       .exec();
     if (!employee) {
-      throw new NotFoundException('Employee profile not found');
+      throw new NotFoundException('Your employee profile was not found.');
     }
 
+    // Return all termination/resignation requests for this employee
     const requests = await this.terminationModel
       .find({ employeeId: employee._id })
       .sort({ createdAt: -1 })
       .exec();
+    
     return requests;
   }
 
@@ -3990,7 +4677,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Only HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can update termination status.',
       );
@@ -4019,6 +4707,18 @@ Due: ${context.dueDate}`
       throw new BadRequestException(
         'Cannot change status of an approved termination request',
       );
+    }
+
+    // BR: Employee separation needs an effective date (termination date) when approved
+    if (dto.status === TerminationStatus.APPROVED) {
+      const effectiveDate = dto.terminationDate
+        ? new Date(dto.terminationDate)
+        : termination.terminationDate;
+      if (!effectiveDate || isNaN(effectiveDate.getTime())) {
+        throw new BadRequestException(
+          'Termination date (effective date) is required when approving termination request',
+        );
+      }
     }
 
     termination.status = dto.status;
@@ -4064,7 +4764,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Reasonable to restrict to HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can edit termination details.',
       );
@@ -4133,7 +4834,8 @@ Due: ${context.dueDate}`
   // 5) CREATE CLEARANCE CHECKLIST
   async createClearanceChecklist(dto: CreateClearanceChecklistDto, user: any) {
     // Only HR Manager
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can create clearance checklist.',
       );
@@ -4368,6 +5070,9 @@ Due: ${context.dueDate}`
   // This ensures proper workflow: all departments must sign off before final pay processing.
 
   // 6) GET CHECKLIST BY EMPLOYEE (employeeNumber)
+  // ============================================================================
+  // NEW CHANGES FOR OFFBOARDING: Now supports both _id and employeeNumber
+  // ============================================================================
   async getChecklistByEmployee(employeeId: string) {
     // Validate employeeId format
     if (
@@ -4376,16 +5081,25 @@ Due: ${context.dueDate}`
       employeeId.trim().length === 0
     ) {
       throw new BadRequestException(
-        'Employee ID (employeeNumber) is required and must be a non-empty string',
+        'Employee ID (_id or employeeNumber) is required and must be a non-empty string',
       );
     }
 
-    const employee = await this.employeeModel
-      .findOne({ employeeNumber: employeeId })
-      .exec();
+    // Try to find employee by _id first (if valid ObjectId), then by employeeNumber
+    let employee;
+    if (Types.ObjectId.isValid(employeeId)) {
+      employee = await this.employeeModel.findById(employeeId).exec();
+    }
+    
+    // If not found by _id, try by employeeNumber
+    if (!employee) {
+      employee = await this.employeeModel
+        .findOne({ employeeNumber: employeeId })
+        .exec();
+    }
 
     if (!employee) {
-      throw new NotFoundException('Employee not found.');
+      throw new NotFoundException('Employee not found. Provide valid _id or employeeNumber.');
     }
 
     const termination = await this.terminationModel.findOne({
@@ -4415,7 +5129,8 @@ Due: ${context.dueDate}`
     user: any,
   ) {
     // Authorization and department-specific rules
-    if (!user || !user.role) {
+    // changed - user.role to user.roles (array)
+    if (!user || !user.roles || user.roles.length === 0) {
       throw new ForbiddenException(
         'Unauthorized clearance update. missing user/role',
       );
@@ -4456,8 +5171,10 @@ Due: ${context.dueDate}`
 
     // Department-specific permissions/authorization
     const dept = dto.department;
-    const role = user.role;
+    // changed - user.role to user.roles (array)
+    const roles = user.roles || [];
 
+    // changed - use roles.some() to check array of roles
     const hasPermission = (() => {
       switch (dept) {
         case 'LINE_MANAGER':
@@ -4469,42 +5186,42 @@ Due: ${context.dueDate}`
           )
             return true;
           return (
-            role === SystemRole.DEPARTMENT_HEAD ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.DEPARTMENT_HEAD) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'IT':
           return (
-            role === SystemRole.SYSTEM_ADMIN || role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.SYSTEM_ADMIN) || roles.includes(SystemRole.HR_MANAGER)
           );
         case 'FINANCE':
           return (
-            role === SystemRole.FINANCE_STAFF ||
-            role === SystemRole.PAYROLL_MANAGER ||
-            role === SystemRole.PAYROLL_SPECIALIST ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.FINANCE_STAFF) ||
+            roles.includes(SystemRole.PAYROLL_MANAGER) ||
+            roles.includes(SystemRole.PAYROLL_SPECIALIST) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'FACILITIES':
           return (
-            role === SystemRole.HR_ADMIN ||
-            role === SystemRole.SYSTEM_ADMIN ||
-            role === SystemRole.HR_MANAGER
+            roles.includes(SystemRole.HR_ADMIN) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN) ||
+            roles.includes(SystemRole.HR_MANAGER)
           );
         case 'ADMIN':
           return (
-            role === SystemRole.HR_ADMIN ||
-            role === SystemRole.HR_MANAGER ||
-            role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_ADMIN) ||
+            roles.includes(SystemRole.HR_MANAGER) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN)
           );
         case 'HR':
           // HR employees can update, but final APPROVED must be performed by HR_MANAGER
           return (
-            role === SystemRole.HR_EMPLOYEE ||
-            role === SystemRole.HR_MANAGER ||
-            role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_EMPLOYEE) ||
+            roles.includes(SystemRole.HR_MANAGER) ||
+            roles.includes(SystemRole.SYSTEM_ADMIN)
           );
         default:
           return (
-            role === SystemRole.HR_MANAGER || role === SystemRole.SYSTEM_ADMIN
+            roles.includes(SystemRole.HR_MANAGER) || roles.includes(SystemRole.SYSTEM_ADMIN)
           );
       }
     })();
@@ -4532,10 +5249,11 @@ Due: ${context.dueDate}`
     }
 
     // Special enforcement: HR final APPROVED must be by HR_MANAGER explicitly
+    // changed - use roles.includes() instead of role ===
     if (
       dept === 'HR' &&
       dto.status === ApprovalStatus.APPROVED &&
-      role !== SystemRole.HR_MANAGER
+      !roles.includes(SystemRole.HR_MANAGER)
     ) {
       throw new ForbiddenException('Only HR Manager can finalize HR approval');
     }
@@ -4666,7 +5384,8 @@ Due: ${context.dueDate}`
 
   // 8) MANUAL COMPLETE
   async markChecklistCompleted(checklistId: string, user: any) {
-    if (!user || user.role !== SystemRole.HR_MANAGER) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can manually complete checklist.',
       );
@@ -4761,64 +5480,177 @@ Due: ${context.dueDate}`
     // ============================================================================
     // STEP 1: LEAVE BALANCE CALCULATION (LEAVES SERVICE INTEGRATION)
     // ============================================================================
-    // TODO: Uncomment when LeavesService is injected and ready
-    //
-    // try {
-    //   // Get unused leave balance for the employee
-    //   const leaveBalance = await this.leavesService.getLeaveBalance(employee._id.toString());
-    //
-    //   if (leaveBalance && leaveBalance.unusedDays > 0) {
-    //     // Calculate leave encashment based on daily rate
-    //     // const dailyRate = employee.grossSalary / 30; // Approximate daily rate
-    //     // const encashmentAmount = leaveBalance.unusedDays * dailyRate;
-    //
-    //     settlementData.components.leaveEncashment = {
-    //       unusedDays: leaveBalance.unusedDays,
-    //       // encashmentAmount: encashmentAmount,
-    //       calculatedAt: new Date().toISOString(),
-    //     };
-    //   }
-    // } catch (err) {
-    //   console.warn('triggerFinalSettlement: Failed to calculate leave balance:', this.getErrorMessage(err) || err);
-    //   settlementData.errors.push({ step: 'leaveBalance', error: this.getErrorMessage(err) || String(err) });
-    // }
+    // OFF-013: Review and settle unused annual leave balance (encashment)
+    try {
+      // Get all leave balances for the employee
+      const leaveBalances = await this.leavesService.getEmployeeLeaveBalance(
+        employee._id.toString(),
+      );
+
+      if (leaveBalances && Array.isArray(leaveBalances) && leaveBalances.length > 0) {
+        // Calculate total unused leave days (remaining balance)
+        // Focus on annual leave types for encashment
+        let totalUnusedDays = 0;
+        const leaveDetails: any[] = [];
+
+        for (const balance of leaveBalances) {
+          // remaining is the unused leave balance
+          const unusedDays = balance.remaining || 0;
+          if (unusedDays > 0) {
+            totalUnusedDays += unusedDays;
+            leaveDetails.push({
+              leaveTypeId: balance.leaveTypeId,
+              leaveTypeName: balance.leaveTypeName,
+              unusedDays: unusedDays,
+              yearlyEntitlement: balance.yearlyEntitlement,
+              taken: balance.taken,
+              carryForward: balance.carryForward,
+            });
+          }
+        }
+
+        if (totalUnusedDays > 0) {
+          // Calculate daily rate from employee's gross salary
+          // Assuming 30 days per month for calculation
+          const grossSalary = (employee as any).grossSalary || 0;
+          const dailyRate = grossSalary > 0 ? grossSalary / 30 : 0;
+          const encashmentAmount = totalUnusedDays * dailyRate;
+
+          settlementData.components.leaveEncashment = {
+            totalUnusedDays: totalUnusedDays,
+            encashmentAmount: encashmentAmount,
+            dailyRate: dailyRate,
+            leaveDetails: leaveDetails,
+            calculatedAt: new Date().toISOString(),
+          };
+        } else {
+          settlementData.components.leaveEncashment = {
+            totalUnusedDays: 0,
+            encashmentAmount: 0,
+            leaveDetails: [],
+            calculatedAt: new Date().toISOString(),
+            note: 'No unused leave balance to encash',
+          };
+        }
+      } else {
+        settlementData.components.leaveEncashment = {
+          totalUnusedDays: 0,
+          encashmentAmount: 0,
+          leaveDetails: [],
+          calculatedAt: new Date().toISOString(),
+          note: 'No leave entitlements found for employee',
+        };
+      }
+    } catch (err) {
+      console.warn(
+        'triggerFinalSettlement: Failed to calculate leave balance:',
+        this.getErrorMessage(err) || err,
+      );
+      settlementData.errors.push({
+        step: 'leaveBalance',
+        error: this.getErrorMessage(err) || String(err),
+      });
+      settlementData.components.leaveEncashment = {
+        error: this.getErrorMessage(err) || String(err),
+        calculatedAt: new Date().toISOString(),
+      };
+    }
     // ============================================================================
 
     // ============================================================================
-    // STEP 2: FINAL PAY CALCULATION (PAYROLL EXECUTION SERVICE INTEGRATION)
+    // STEP 2: BENEFITS TERMINATION (PAYROLL EXECUTION SERVICE INTEGRATION)
     // ============================================================================
-    // TODO: Uncomment when PayrollExecutionService is injected and ready
-    //
-    // try {
-    //   // Calculate final pay including:
-    //   // - Outstanding salary (prorated for partial month)
-    //   // - Leave encashment (from step 1)
-    //   // - Deductions (loans, advances, etc.)
-    //   // - Severance pay (if applicable based on termination type and tenure)
-    //
-    //   const finalPayRequest = {
-    //     employeeId: employee._id.toString(),
-    //     terminationDate: termination.terminationDate,
-    //     includeLeaveEncashment: true,
-    //     leaveEncashmentAmount: settlementData.components.leaveEncashment?.encashmentAmount || 0,
-    //   };
-    //
-    //   const finalPayResult = await this.payrollExecutionService.calculateFinalPay(finalPayRequest);
-    //
-    //   settlementData.components.finalPay = {
-    //     grossAmount: finalPayResult?.grossAmount,
-    //     deductions: finalPayResult?.deductions,
-    //     netAmount: finalPayResult?.netAmount,
-    //     calculatedAt: new Date().toISOString(),
-    //   };
-    //
-    //   // Queue the final payroll for processing
-    //   // await this.payrollExecutionService.queueFinalPayroll(employee._id.toString(), finalPayResult);
-    //
-    // } catch (err) {
-    //   console.warn('triggerFinalSettlement: Failed to calculate final pay:', this.getErrorMessage(err) || err);
-    //   settlementData.errors.push({ step: 'finalPay', error: this.getErrorMessage(err) || String(err) });
-    // }
+    // OFF-013: Trigger benefits termination - links employee to benefit in payroll execution module
+    // This creates EmployeeTerminationResignation records which link the employee to termination benefits
+    try {
+      // Process termination/resignation benefits - this automatically creates
+      // EmployeeTerminationResignation records for all approved termination benefit configurations
+      // The method processes all approved terminations, so we use a system user ID
+      // Note: This method creates the link between employee and benefit (fills the collection)
+      const systemUserId = 'SYSTEM'; // Use system identifier for automated processes
+      const processedBenefits =
+        await this.payrollExecutionService.processTerminationResignationBenefits(
+          systemUserId,
+        );
+
+      // Filter benefits for this specific employee and termination
+      const employeeBenefits = processedBenefits.filter(
+        (benefit: any) =>
+          benefit.employeeId?.toString() === employeeId &&
+          benefit.terminationId?.toString() === terminationId,
+      );
+
+      if (employeeBenefits.length > 0) {
+        settlementData.components.benefitsTermination = {
+          benefitsCreated: employeeBenefits.length,
+          benefitRecords: employeeBenefits.map((b: any) => ({
+            benefitId: b.benefitId?.toString(),
+            givenAmount: b.givenAmount,
+            status: b.status,
+            recordId: b._id?.toString(),
+          })),
+          processedAt: new Date().toISOString(),
+          note: 'Termination benefits created and linked to employee. Benefits will be auto-terminated as of end of notice period.',
+        };
+      } else {
+        // Check if benefits were already created previously by accessing the model via db
+        try {
+          const EmployeeTerminationResignationModel = this.terminationModel.db.model(
+            'EmployeeTerminationResignation',
+          );
+          const existingBenefitsCheck = await EmployeeTerminationResignationModel.find({
+            employeeId: new Types.ObjectId(employeeId),
+            terminationId: new Types.ObjectId(terminationId),
+          })
+            .populate('benefitId', 'name amount')
+            .exec();
+
+          if (existingBenefitsCheck && existingBenefitsCheck.length > 0) {
+            settlementData.components.benefitsTermination = {
+              benefitsCreated: existingBenefitsCheck.length,
+              benefitRecords: existingBenefitsCheck.map((b: any) => ({
+                benefitId: b.benefitId?._id?.toString() || b.benefitId?.toString(),
+                benefitName: (b.benefitId as any)?.name,
+                givenAmount: b.givenAmount,
+                status: b.status,
+                recordId: b._id?.toString(),
+              })),
+              processedAt: new Date().toISOString(),
+              note: 'Termination benefits already exist for this employee and termination.',
+            };
+          } else {
+            settlementData.components.benefitsTermination = {
+              benefitsCreated: 0,
+              benefitRecords: [],
+              processedAt: new Date().toISOString(),
+              note: 'No termination benefits configured or available for this employee.',
+            };
+          }
+        } catch (modelErr) {
+          // If model access fails, assume no benefits exist
+          settlementData.components.benefitsTermination = {
+            benefitsCreated: 0,
+            benefitRecords: [],
+            processedAt: new Date().toISOString(),
+            note: 'Could not check for existing benefits. Benefits may need to be processed manually.',
+            warning: this.getErrorMessage(modelErr) || String(modelErr),
+          };
+        }
+      }
+    } catch (err) {
+      console.warn(
+        'triggerFinalSettlement: Failed to process termination benefits:',
+        this.getErrorMessage(err) || err,
+      );
+      settlementData.errors.push({
+        step: 'benefitsTermination',
+        error: this.getErrorMessage(err) || String(err),
+      });
+      settlementData.components.benefitsTermination = {
+        error: this.getErrorMessage(err) || String(err),
+        processedAt: new Date().toISOString(),
+      };
+    }
     // ============================================================================
 
     // ============================================================================
@@ -5265,7 +6097,8 @@ Due: ${context.dueDate}`
   // 10) FUNCTION TO MAKE EMPLOYEE INACTIVE (SYSTEM ADMIN)
   async revokeSystemAccess(dto: RevokeSystemAccessDto, user: any) {
     // Only SYSTEM_ADMIN can do this
-    if (!user || user.role !== SystemRole.SYSTEM_ADMIN) {
+    // changed - user.role to user.roles.includes()
+    if (!user || !user.roles?.includes(SystemRole.SYSTEM_ADMIN)) {
       throw new ForbiddenException(
         'Only System Admin can revoke system access.',
       );

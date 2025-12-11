@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "../stores/auth.store";
+import { getPrimaryDashboard } from "../utils/role-utils";
 
 export const useAuth = () => {
   const store = useAuthStore();
@@ -15,7 +16,7 @@ export const useAuth = () => {
 };
 
 export const useRequireAuth = (
-  requiredRole?: string,
+  requiredRole?: string | string[],
   redirectTo?: string,
   requiredUserType?: "employee" | "candidate"
 ) => {
@@ -34,6 +35,9 @@ export const useRequireAuth = (
   const hasRequiredRole = useMemo(() => {
     if (!requiredRole) return true;
     const roles = user?.roles || [];
+    if (Array.isArray(requiredRole)) {
+      return requiredRole.some((r) => roles.includes(r));
+    }
     return roles.includes(requiredRole);
   }, [user, requiredRole]);
 
@@ -45,12 +49,15 @@ export const useRequireAuth = (
       if (!isAuthenticated) {
         router.replace(redirectTo || "/auth/login");
       } else if (!hasRequiredRole) {
-        router.replace(redirectTo || "/auth/login");
+        const fallback = getPrimaryDashboard(user);
+        router.replace(fallback);
       } else if (
         requiredUserType &&
         user?.userType &&
         user.userType !== requiredUserType
       ) {
+        const fallback = getPrimaryDashboard(user);
+        router.replace(fallback);
         router.replace(redirectTo || "/auth/login");
       } else {
         setIsLoading(false);

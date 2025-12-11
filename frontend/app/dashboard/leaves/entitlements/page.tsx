@@ -18,8 +18,11 @@ export default function LeaveEntitlementsPage() {
   useRequireAuth(SystemRole.HR_ADMIN);
   const { toast, showToast, hideToast } = useToast();
 
-  const [entitlements, setEntitlements] = useState<LeaveEntitlement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entitlement, setEntitlement] = useState<LeaveEntitlement | null>(null);
+  const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchEmployeeId, setSearchEmployeeId] = useState("");
+  const [searchLeaveTypeId, setSearchLeaveTypeId] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPersonalizedModalOpen, setIsPersonalizedModalOpen] = useState(false);
   const [editingEntitlement, setEditingEntitlement] = useState<LeaveEntitlement | null>(null);
@@ -42,8 +45,37 @@ export default function LeaveEntitlementsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Note: There's no endpoint to list all entitlements, so we'll show a form to create/view by employee+type
+    // Load leave types for dropdowns
+    loadLeaveTypes();
   }, []);
+
+  const loadLeaveTypes = async () => {
+    try {
+      const types = await leavesApi.getLeaveTypes();
+      setLeaveTypes(types);
+    } catch (error: any) {
+      console.warn("Failed to load leave types:", error);
+    }
+  };
+
+  const loadEntitlement = async () => {
+    if (!searchEmployeeId || !searchLeaveTypeId) {
+      setEntitlement(null);
+      showToast("Please enter both Employee ID and Leave Type", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await leavesApi.getLeaveEntitlement(searchEmployeeId, searchLeaveTypeId);
+      setEntitlement(data);
+    } catch (error: any) {
+      showToast(error.message || "Failed to load leave entitlement", "error");
+      setEntitlement(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -59,8 +91,13 @@ export default function LeaveEntitlementsPage() {
     if (!validateForm()) return;
 
     try {
-      await leavesApi.createLeaveEntitlement(formData);
-      showToast("Leave entitlement created successfully", "success");
+      if (editingEntitlement) {
+        await leavesApi.updateLeaveEntitlement(editingEntitlement._id, formData);
+        showToast("Leave entitlement updated successfully", "success");
+      } else {
+        await leavesApi.createLeaveEntitlement(formData);
+        showToast("Leave entitlement created successfully", "success");
+      }
       setIsModalOpen(false);
       setFormData({
         employeeId: "",
@@ -73,8 +110,12 @@ export default function LeaveEntitlementsPage() {
         pending: 0,
         remaining: 0,
       });
+      setEditingEntitlement(null);
+      if (searchEmployeeId && searchLeaveTypeId) {
+        loadEntitlement();
+      }
     } catch (error: any) {
-      showToast(error.message || "Failed to create leave entitlement", "error");
+      showToast(error.message || "Failed to save leave entitlement", "error");
     }
   };
 
@@ -127,38 +168,147 @@ export default function LeaveEntitlementsPage() {
         </div>
       </div>
 
-      <Card>
+      <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Create Leave Entitlement</CardTitle>
+          <CardTitle>View Leave Entitlement</CardTitle>
           <CardDescription>
-            Create a new leave entitlement for an employee. To view existing entitlements,
-            use the API endpoint with employee ID and leave type ID.
+            Enter Employee ID and Leave Type to view a specific entitlement
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-600">
-            Note: To view existing entitlements, you need to query by employee ID and leave type ID.
-            Use the form below to create new entitlements.
-          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Employee ID *"
+              value={searchEmployeeId}
+              onChange={(e) => setSearchEmployeeId(e.target.value)}
+              placeholder="Enter employee ID"
+            />
+            <Select
+              label="Leave Type *"
+              value={searchLeaveTypeId}
+              onChange={(e) => setSearchLeaveTypeId(e.target.value)}
+              options={
+                leaveTypes.length > 0
+                  ? leaveTypes.map((t) => ({ value: t._id, label: t.name }))
+                  : [{ value: "", label: "No leave types available" }]
+              }
+              placeholder="Select a leave type"
+            />
+          </div>
+          <div className="mt-4">
+            <Button onClick={loadEntitlement} disabled={!searchEmployeeId || !searchLeaveTypeId}>
+              Load Entitlement
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Create Entitlement Modal */}
+      {loading ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      ) : !entitlement ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-gray-500">
+              {searchEmployeeId && searchLeaveTypeId
+                ? "No entitlement found. Create one using the form above."
+                : "Enter Employee ID and Leave Type to view entitlement."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Leave Entitlement Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-sm text-gray-600">Leave Type</p>
+                <p className="font-medium">
+                  {leaveTypes.find((t) => t._id === entitlement.leaveTypeId.toString())?.name || entitlement.leaveTypeId}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Yearly Entitlement</p>
+                <p className="font-medium">{entitlement.yearlyEntitlement} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Accrued Actual</p>
+                <p className="font-medium">{entitlement.accruedActual} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Accrued Rounded</p>
+                <p className="font-medium">{entitlement.accruedRounded} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Taken</p>
+                <p className="font-medium">{entitlement.taken} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Pending</p>
+                <p className="font-medium">{entitlement.pending} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Remaining</p>
+                <p className="font-medium text-green-600">{entitlement.remaining} days</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Carry Forward</p>
+                <p className="font-medium">{entitlement.carryForward} days</p>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingEntitlement(entitlement);
+                  setFormData({
+                    employeeId: entitlement.employeeId.toString(),
+                    leaveTypeId: entitlement.leaveTypeId.toString(),
+                    yearlyEntitlement: entitlement.yearlyEntitlement,
+                    accruedActual: entitlement.accruedActual,
+                    accruedRounded: entitlement.accruedRounded,
+                    carryForward: entitlement.carryForward,
+                    taken: entitlement.taken,
+                    pending: entitlement.pending,
+                    remaining: entitlement.remaining,
+                  });
+                  setIsModalOpen(true);
+                }}
+              >
+                Edit Entitlement
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create/Edit Entitlement Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Create Leave Entitlement"
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingEntitlement(null);
+        }}
+        title={editingEntitlement ? "Edit Leave Entitlement" : "Create Leave Entitlement"}
         size="lg"
         footer={
           <>
-            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setIsModalOpen(false);
+              setEditingEntitlement(null);
+            }}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit}>Create</Button>
+            <Button type="submit" form="entitlement-form">
+              {editingEntitlement ? "Update" : "Create"}
+            </Button>
           </>
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="entitlement-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Employee ID *"
@@ -169,14 +319,19 @@ export default function LeaveEntitlementsPage() {
               error={errors.employeeId}
               placeholder="Employee ID"
             />
-            <Input
-              label="Leave Type ID *"
+            <Select
+              label="Leave Type *"
               value={formData.leaveTypeId}
               onChange={(e) =>
                 setFormData({ ...formData, leaveTypeId: e.target.value })
               }
               error={errors.leaveTypeId}
-              placeholder="Leave Type ID"
+              options={
+                leaveTypes.length > 0
+                  ? leaveTypes.map((t) => ({ value: t._id, label: t.name }))
+                  : [{ value: "", label: "No leave types available" }]
+              }
+              placeholder="Select a leave type"
             />
           </div>
 

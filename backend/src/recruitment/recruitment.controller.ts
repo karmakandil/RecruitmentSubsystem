@@ -42,6 +42,8 @@ import { CreateOnboardingDto } from './dto/create-onboarding.dto';
 import { UpdateOnboardingDto } from './dto/update-onboarding.dto';
 import { UpdateOnboardingTaskDto } from './dto/update-task.dto';
 import { RolesGuard } from '../common/guards/roles.guard';
+// changed - added JwtAuthGuard import
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
@@ -50,11 +52,14 @@ import {
   CreateTerminationRequestDto,
   UpdateTerminationStatusDto,
   UpdateTerminationDetailsDto,
+  SubmitResignationDto,
+  TerminateEmployeeDto,
 } from './dto/termination-request.dto';
 
 import {
   CreateClearanceChecklistDto,
   UpdateClearanceItemStatusDto,
+  TriggerFinalSettlementDto,
 } from './dto/clearance-checklist.dto';
 
 import { RevokeSystemAccessDto } from './dto/system-access.dto';
@@ -63,14 +68,6 @@ import { RevokeSystemAccessDto } from './dto/system-access.dto';
 export class RecruitmentController {
   constructor(private readonly service: RecruitmentService) {}
 
-  // ------------------------------------------
-  // JOB REQUISITION (REC-003, REC-004, REC-023, REC-009)
-  // ------------------------------------------
-
-  /**
-   * REC-003: HR Manager defines standardized job templates
-   * Only HR Manager and Admin can create job requisitions
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job')
@@ -78,28 +75,18 @@ export class RecruitmentController {
     return this.service.createJobRequisition(dto);
   }
 
-  /**
-   * REC-009: HR Manager monitors recruitment progress across all positions
-   * All authenticated users can view job requisitions
-   */
   @UseGuards(RolesGuard)
   @Get('job')
   getJobs() {
     return this.service.getAllJobRequisitions();
   }
 
-  /**
-   * Get specific job requisition by ID
-   */
   @UseGuards(RolesGuard)
   @Get('job/:id')
   getJobById(@Param('id') id: string) {
     return this.service.getJobRequisitionById(id);
   }
 
-  /**
-   * Update job requisition status
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('job/:id/status')
@@ -107,10 +94,6 @@ export class RecruitmentController {
     return this.service.updateJobRequisitionStatus(id, dto.status);
   }
 
-  /**
-   * REC-023: Publish jobs on company careers page
-   * Only HR Employee and Admin can publish
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job/:id/publish')
@@ -118,23 +101,12 @@ export class RecruitmentController {
     return this.service.publishJobRequisition(id);
   }
 
-  /**
-   * Preview job requisition (with template details)
-   */
   @UseGuards(RolesGuard)
   @Get('job/:id/preview')
   previewJob(@Param('id') id: string) {
     return this.service.previewJobRequisition(id);
   }
 
-  // ------------------------------------------
-  // JOB TEMPLATES (REC-003)
-  // ------------------------------------------
-
-  /**
-   * REC-003: HR Manager defines standardized job templates
-   * Create a new job template with qualifications and skills
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('job-template')
@@ -142,48 +114,29 @@ export class RecruitmentController {
     return this.service.createJobTemplate(dto);
   }
 
-  /**
-   * Get all job templates
-   */
   @UseGuards(RolesGuard)
   @Get('job-template')
   getAllJobTemplates() {
     return this.service.getAllJobTemplates();
   }
 
-  /**
-   * Get job template by ID
-   */
   @UseGuards(RolesGuard)
   @Get('job-template/:id')
   getJobTemplateById(@Param('id') id: string) {
     return this.service.getJobTemplateById(id);
   }
 
-  /**
-   * Update job template
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Put('job-template/:id')
   updateJobTemplate(@Param('id') id: string, @Body() dto: any) {
     return this.service.updateJobTemplate(id, dto);
   }
-
-  // ------------------------------------------
-  // APPLICATIONS (REC-007, REC-008, REC-017, REC-022)
-  // ------------------------------------------
-
-  /**
-   * REC-007: Candidate uploads CV and applies for positions
-   * REC-028: Consent required before storing application
-   * Only candidates can apply; system auto-sets candidateId
-   */
+//--------------------------APPLICATION--------------------------------------------------
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
   @Post('application')
   apply(@Body() dto: CreateApplicationDto & { consentGiven: boolean }) {
-    // BR: Storing applications requires applicant authorization
     if (!dto.consentGiven) {
       throw new BadRequestException(
         'Consent for data processing is required to submit application',
@@ -192,12 +145,6 @@ export class RecruitmentController {
     return this.service.apply(dto, dto.consentGiven);
   }
 
-  /**
-   * REC-008, REC-017: HR Employee tracks candidates through hiring stages
-   * REC-017: Candidates receive updates about application status
-   * REC-030: Referrals get preferential filtering
-   * HR staff and managers can view all; candidates see their own
-   */
   @UseGuards(RolesGuard)
   @Get('application')
   getAllApplications(
@@ -208,10 +155,6 @@ export class RecruitmentController {
     return this.service.getAllApplications(requisitionId, prioritize);
   }
 
-  /**
-   * Get ranked applications based on assessment scores and referral status
-   * BR: Ranking rules enforced
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Get('application/ranked/:requisitionId')
@@ -219,11 +162,6 @@ export class RecruitmentController {
     return this.service.getRankedApplications(requisitionId);
   }
 
-  /**
-   * REC-008: Track candidates through hiring stages
-   * REC-022: Automated rejection notifications
-   * Only HR staff and managers can update status
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('application/:id/status')
@@ -232,22 +170,10 @@ export class RecruitmentController {
     @Body() dto: UpdateApplicationStatusDto,
     @Req() req: any,
   ) {
-    // Get user ID from request (set by auth guard)
     const changedBy = req.user?.id || req.user?._id;
     return this.service.updateApplicationStatus(id, dto, changedBy);
   }
 
-  // ------------------------------------------
-  // INTERVIEWS (REC-010, REC-011, REC-020, REC-021)
-  // ------------------------------------------
-
-  /**
-   * REC-010: Schedule and manage interview invitations
-   * REC-011: Recruiters schedule interviews with time slots, panel members, and modes
-   * REC-020: Structured assessment and scoring forms per role
-   * REC-021: Coordinate interview panels
-   * Only HR staff, managers, and department leads can schedule
-   */
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
@@ -260,10 +186,6 @@ export class RecruitmentController {
     return this.service.scheduleInterview(dto);
   }
 
-  /**
-   * REC-011: Interviewers receive automatic calendar invites
-   * Only HR staff, managers, and department leads can update interview status
-   */
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
@@ -278,12 +200,8 @@ export class RecruitmentController {
   ) {
     return this.service.updateInterviewStatus(id, dto);
   }
-
-  /**
-   * REC-011, REC-020: Submit interview feedback and assessment score
-   * Interviewers provide structured feedback and scoring
-   */
-  @UseGuards(RolesGuard)
+////////////////change////////////////
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
@@ -296,7 +214,8 @@ export class RecruitmentController {
     @Body() dto: { score: number; comments?: string },
     @Req() req: any,
   ) {
-    const interviewerId = req.user?.id || req.user?._id;
+    //////////////////////////change/////////////////////
+    const interviewerId = req.user?.userId || req.user?.id || req.user?._id;
     if (!interviewerId) {
       throw new BadRequestException('Interviewer ID not found in request');
     }
@@ -308,33 +227,18 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * Get all feedback for an interview
-   */
   @UseGuards(RolesGuard)
   @Get('interview/:id/feedback')
   getInterviewFeedback(@Param('id') interviewId: string) {
     return this.service.getInterviewFeedback(interviewId);
   }
 
-  /**
-   * Get average score for an interview
-   */
   @UseGuards(RolesGuard)
   @Get('interview/:id/score')
   getInterviewAverageScore(@Param('id') interviewId: string) {
     return this.service.getInterviewAverageScore(interviewId);
   }
 
-  // ------------------------------------------
-  // OFFERS (REC-014, REC-018)
-  // ------------------------------------------
-
-  /**
-   * REC-014: HR Manager manages job offers and approvals
-   * REC-018: HR Employee generates and sends electronically signed offer letters
-   * Only HR managers can create offers
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('offer')
@@ -342,10 +246,6 @@ export class RecruitmentController {
     return this.service.createOffer(dto);
   }
 
-  /**
-   * REC-018: Candidates accept/reject offers
-   * Only candidates can respond to their offers
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
   @Patch('offer/:id/respond')
@@ -353,10 +253,6 @@ export class RecruitmentController {
     return this.service.respondToOffer(id, dto);
   }
 
-  /**
-   * REC-014: HR Manager finalizes offers
-   * Only HR managers and admins can finalize
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('offer/:id/finalize')
@@ -364,12 +260,61 @@ export class RecruitmentController {
     return this.service.finalizeOffer(id, dto);
   }
 
-  // ============= EMPLOYEE CREATION FROM CONTRACT =============
-  /**
-   * POST /recruitment/offer/:id/create-employee
-   * Create employee profile from accepted offer and signed contract
-   * HR Manager access signed contract details to create employee profile
-   */
+  // changed - modified to accept either file upload OR manual JSON body for testing
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.JOB_CANDIDATE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Post('offer/:id/upload-contract')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async uploadContractDocument(
+    @Param('id') offerId: string,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    // Parse body - handles both form-data and JSON
+    const documentType = body?.documentType || DocumentType.CONTRACT;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
+    return this.service.uploadContractDocument(
+      offerId,
+      file,
+      documentType,
+      manualDocumentData,
+    );
+  }
+
+  // changed - modified to accept either file upload OR manual entry for testing
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.JOB_CANDIDATE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Post('offer/:id/upload-form')
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async uploadCandidateForm(
+    @Param('id') offerId: string,
+    @UploadedFile() file: any,
+    @Body() body: any,
+  ) {
+    // Parse body - handles both form-data and manual entry
+    const documentType = body?.documentType || DocumentType.ID;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
+    return this.service.uploadCandidateForm(offerId, file, documentType, manualDocumentData);
+  }
+
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('offer/:id/create-employee')
@@ -380,24 +325,20 @@ export class RecruitmentController {
     return this.service.createEmployeeFromContract(offerId, dto);
   }
 
-  // ============= ONBOARDING ENDPOINTS =============
-
-  /**
-   * REC-029: Trigger pre-boarding tasks after offer acceptance
-   * ONB-001: Create onboarding checklist
-   * Only HR staff can create onboarding
-   */
+  // changed - pass contractId from DTO to service
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding')
   async createOnboarding(@Body() createOnboardingDto: CreateOnboardingDto) {
-    return this.service.createOnboarding(createOnboardingDto);
+    return this.service.createOnboarding(
+      createOnboardingDto,
+      undefined, // contractSigningDate
+      undefined, // startDate
+      undefined, // workEmail
+      createOnboardingDto.contractId, // contractId from DTO
+    );
   }
 
-  /**
-   * Get all onboarding records (HR Manager view)
-   * Only HR staff and managers can view all onboarding
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Get('onboarding')
@@ -405,10 +346,6 @@ export class RecruitmentController {
     return this.service.getAllOnboardings();
   }
 
-  /**
-   * Get onboarding statistics
-   * Only HR staff and managers can view stats
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Get('onboarding/stats')
@@ -416,30 +353,18 @@ export class RecruitmentController {
     return this.service.getOnboardingStats();
   }
 
-  /**
-   * Get onboarding by ID
-   * HR staff can view any; employees can view their own
-   */
   @UseGuards(RolesGuard)
   @Get('onboarding/:id')
   async getOnboardingById(@Param('id') id: string) {
     return this.service.getOnboardingById(id);
   }
 
-  /**
-   * Get onboarding by employee ID (ONB-004)
-   * Employees can view their own; HR staff can view any
-   */
   @UseGuards(RolesGuard)
   @Get('onboarding/employee/:employeeId')
   async getOnboardingByEmployeeId(@Param('employeeId') employeeId: string) {
     return this.service.getOnboardingByEmployeeId(employeeId);
   }
 
-  /**
-   * Update entire onboarding checklist
-   * Only HR staff can update
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Put('onboarding/:id')
@@ -450,10 +375,6 @@ export class RecruitmentController {
     return this.service.updateOnboarding(id, updateOnboardingDto);
   }
 
-  /**
-   * Update a specific task in onboarding
-   * Only HR staff can update tasks
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Patch('onboarding/:id/task/:taskIndex')
@@ -469,10 +390,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * Add a new task to onboarding
-   * Only HR staff can add tasks
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task')
@@ -480,10 +397,6 @@ export class RecruitmentController {
     return this.service.addTaskToOnboarding(id, taskDto);
   }
 
-  /**
-   * Remove a task from onboarding
-   * Only HR staff can remove tasks
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Delete('onboarding/:id/task/:taskIndex')
@@ -495,10 +408,6 @@ export class RecruitmentController {
     return this.service.removeTaskFromOnboarding(id, parseInt(taskIndex, 10));
   }
 
-  /**
-   * Delete onboarding checklist
-   * Only HR managers and admins can delete
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Delete('onboarding/:id')
@@ -506,12 +415,8 @@ export class RecruitmentController {
   async deleteOnboarding(@Param('id') id: string) {
     return this.service.deleteOnboarding(id);
   }
-  // ============= DOCUMENT UPLOAD ENDPOINTS (ONB-007) =============
 
-  /**
-   * POST /recruitment/onboarding/:id/task/:taskIndex/upload
-   * Upload document for specific onboarding task
-   */
+  // changed - modified to accept either file upload OR manual entry for testing
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task/:taskIndex/upload')
@@ -520,20 +425,29 @@ export class RecruitmentController {
     @Param('id') onboardingId: string,
     @Param('taskIndex') taskIndex: string,
     @UploadedFile() file: any,
-    @Body('documentType') documentType: DocumentType,
+    @Body() body: any,
   ) {
+    // Parse body - handles both form-data and manual entry
+    const documentType = body?.documentType || DocumentType.ID;
+    const nationalId = body?.nationalId;
+    const documentDescription = body?.documentDescription;
+    const manualEntry = body?.manualEntry === true || body?.manualEntry === 'true';
+
+    // If manual entry flag is set and no file, use manual data
+    const manualDocumentData = manualEntry && !file ? {
+      nationalId,
+      documentDescription,
+    } : undefined;
+
     return this.service.uploadTaskDocument(
       onboardingId,
       parseInt(taskIndex, 10),
       file,
       documentType,
+      manualDocumentData,
     );
   }
 
-  /**
-   * GET /recruitment/document/:documentId/download
-   * Download document by ID
-   */
   @UseGuards(RolesGuard)
   @Get('document/:documentId/download')
   async downloadDocument(
@@ -543,10 +457,6 @@ export class RecruitmentController {
     return this.service.downloadDocument(documentId, res);
   }
 
-  /**
-   * GET /recruitment/onboarding/:id/task/:taskIndex/document
-   * Get document metadata for specific task
-   */
   @UseGuards(RolesGuard)
   @Get('onboarding/:id/task/:taskIndex/document')
   async getTaskDocument(
@@ -556,10 +466,6 @@ export class RecruitmentController {
     return this.service.getTaskDocument(onboardingId, parseInt(taskIndex, 10));
   }
 
-  /**
-   * DELETE /recruitment/document/:documentId
-   * Delete document (cleanup)
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Delete('document/:documentId')
@@ -568,15 +474,6 @@ export class RecruitmentController {
     return this.service.deleteDocument(documentId);
   }
 
-  // ------------------------------------------
-  // ONBOARDING ENHANCEMENTS
-  // ------------------------------------------
-
-  /**
-   * ONB-005: Send reminders for overdue or upcoming tasks
-   * BR: Reminders required
-   * This endpoint can be called by a scheduled job/cron
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/send-reminders')
@@ -585,10 +482,6 @@ export class RecruitmentController {
     return { message: 'Reminders sent successfully' };
   }
 
-  /**
-   * ONB-009: Provision system access (SSO/email/tools)
-   * BR: IT access automated
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/provision-access/:taskIndex')
@@ -602,10 +495,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * ONB-012: Reserve and track equipment, desk, and access cards
-   * BR: All resources tracked
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/reserve-equipment')
@@ -620,10 +509,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * ONB-013: Schedule automatic account provisioning and revocation
-   * BR: Provisioning and security must be consistent
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/schedule-access')
@@ -640,10 +525,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * ONB-018: Automatically handle payroll initiation
-   * BR: Payroll trigger automatic (REQ-PY-23)
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/trigger-payroll')
@@ -659,10 +540,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * ONB-019: Automatically process signing bonuses
-   * BR: Bonuses treated as distinct payroll components (REQ-PY-27)
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/process-bonus')
@@ -678,10 +555,6 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * Cancel/terminate onboarding in case of no-show
-   * BR: Allow onboarding cancellation/termination
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:employeeId/cancel')
@@ -692,14 +565,6 @@ export class RecruitmentController {
     return this.service.cancelOnboarding(employeeId, dto.reason);
   }
 
-  // ------------------------------------------
-  // REFERRALS (REC-030)
-  // ------------------------------------------
-
-  /**
-   * REC-030: Tag candidate as referral
-   * HR Employee can tag candidates as referrals to give them higher priority
-   */
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('candidate/:candidateId/referral')
@@ -708,7 +573,6 @@ export class RecruitmentController {
     @Body() dto: { referringEmployeeId: string; role?: string; level?: string },
     @Req() req: any,
   ) {
-    // Use referringEmployeeId from body, or fallback to current user
     const referringEmployeeId =
       dto.referringEmployeeId || req.user?.id || req.user?._id;
     if (!referringEmployeeId) {
@@ -722,23 +586,12 @@ export class RecruitmentController {
     );
   }
 
-  /**
-   * Get all referrals for a candidate
-   */
   @UseGuards(RolesGuard)
   @Get('candidate/:candidateId/referrals')
   getCandidateReferrals(@Param('candidateId') candidateId: string) {
     return this.service.getCandidateReferrals(candidateId);
   }
 
-  // ------------------------------------------
-  // CANDIDATE CONSENT (REC-028)
-  // ------------------------------------------
-
-  /**
-   * REC-028: Record candidate consent for data processing
-   * Candidates give consent for personal-data processing and background checks
-   */
   @UseGuards(RolesGuard)
   @Post('candidate/:candidateId/consent')
   recordCandidateConsent(
@@ -753,19 +606,50 @@ export class RecruitmentController {
       dto.notes,
     );
   }
+//--------------------------OFFBOARDING--------------------------------------------------
 
-  @UseGuards(
-    // JwtAuthGuard,   // uncomment when you plug the real auth guard
-    RolesGuard,
-  )
+  // ============================================================================
+  // NEW CHANGES: RESIGNATION ENDPOINT - Any employee type can resign themselves
+  // Implements OFF-018: Employee can request resignation with reasoning
+  // ============================================================================
+  /**
+   * POST /recruitment/offboarding/resign
+   * Allows ANY authenticated employee (HR Manager, Admin, Department Employee, etc.)
+   * to submit their own resignation. No role restrictions.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('offboarding/resign')
+  submitResignation(
+    @Body() dto: SubmitResignationDto,
+    @Req() req: any,
+  ) {
+    return this.service.submitResignation(dto, req.user);
+  }
 
-  // ============================= OFFBOARDING =============================
+  // ============================================================================
+  // NEW CHANGES: TERMINATE ENDPOINT - Only HR Manager can terminate employees
+  // Implements OFF-001: HR Manager initiates termination based on performance
+  // ============================================================================
+  /**
+   * POST /recruitment/offboarding/terminate
+   * Allows HR Manager to terminate an employee based on poor performance.
+   * Requires performance score < 2.5.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.HR_MANAGER)
+  @Post('offboarding/terminate')
+  terminateEmployee(
+    @Body() dto: TerminateEmployeeDto,
+    @Req() req: any,
+  ) {
+    return this.service.terminateEmployeeByHR(dto, req.user);
+  }
 
-  // 1) Termination / Resignation
-  //    - Employee can send their own resignation.
-  //    - HR Manager can initiate termination.
-  // No @Roles here -> any authenticated user can call,
-  // then the service will branch based on user.role + initiator
+  // ============================================================================
+  // LEGACY: Original termination endpoint (kept for backwards compatibility)
+  // ============================================================================
+  // changed - added JwtAuthGuard to parse JWT token
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/termination')
   createTerminationRequest(
     @Body() dto: CreateTerminationRequestDto,
@@ -774,20 +658,27 @@ export class RecruitmentController {
     return this.service.createTerminationRequest(dto, req.user);
   }
 
-  // Employee-facing: get my resignation/termination requests
-  @UseGuards(RolesGuard)
+  // ============================================================================
+  // NEW CHANGES - FIXED: Any employee type can track their resignation
+  // Implements OFF-019: Employee can track resignation request status
+  // Removed @Roles(SystemRole.DEPARTMENT_EMPLOYEE) restriction
+  // ============================================================================
+  @UseGuards(JwtAuthGuard)
   @Get('offboarding/my-resignation')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
   getMyResignationRequests(@Req() req: any) {
     return this.service.getMyResignationRequests(req.user);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/termination/:id')
-  @Roles(SystemRole.HR_MANAGER) // only HR can view details
+  @Roles(SystemRole.HR_MANAGER)
   getTerminationRequest(@Param('id') id: string) {
     return this.service.getTerminationRequestById(id);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/termination/:id/status')
   @Roles(SystemRole.HR_MANAGER)
   updateTerminationStatus(
@@ -798,6 +689,8 @@ export class RecruitmentController {
     return this.service.updateTerminationStatus(id, dto, req.user);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/termination/:id')
   @Roles(SystemRole.HR_MANAGER)
   updateTerminationDetails(
@@ -808,8 +701,8 @@ export class RecruitmentController {
     return this.service.updateTerminationDetails(id, dto, req.user);
   }
 
-  // 2) Clearance checklist
-
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/clearance')
   @Roles(SystemRole.HR_MANAGER)
   createClearanceChecklist(
@@ -819,22 +712,25 @@ export class RecruitmentController {
     return this.service.createClearanceChecklist(dto, req.user);
   }
 
-  // Manual trigger for clearance reminders (HR Manager / System Admin)
-  @UseGuards(RolesGuard)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Post('offboarding/clearance/send-reminders')
   @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   sendClearanceReminders(@Body() opts: { force?: boolean } = { force: false }) {
     return this.service.sendClearanceReminders(opts);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/clearance/employee/:employeeId')
   @Roles(SystemRole.HR_MANAGER)
   getChecklistByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.getChecklistByEmployee(employeeId);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/clearance/:id/item')
-  // Allow department-specific roles to call endpoint (service enforces detailed permission checks)
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
@@ -852,6 +748,8 @@ export class RecruitmentController {
     return this.service.updateClearanceItemStatus(checklistId, dto, req.user);
   }
 
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/clearance/:id/complete')
   @Roles(SystemRole.HR_MANAGER)
   markChecklistCompleted(@Param('id') checklistId: string, @Req() req: any) {
@@ -859,6 +757,8 @@ export class RecruitmentController {
   }
 
   // 3) Appraisal view for offboarding (latest appraisal of employee)
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/appraisal/:employeeId')
   @Roles(SystemRole.HR_MANAGER)
   getLatestAppraisal(@Param('employeeId') employeeId: string) {
@@ -866,9 +766,25 @@ export class RecruitmentController {
   }
 
   // 4) SYSTEM ACCESS REVOCATION
+  // changed - added JwtAuthGuard
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Patch('offboarding/system-revoke')
   @Roles(SystemRole.SYSTEM_ADMIN)
   revokeAccess(@Body() dto: RevokeSystemAccessDto, @Req() req: any) {
     return this.service.revokeSystemAccess(dto, req.user);
+  }
+
+  // ============================================================================
+  // NEW CHANGES FOR OFFBOARDING: Manual Final Settlement Trigger (OFF-013)
+  // Triggers benefits termination and final pay calculation
+  // ============================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post('offboarding/final-settlement')
+  @Roles(SystemRole.HR_MANAGER)
+  triggerFinalSettlement(
+    @Body() dto: TriggerFinalSettlementDto,
+    @Req() req: any,
+  ) {
+    return this.service.triggerFinalSettlement(dto.employeeId, dto.terminationId);
   }
 }
