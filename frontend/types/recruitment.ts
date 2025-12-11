@@ -57,12 +57,9 @@ export interface JobTemplate {
   _id: string;
   title: string;
   department: string;
-  description: string;
-  requirements: string[];
-  responsibilities: string[];
-  qualifications: string[];
-  experienceLevel: string;
-  employmentType: string;
+  description?: string;
+  qualifications?: string[];
+  skills?: string[];
   createdAt?: string;
   updatedAt?: string;
 }

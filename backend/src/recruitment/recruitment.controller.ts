@@ -268,6 +268,14 @@ export class RecruitmentController {
     return this.service.createOffer(dto);
   }
 
+  // More specific route must come before parameterized routes
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('offer/application/:applicationId')
+  getOfferByApplication(@Param('applicationId') applicationId: string) {
+    return this.service.getOfferByApplicationId(applicationId);
+  }
+
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE)
   @Patch('offer/:id/respond')

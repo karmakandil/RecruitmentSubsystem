@@ -58,18 +58,34 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    const errorDetails = {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      message: error.message,
+      responseData: error.response?.data,
+      requestData: error.config?.data,
+      requestUrl: error.config?.url,
+      requestMethod: error.config?.method,
+    };
+    
     console.error(
       `❌ API Error [${error.config?.method?.toUpperCase()} ${
         error.config?.url
       }]:`,
-      {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message,
-        responseData: error.response?.data,
-        headers: error.response?.headers,
-      }
+      errorDetails
     );
+    
+    // Log the full error object for debugging
+    if (!error.response) {
+      console.error('⚠️ No response received - possible network error:', error);
+    } else {
+      console.error('📋 Full error response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers,
+      });
+    }
 
     // Handle errors
     if (error.response?.status === 401) {

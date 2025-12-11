@@ -186,6 +186,11 @@ export const recruitmentApi = {
   },
 
   // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  getOfferByApplicationId: async (applicationId: string): Promise<Offer> => {
+    return await api.get(`/recruitment/offer/application/${applicationId}`);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
   createEmployeeFromContract: async (
     offerId: string,
     data: CreateEmployeeFromContractDto

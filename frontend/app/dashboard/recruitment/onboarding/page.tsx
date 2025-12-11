@@ -195,7 +195,6 @@ export default function OnboardingPage() {
                     <CardContent>
                       <div className="space-y-3">
                         {task.deadline && (
-                          {/* CHANGED - Added text-gray-900 for visibility */}
                           <div className="text-sm text-gray-900">
                             <span className="text-gray-500">Deadline:</span>
                             <span className="ml-2 text-gray-900">{formatDate(task.deadline)}</span>
