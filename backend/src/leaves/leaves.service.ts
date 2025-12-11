@@ -960,6 +960,10 @@ export class LeavesService {
   // Helper: Calculate remaining balance consistently
   // Formula: remaining = accruedRounded + carryForward - taken - pending
   private calculateRemaining(entitlement: LeaveEntitlementDocument): number {
+    // Business Rule: Employee balance must be accrued monthly/quarterly/yearly
+    // Employees earn leave over time, not upfront
+    // Remaining = What they've accrued (accruedRounded) + carryForward - taken - pending
+    // yearlyEntitlement is just the target/total they should accrue to by year-end
     return (
       entitlement.accruedRounded +
       entitlement.carryForward -
@@ -1033,31 +1037,32 @@ export class LeavesService {
             .findOne({ leaveTypeId: entitlement.leaveTypeId })
             .exec();
 
-          // Start with yearly entitlement, subtract taken and pending
-          let newRemaining =
-            entitlement.yearlyEntitlement -
-            entitlement.taken -
-            entitlement.pending;
-
-          // Add carry forward if allowed
+          // Calculate carry forward amount before resetting
+          let carryForwardAmount = 0;
           if (
             leavePolicy?.carryForwardAllowed &&
             entitlement.carryForward > 0
           ) {
-            newRemaining += entitlement.carryForward;
+            carryForwardAmount = entitlement.carryForward;
           }
 
           // Calculate next reset date (one year from current reset date)
           const nextReset = new Date(resetDate);
           nextReset.setFullYear(nextReset.getFullYear() + 1);
 
-          // Reset all accrual-related fields and carry-forward
+          // Reset all accrual-related fields
+          // Business Rule: Employees accrue leave monthly/quarterly/yearly, not upfront
+          // After reset: accruedActual = 0, accruedRounded = 0 (they start fresh)
+          // remaining = carryForward (if allowed) + 0 (no accruals yet) - 0 (taken) - 0 (pending)
+          // They will accrue throughout the year via monthly/quarterly/yearly accruals
+          const newRemaining = carryForwardAmount;
+
           await this.updateLeaveEntitlement(entitlement._id.toString(), {
             accruedActual: 0,
             accruedRounded: 0,
-            carryForward: 0, // Reset carry-forward after using it
-            remaining: newRemaining,
-            taken: 0, // Reset taken (or keep for history - adjust based on requirements)
+            carryForward: carryForwardAmount, // Keep carry-forward if allowed, otherwise 0
+            remaining: newRemaining, // Start with carry-forward only, accruals will add to this
+            taken: 0, // Reset taken
             pending: 0, // Reset pending
             lastAccrualDate: new Date(),
             nextResetDate: nextReset,
