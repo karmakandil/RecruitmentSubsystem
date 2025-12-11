@@ -26,6 +26,11 @@ export default function ApplicationsPage() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<ApplicationStatus>(ApplicationStatus.SUBMITTED);
 
+  // CHANGED - Only HR Manager can update status, HR Employee can only track/view
+  const canUpdateStatus = user?.roles?.some(
+    (role) => String(role).toLowerCase() === "hr manager" || String(role).toLowerCase() === "system admin"
+  );
+
   useEffect(() => {
     loadData();
   }, []);
@@ -156,13 +161,20 @@ export default function ApplicationsPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold">
+                        {/* CHANGED - Added text-gray-900 for visibility */}
+                        <h3 className="text-lg font-semibold text-gray-900">
                           {application.requisition?.template?.title || "Job Opening"}
                         </h3>
                         <StatusBadge status={application.status} type="application" />
                       </div>
+                      {/* CHANGED - Handle candidateId as populated object or string */}
                       <p className="text-sm text-gray-600 mb-2">
-                        Candidate: {application.candidate?.fullName || application.candidateId}
+                        Candidate: {
+                          application.candidate?.fullName || 
+                          (typeof application.candidateId === 'object' 
+                            ? (application.candidateId as any)?.fullName || (application.candidateId as any)?.firstName || 'Unknown'
+                            : application.candidateId || 'Unknown')
+                        }
                       </p>
                       <p className="text-sm text-gray-600 mb-2">
                         Department: {application.requisition?.template?.department || "N/A"}
@@ -190,15 +202,18 @@ export default function ApplicationsPage() {
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2 ml-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenStatusUpdate(application)}
-                      >
-                        Update Status
-                      </Button>
-                    </div>
+                    {/* CHANGED - Only HR Manager can update status */}
+                    {canUpdateStatus && (
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenStatusUpdate(application)}
+                        >
+                          Update Status
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

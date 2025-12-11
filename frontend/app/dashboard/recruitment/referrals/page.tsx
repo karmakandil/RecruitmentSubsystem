@@ -44,7 +44,13 @@ export default function EmployeeReferralsPage() {
       
       for (const app of apps) {
         try {
-          const candidateReferrals = await recruitmentApi.getCandidateReferrals(app.candidateId);
+          // CHANGED - Handle candidateId as populated object or string
+          const candidateId = typeof app.candidateId === 'object' 
+            ? (app.candidateId as any)?._id 
+            : app.candidateId;
+          if (!candidateId) continue;
+          
+          const candidateReferrals = await recruitmentApi.getCandidateReferrals(candidateId);
           if (candidateReferrals && candidateReferrals.length > 0) {
             // Check if current user is the referring employee (for employees) or show all (for HR)
             const userReferrals = isHR
@@ -132,23 +138,34 @@ export default function EmployeeReferralsPage() {
                 <p className="text-gray-500">No applications found.</p>
               ) : (
                 <div className="space-y-2">
-                  {applications.slice(0, 10).map((app) => (
-                    <div key={app._id} className="flex items-center justify-between p-2 border rounded">
-                      <div>
-                        <span className="font-medium">{app.candidate?.fullName || app.candidateId}</span>
-                        <span className="text-sm text-gray-500 ml-2">
-                          - {app.requisition?.template?.title || "Application"}
-                        </span>
+                  {applications.slice(0, 10).map((app) => {
+                    // CHANGED - Handle candidateId as populated object or string
+                    const candidateId = typeof app.candidateId === 'object' 
+                      ? (app.candidateId as any)?._id 
+                      : app.candidateId;
+                    const candidateName = app.candidate?.fullName || 
+                      (typeof app.candidateId === 'object' ? (app.candidateId as any)?.fullName : null) || 
+                      'Unknown';
+                    
+                    return (
+                      <div key={app._id} className="flex items-center justify-between p-2 border rounded">
+                        <div>
+                          {/* CHANGED - Added text-gray-900 for visibility */}
+                          <span className="font-medium text-gray-900">{candidateName}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            - {app.requisition?.template?.title || "Application"}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenTag(candidateId)}
+                        >
+                          Tag as Referral
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenTag(app.candidateId)}
-                      >
-                        Tag as Referral
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -201,8 +218,9 @@ export default function EmployeeReferralsPage() {
                       </span>
                     </div>
                   </div>
+                  {/* CHANGED - Added text-gray-900 for visibility */}
                   {item.referral.role && (
-                    <div className="text-sm">
+                    <div className="text-sm text-gray-900">
                       <span className="text-gray-500">Referred for:</span>
                       <span className="ml-2 text-gray-900">{item.referral.role}</span>
                     </div>

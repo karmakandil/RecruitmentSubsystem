@@ -88,12 +88,28 @@ api.interceptors.response.use(
       console.log("User role may not have access to this endpoint");
     }
 
-    // Extract error message
-    const errorMessage =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      `HTTP ${error.response?.status || "Unknown"} error`;
+    // CHANGED - Extract error message with better handling for validation errors
+    let errorMessage = "An error occurred";
+    
+    const responseData = error.response?.data;
+    if (responseData) {
+      // Handle NestJS validation errors (array of messages)
+      if (Array.isArray(responseData.message)) {
+        errorMessage = responseData.message.join(", ");
+      } else if (responseData.message) {
+        errorMessage = responseData.message;
+      } else if (responseData.error) {
+        errorMessage = responseData.error;
+      } else if (typeof responseData === 'string') {
+        errorMessage = responseData;
+      } else {
+        errorMessage = JSON.stringify(responseData);
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    } else {
+      errorMessage = `HTTP ${error.response?.status || "Unknown"} error`;
+    }
 
     return Promise.reject(new Error(errorMessage));
   }

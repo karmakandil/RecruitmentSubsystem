@@ -49,10 +49,9 @@ export function hasRoleAccess(
   if (!userRoles || !Array.isArray(userRoles)) return false;
 
   return userRoles.some((userRole) => {
-    const userRoleStr =
-      typeof userRole === "string" ? userRole : userRole.toString();
-    const requiredRoleStr =
-      typeof requiredRole === "string" ? requiredRole : requiredRole.toString();
+    // CHANGED - Use String() to avoid TypeScript 'never' error
+    const userRoleStr = String(userRole);
+    const requiredRoleStr = String(requiredRole);
 
     // Case-insensitive comparison
     return userRoleStr.toLowerCase() === requiredRoleStr.toLowerCase();
@@ -127,16 +126,19 @@ export function isAdmin(user: User | null): boolean {
   );
 }
 
+// CHANGED - Case-insensitive role matching for HR staff
 export function isHRStaff(user: User | null): boolean {
   if (!user) return false;
 
-  return user.roles.some((role) =>
-    [
-      SystemRole.HR_MANAGER,
-      SystemRole.HR_EMPLOYEE,
-      SystemRole.RECRUITER,
-      SystemRole.HR_ADMIN,
-    ].includes(role as SystemRole)
+  const hrRoles = [
+    "hr manager",
+    "hr employee", 
+    "recruiter",
+    "hr admin",
+  ];
+
+  return user.roles.some((role) => 
+    hrRoles.includes(String(role).toLowerCase())
   );
 }
 

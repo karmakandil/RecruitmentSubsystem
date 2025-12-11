@@ -231,11 +231,12 @@ export default function RecruitmentPage() {
         {isHR && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {isHRManager && (
+              {/* CHANGED - REC-023: HR Employee can also preview and publish jobs */}
+              {(isHRManager || isHREmployee) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Job Requisitions</CardTitle>
-                    <CardDescription>Create and manage job postings</CardDescription>
+                    <CardDescription>Preview and publish job postings</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Link href="/dashboard/recruitment/job-requisitions">
@@ -245,17 +246,20 @@ export default function RecruitmentPage() {
                 </Card>
               )}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Applications</CardTitle>
-                  <CardDescription>Review and manage candidate applications</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Link href="/dashboard/recruitment/applications">
-                    <Button className="w-full">View Applications</Button>
-                  </Link>
-                </CardContent>
-              </Card>
+              {/* CHANGED - REC-008: HR Employee can track candidates (Recruiter excluded per user story) */}
+              {!isRecruiter && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Candidate Tracking</CardTitle>
+                    <CardDescription>Track candidates through each hiring stage</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/applications">
+                      <Button className="w-full">Track Candidates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader>
@@ -297,19 +301,7 @@ export default function RecruitmentPage() {
                 </Card>
               )}
 
-              {(isHREmployee || isHRManager) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Referrals</CardTitle>
-                    <CardDescription>Tag and track candidate referrals</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Link href="/dashboard/recruitment/referrals">
-                      <Button className="w-full">Manage Referrals</Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Referrals button available in Employee section as "My Referrals" */}
             </div>
 
             {isHRManager && (

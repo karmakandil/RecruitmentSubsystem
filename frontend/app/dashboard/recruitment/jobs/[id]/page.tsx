@@ -85,9 +85,14 @@ export default function JobDetailPage() {
           onClose={hideToast}
         />
 
-        <div className="mb-6">
-          <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline mb-4 inline-block">
-            ← Back to Recruitment
+        <div className="mb-6 flex gap-4">
+          {/* CHANGED - Added back button to job requisitions */}
+          <Link href="/dashboard/recruitment/job-requisitions" className="text-blue-600 hover:underline inline-block">
+            ← Back to Job Requisitions
+          </Link>
+          <span className="text-gray-300">|</span>
+          <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline inline-block">
+            Back to Recruitment
           </Link>
         </div>
 

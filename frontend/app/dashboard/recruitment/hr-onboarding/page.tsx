@@ -219,7 +219,8 @@ export default function HROnboardingPage() {
                         >
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium">{task.name}</span>
+                              {/* CHANGED - Added text-gray-900 for visibility */}
+                              <span className="font-medium text-gray-900">{task.name}</span>
                               <StatusBadge status={task.status} type="onboarding" />
                             </div>
                             <p className="text-sm text-gray-500 mt-1">
