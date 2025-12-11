@@ -3223,6 +3223,97 @@ Due: ${context.dueDate}`
     }
   }
 
+  // CHANGED - Added CV upload method for candidates (REC-003)
+  /**
+   * REC-003: Candidate uploads CV/resume during application
+   * As a Candidate, I want to upload my CV and apply for positions
+   */
+  async uploadCandidateCV(
+    candidateId: string,
+    file: any,
+    manualDocumentData?: { resumeUrl?: string },
+  ): Promise<any> {
+    try {
+      // 1. Validate candidateId
+      if (!Types.ObjectId.isValid(candidateId)) {
+        throw new BadRequestException('Invalid candidate ID format');
+      }
+
+      // 2. Check if file or manual data provided
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && manualDocumentData.resumeUrl;
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException(
+          'Either file upload or resume URL is required',
+        );
+      }
+
+      // 3. Validate candidate exists
+      const candidate = await this.candidateModel.findById(candidateId);
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      let resumeUrl: string;
+
+      if (hasFile) {
+        // File upload flow
+        // Validate file type
+        const allowedTypes = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Only PDF and DOC/DOCX files are allowed for CV',
+          );
+        }
+
+        // Store file path as resume URL
+        resumeUrl = file.path;
+      } else {
+        // Manual URL entry flow
+        resumeUrl = manualDocumentData!.resumeUrl!;
+      }
+
+      // 4. Update candidate with resume URL
+      const updated = await this.candidateModel.findByIdAndUpdate(
+        candidateId,
+        { resumeUrl },
+        { new: true },
+      );
+
+      // 5. Create document record for tracking
+      const document = new this.documentModel({
+        ownerId: candidate._id,
+        type: DocumentType.CV,
+        filePath: resumeUrl,
+        uploadedAt: new Date(),
+      });
+      await document.save();
+
+      return {
+        message: 'CV uploaded successfully',
+        candidateId: updated?._id,
+        resumeUrl,
+        documentId: document._id,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to upload CV: ' + this.getErrorMessage(error),
+      );
+    }
+  }
+
   // ============= INTERVIEW FEEDBACK & ASSESSMENT (REC-011, REC-020) =============
 
   /**
