@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { leavesApi } from "@/lib/api/leaves/leaves";
+import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
 import { LeaveEntitlement, CreateLeaveEntitlementDto, UpdateLeaveEntitlementDto } from "@/types/leaves";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
@@ -20,7 +21,9 @@ export default function LeaveEntitlementsPage() {
 
   const [entitlement, setEntitlement] = useState<LeaveEntitlement | null>(null);
   const [leaveTypes, setLeaveTypes] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Array<{ _id: string; employeeId: string; firstName: string; lastName: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [searchEmployeeId, setSearchEmployeeId] = useState("");
   const [searchLeaveTypeId, setSearchLeaveTypeId] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,9 +48,29 @@ export default function LeaveEntitlementsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Load leave types for dropdowns
+    // Load leave types and employees for dropdowns
     loadLeaveTypes();
+    loadEmployees();
   }, []);
+
+  // NEW: Load employees for dropdown
+  const loadEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+      const employeesList = Array.isArray(response.data) ? response.data : [];
+      setEmployees(employeesList.map((emp: any) => ({
+        _id: emp._id,
+        employeeId: emp.employeeId || emp._id,
+        firstName: emp.firstName || '',
+        lastName: emp.lastName || '',
+      })));
+    } catch (error: any) {
+      console.error("Failed to load employees:", error);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
 
   const loadLeaveTypes = async () => {
     try {
@@ -177,11 +200,19 @@ export default function LeaveEntitlementsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <Select
               label="Employee ID *"
               value={searchEmployeeId}
               onChange={(e) => setSearchEmployeeId(e.target.value)}
-              placeholder="Enter employee ID"
+              options={
+                employees.length > 0
+                  ? employees.map((emp) => ({
+                      value: emp.employeeId || emp._id,
+                      label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                    }))
+                  : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+              }
+              placeholder="Select employee"
             />
             <Select
               label="Leave Type *"
@@ -310,14 +341,22 @@ export default function LeaveEntitlementsPage() {
       >
         <form id="entitlement-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <Select
               label="Employee ID *"
               value={formData.employeeId}
               onChange={(e) =>
                 setFormData({ ...formData, employeeId: e.target.value })
               }
               error={errors.employeeId}
-              placeholder="Employee ID"
+              options={
+                employees.length > 0
+                  ? employees.map((emp) => ({
+                      value: emp.employeeId || emp._id,
+                      label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                    }))
+                  : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+              }
+              placeholder="Select employee"
             />
             <Select
               label="Leave Type *"
@@ -446,7 +485,7 @@ export default function LeaveEntitlementsPage() {
         }
       >
         <form onSubmit={handlePersonalizedSubmit} className="space-y-4">
-          <Input
+          <Select
             label="Employee ID *"
             value={personalizedData.employeeId}
             onChange={(e) =>
@@ -455,10 +494,18 @@ export default function LeaveEntitlementsPage() {
                 employeeId: e.target.value,
               })
             }
-            placeholder="Employee ID"
+            options={
+              employees.length > 0
+                ? employees.map((emp) => ({
+                    value: emp.employeeId || emp._id,
+                    label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                  }))
+                : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+            }
+            placeholder="Select employee"
           />
-          <Input
-            label="Leave Type ID *"
+          <Select
+            label="Leave Type *"
             value={personalizedData.leaveTypeId}
             onChange={(e) =>
               setPersonalizedData({
@@ -466,7 +513,12 @@ export default function LeaveEntitlementsPage() {
                 leaveTypeId: e.target.value,
               })
             }
-            placeholder="Leave Type ID"
+            options={
+              leaveTypes.length > 0
+                ? leaveTypes.map((t) => ({ value: t._id, label: t.name }))
+                : [{ value: "", label: "No leave types available" }]
+            }
+            placeholder="Select leave type"
           />
           <Input
             label="Personalized Entitlement *"

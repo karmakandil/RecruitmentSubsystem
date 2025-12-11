@@ -4,6 +4,8 @@ import { Model } from 'mongoose';
 import { populate } from 'dotenv';
 import { Types } from 'mongoose';
 import mongoose from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
 import { HolidayType } from '../time-management/models/enums';
 import { HydratedDocument } from 'mongoose';
 import { NotFoundException } from '@nestjs/common';
@@ -380,17 +382,23 @@ export class LeavesService {
       );
     }
 
-    //Fetch employee profile
-    // const employeeProfile = await this.EmployeeProfileModel.findById(employeeId).exec();
-    // if (!employeeProfile) {
-    //     throw new Error('Employee not found');
-    // }
+    // Fetch employee profile with position populated
+    const employeeProfile = await this.employeeProfileModel
+      .findById(employeeId)
+      .populate('primaryPositionId', 'code title')
+      .exec();
+    if (!employeeProfile) {
+      throw new NotFoundException('Employee not found');
+    }
 
     // Fetch leave type
     const leaveType = await this.leaveTypeModel.findById(leaveTypeId).exec();
     if (!leaveType) {
-      throw new Error('Leave type not found');
+      throw new NotFoundException('Leave type not found');
     }
+
+    // REQ-007: Check eligibility rules (BR 7)
+    await this.checkEligibility(employeeId, leaveTypeId, employeeProfile);
 
     // REQ-016: Validate medical certificate requirement for sick leave exceeding one day
     if (leaveType.code === 'SICK_LEAVE' && durationDays > 1) {
@@ -838,7 +846,15 @@ export class LeavesService {
   async getLeaveAdjustments(
     employeeId: string,
   ): Promise<LeaveAdjustmentDocument[]> {
-    return await this.leaveAdjustmentModel.find({ employeeId }).exec();
+    // FIXED: Convert employeeId string to ObjectId for proper database query
+    const employeeObjectId = this.toObjectId(employeeId) as Types.ObjectId;
+    return await this.leaveAdjustmentModel
+      .find({ employeeId: employeeObjectId })
+      .populate('employeeId', 'employeeId firstName lastName')
+      .populate('leaveTypeId', 'name code')
+      .populate('hrUserId', 'employeeId firstName lastName')
+      .sort({ createdAt: -1 }) // Most recent first
+      .exec();
   }
 
   async deleteLeaveAdjustment(id: string): Promise<LeaveAdjustmentDocument> {
@@ -1559,36 +1575,110 @@ export class LeavesService {
   }
 
   // Phase 2: REQ-027 - Process multiple leave requests at once
+  // ENHANCED: Properly handles approve, reject, and finalize based on request status
   async processMultipleLeaveRequests(
     leaveRequestIds: string[],
     hrUserId: string,
     approved: boolean,
   ): Promise<LeaveRequestDocument[]> {
     const results: LeaveRequestDocument[] = [];
+    const errors: Array<{ requestId: string; error: string }> = [];
 
     for (const leaveRequestId of leaveRequestIds) {
       try {
-        if (approved) {
-          const finalized = await this.finalizeLeaveRequest(
-            leaveRequestId,
-            hrUserId,
-          );
-          results.push(finalized);
-        } else {
-          const rejected = await this.hrOverrideDecision(
-            leaveRequestId,
-            hrUserId,
-            false,
-            'Bulk rejection',
-          );
-          results.push(rejected);
+        // ENHANCED: Fetch request to check its current status
+        const leaveRequest = await this.leaveRequestModel
+          .findById(leaveRequestId)
+          .exec();
+
+        if (!leaveRequest) {
+          errors.push({
+            requestId: leaveRequestId,
+            error: `Leave request with ID ${leaveRequestId} not found`,
+          });
+          continue;
         }
-      } catch (error) {
+
+        // ENHANCED: Handle based on current status and desired action
+        if (approved) {
+          // If request is PENDING -> approve it
+          if (leaveRequest.status === LeaveStatus.PENDING) {
+            const approveDto = {
+              leaveRequestId,
+              status: LeaveStatus.APPROVED,
+            };
+            const approvedRequest = await this.approveLeaveRequest(
+              approveDto,
+              hrUserId,
+              leaveRequestId,
+            );
+            results.push(approvedRequest);
+          }
+          // If request is APPROVED -> finalize it
+          else if (leaveRequest.status === LeaveStatus.APPROVED) {
+            const finalized = await this.finalizeLeaveRequest(
+              leaveRequestId,
+              hrUserId,
+            );
+            results.push(finalized);
+          } else {
+            errors.push({
+              requestId: leaveRequestId,
+              error: `Cannot approve/finalize request with status: ${leaveRequest.status}. Only PENDING or APPROVED requests can be processed.`,
+            });
+          }
+        } else {
+          // ENHANCED: Reject pending requests using normal rejection (not override)
+          if (leaveRequest.status === LeaveStatus.PENDING) {
+            const rejectDto = {
+              leaveRequestId,
+              status: LeaveStatus.REJECTED,
+            };
+            const rejected = await this.rejectLeaveRequest(
+              rejectDto,
+              hrUserId,
+              leaveRequestId,
+            );
+            results.push(rejected);
+          } else {
+            errors.push({
+              requestId: leaveRequestId,
+              error: `Cannot reject request with status: ${leaveRequest.status}. Only PENDING requests can be rejected.`,
+            });
+          }
+        }
+      } catch (error: any) {
+        // ENHANCED: Collect errors instead of silently continuing
+        const errorMessage =
+          error?.message ||
+          error?.response?.message ||
+          'Unknown error occurred';
+        errors.push({
+          requestId: leaveRequestId,
+          error: errorMessage,
+        });
         console.error(
           `Error processing leave request ${leaveRequestId}:`,
           error,
         );
       }
+    }
+
+    // ENHANCED: If all requests failed, throw error. Otherwise return results (partial success is acceptable)
+    if (errors.length > 0 && results.length === 0) {
+      const errorSummary = errors
+        .map((e) => `${e.requestId}: ${e.error}`)
+        .join('; ');
+      throw new BadRequestException(
+        `All ${errors.length} request(s) failed to process. Errors: ${errorSummary}`,
+      );
+    }
+
+    // ENHANCED: Log warnings for partial failures but still return successful results
+    if (errors.length > 0) {
+      console.warn(
+        `Bulk processing: ${results.length} succeeded, ${errors.length} failed. Failed IDs: ${errors.map((e) => e.requestId).join(', ')}`,
+      );
     }
 
     return results;
@@ -1672,8 +1762,8 @@ export class LeavesService {
       return requests.map((req) => ({
         _id: req._id,
         employeeId: req.employeeId,
-        leaveTypeId: req.leaveTypeId._id,
-        leaveTypeName: (req.leaveTypeId as any).name,
+        leaveTypeId: req.leaveTypeId ? (req.leaveTypeId as any)._id : req.leaveTypeId,
+        leaveTypeName: req.leaveTypeId ? (req.leaveTypeId as any).name : null,
         dates: req.dates,
         durationDays: req.durationDays,
         justification: req.justification,
@@ -2451,6 +2541,133 @@ export class LeavesService {
     return workingDays;
   }
 
+  // REQ-007, BR 7: Check eligibility rules for leave type based on tenure, position, and contract type
+  async checkEligibility(
+    employeeId: string,
+    leaveTypeId: string,
+    employeeProfile?: EmployeeProfileDocument,
+  ): Promise<void> {
+    // Fetch employee profile if not provided
+    let employee: EmployeeProfileDocument;
+    if (!employeeProfile) {
+      employee = await this.employeeProfileModel
+        .findById(employeeId)
+        .populate('primaryPositionId', 'code title')
+        .exec();
+      if (!employee) {
+        throw new NotFoundException(`Employee with ID ${employeeId} not found`);
+      }
+    } else {
+      employee = employeeProfile;
+    }
+
+    // Fetch leave policy for the leave type
+    const leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+      .exec();
+
+    // If no policy exists or no eligibility rules are set, allow the request
+    if (!leavePolicy || !leavePolicy.eligibility) {
+      return;
+    }
+
+    const eligibility = leavePolicy.eligibility;
+    const errors: string[] = [];
+
+    // Check minimum tenure requirement
+    if (eligibility.minTenureMonths !== undefined && eligibility.minTenureMonths !== null) {
+      const hireDate = new Date(employee.dateOfHire);
+      const today = new Date();
+      
+      // Calculate months of service
+      const yearsDiff = today.getFullYear() - hireDate.getFullYear();
+      const monthsDiff = today.getMonth() - hireDate.getMonth();
+      const totalMonths = yearsDiff * 12 + monthsDiff;
+      
+      // Adjust for days (if today's day is less than hire day, subtract a month)
+      if (today.getDate() < hireDate.getDate()) {
+        const adjustedMonths = totalMonths - 1;
+        if (adjustedMonths < eligibility.minTenureMonths) {
+          errors.push(
+            `Minimum tenure requirement not met. Required: ${eligibility.minTenureMonths} months, Current: ${adjustedMonths} months`,
+          );
+        }
+      } else {
+        if (totalMonths < eligibility.minTenureMonths) {
+          errors.push(
+            `Minimum tenure requirement not met. Required: ${eligibility.minTenureMonths} months, Current: ${totalMonths} months`,
+          );
+        }
+      }
+    }
+
+    // Check position eligibility
+    if (
+      eligibility.positionsAllowed &&
+      Array.isArray(eligibility.positionsAllowed) &&
+      eligibility.positionsAllowed.length > 0
+    ) {
+      const employeePosition = employee.primaryPositionId;
+      if (!employeePosition) {
+        errors.push('Employee does not have an assigned position');
+      } else {
+        // Handle both populated position object and ObjectId
+        let positionCode: string | null = null;
+        if (typeof employeePosition === 'object' && employeePosition !== null) {
+          positionCode = (employeePosition as any).code || null;
+        }
+
+        if (!positionCode) {
+          // If position is not populated, try to fetch it
+          const PositionModel = this.employeeProfileModel.db.model('Position');
+          const position = await PositionModel.findById(employee.primaryPositionId).exec();
+          if (position) {
+            positionCode = (position as any).code;
+          }
+        }
+
+        if (!positionCode) {
+          errors.push('Unable to determine employee position');
+        } else {
+          const isPositionAllowed = eligibility.positionsAllowed.includes(positionCode);
+          if (!isPositionAllowed) {
+            errors.push(
+              `Position '${positionCode}' is not eligible for this leave type. Allowed positions: ${eligibility.positionsAllowed.join(', ')}`,
+            );
+          }
+        }
+      }
+    }
+
+    // Check contract type eligibility
+    if (
+      eligibility.contractTypesAllowed &&
+      Array.isArray(eligibility.contractTypesAllowed) &&
+      eligibility.contractTypesAllowed.length > 0
+    ) {
+      const employeeContractType = employee.contractType;
+      if (!employeeContractType) {
+        errors.push('Employee does not have a contract type assigned');
+      } else {
+        const isContractTypeAllowed = eligibility.contractTypesAllowed.includes(
+          employeeContractType,
+        );
+        if (!isContractTypeAllowed) {
+          errors.push(
+            `Contract type '${employeeContractType}' is not eligible for this leave type. Allowed contract types: ${eligibility.contractTypesAllowed.join(', ')}`,
+          );
+        }
+      }
+    }
+
+    // Throw error if any eligibility checks failed
+    if (errors.length > 0) {
+      throw new BadRequestException(
+        `Eligibility check failed:\n${errors.join('\n')}`,
+      );
+    }
+  }
+
   // Business Rule: Track number of times employee has taken maternity leave
   async getMaternityLeaveCount(employeeId: string): Promise<number> {
     const maternityLeaveType = await this.leaveTypeModel
@@ -2557,5 +2774,124 @@ export class LeavesService {
     await this.updateLeaveEntitlement(entitlement._id.toString(), {
       nextResetDate: resetDate,
     });
+  }
+
+  // NEW CODE: Upload attachment for leave request
+  async uploadAttachment(file: Express.Multer.File): Promise<AttachmentDocument> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // Ensure uploads directory exists
+    const uploadsDir = './src/leaves/uploads/attachments';
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // FileInterceptor with diskStorage should set file.path
+    // If path is not set, construct it from destination and filename
+    let filePath = file.path;
+    if (!filePath && file.filename) {
+      filePath = path.join(uploadsDir, file.filename);
+    }
+    
+    if (!filePath) {
+      throw new BadRequestException('File path is missing. File upload failed.');
+    }
+
+    // Create attachment record
+    const attachment = new this.attachmentModel({
+      originalName: file.originalname,
+      filePath: filePath,
+      fileType: file.mimetype,
+      size: file.size,
+    });
+
+    return await attachment.save();
+  }
+
+  // NEW CODE: Get attachment by ID
+  async getAttachmentById(id: string): Promise<AttachmentDocument | null> {
+    const attachmentId = this.toObjectId(id);
+    if (!attachmentId) {
+      throw new BadRequestException('Invalid attachment ID');
+    }
+    return await this.attachmentModel.findById(attachmentId).exec();
+  }
+
+  // NEW CODE: Verify document
+  async verifyDocument(
+    leaveRequestId: string,
+    hrUserId: string,
+    verificationNotes?: string,
+  ): Promise<LeaveRequestDocument> {
+    const requestId = this.toObjectId(leaveRequestId) as Types.ObjectId;
+    const hrUserObjectId = this.toObjectId(hrUserId) as Types.ObjectId;
+
+    const leaveRequest = await this.leaveRequestModel.findById(requestId).exec();
+    if (!leaveRequest) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    if (!leaveRequest.attachmentId) {
+      throw new BadRequestException('Leave request has no attachment to verify');
+    }
+
+    // NEW CODE: Track document verification in approvalFlow (without modifying schema)
+    // Add verification entry to approvalFlow
+    leaveRequest.approvalFlow.push({
+      role: 'HR Manager - Document Verification',
+      status: 'verified',
+      decidedBy: hrUserObjectId,
+      decidedAt: new Date(),
+    });
+
+    // Store verification notes in justification if needed (or we can use a comment field)
+    // For now, we'll add it as a note in the approvalFlow entry
+    // Note: Since approvalFlow doesn't have a notes field, we can prepend to justification
+    if (verificationNotes) {
+      const existingJustification = leaveRequest.justification || '';
+      leaveRequest.justification = `[Document Verified: ${verificationNotes}] ${existingJustification}`;
+    }
+
+    return await leaveRequest.save();
+  }
+
+  // NEW CODE: Reject document
+  async rejectDocument(
+    leaveRequestId: string,
+    hrUserId: string,
+    rejectionReason: string,
+  ): Promise<LeaveRequestDocument> {
+    const requestId = this.toObjectId(leaveRequestId) as Types.ObjectId;
+    const hrUserObjectId = this.toObjectId(hrUserId) as Types.ObjectId;
+
+    const leaveRequest = await this.leaveRequestModel.findById(requestId).exec();
+    if (!leaveRequest) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    if (!leaveRequest.attachmentId) {
+      throw new BadRequestException('Leave request has no attachment to reject');
+    }
+
+    if (!rejectionReason || !rejectionReason.trim()) {
+      throw new BadRequestException('Rejection reason is required');
+    }
+
+    // NEW CODE: Track document rejection in approvalFlow (without modifying schema)
+    // Add rejection entry to approvalFlow
+    leaveRequest.approvalFlow.push({
+      role: 'HR Manager - Document Verification',
+      status: 'rejected',
+      decidedBy: hrUserObjectId,
+      decidedAt: new Date(),
+    });
+
+    // Store rejection reason in justification
+    const existingJustification = leaveRequest.justification || '';
+    leaveRequest.justification = `[Document Rejected: ${rejectionReason}] ${existingJustification}`;
+
+    return await leaveRequest.save();
   }
 }

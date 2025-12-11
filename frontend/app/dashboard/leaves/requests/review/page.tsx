@@ -5,8 +5,10 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { leavesApi } from "@/lib/api/leaves/leaves";
+import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
 import { LeaveRequest } from "@/types/leaves";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/shared/ui/Card";
+import { Select } from "@/components/leaves/Select";
 import ApproveLeaveRequestButton from "@/components/leaves/ApproveLeaveRequestButton";
 import RejectLeaveRequestButton from "@/components/leaves/RejectLeaveRequestButton";
 import { Button } from "@/components/shared/ui/Button";
@@ -22,6 +24,10 @@ export default function ManagerLeaveReviewPage() {
   const [employeeIdFilter, setEmployeeIdFilter] = useState("");
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  
+  // NEW: State for employee dropdown
+  const [employees, setEmployees] = useState<Array<{ _id: string; employeeId: string; firstName: string; lastName: string }>>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
 
   useRequireAuth(SystemRole.DEPARTMENT_HEAD);
 
@@ -31,6 +37,29 @@ export default function ManagerLeaveReviewPage() {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  // NEW: Load employees for dropdown
+  useEffect(() => {
+    loadEmployees();
+  }, []);
+
+  const loadEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+      const employeesList = Array.isArray(response.data) ? response.data : [];
+      setEmployees(employeesList.map((emp: any) => ({
+        _id: emp._id,
+        employeeId: emp.employeeId || emp._id,
+        firstName: emp.firstName || '',
+        lastName: emp.lastName || '',
+      })));
+    } catch (error: any) {
+      console.error("Failed to load employees:", error);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
 
   const fetchPendingRequests = async (employeeId?: string) => {
     if (!employeeId) {
@@ -111,6 +140,30 @@ export default function ManagerLeaveReviewPage() {
     });
   };
 
+  // NEW CODE: Check if leave request is finalized
+  const isFinalized = (request: LeaveRequest): boolean => {
+    if (!request.approvalFlow || request.approvalFlow.length === 0) {
+      return false;
+    }
+    // Check if approvalFlow contains an HR Manager approval
+    return request.approvalFlow.some(
+      (approval) =>
+        approval.role === "HR Manager" && approval.status?.toLowerCase() === "approved"
+    );
+  };
+
+  // ENHANCED: Check if leave request is overridden by HR Manager
+  const isOverridden = (request: LeaveRequest): boolean => {
+    if (!request.approvalFlow || request.approvalFlow.length === 0) {
+      return false;
+    }
+    // Check if approvalFlow contains an HR Manager override (can be approved or rejected)
+    const hrApproval = request.approvalFlow.find(
+      (approval) => approval.role === "HR Manager"
+    );
+    return hrApproval !== undefined;
+  };
+
   const getStatusColor = (status: string): string => {
     switch (status.toLowerCase()) {
       case "pending":
@@ -189,17 +242,19 @@ export default function ManagerLeaveReviewPage() {
         <CardContent>
           <div className="flex gap-4">
             <div className="flex-1">
-              <input
-                type="text"
+              <Select
+                label=""
                 value={employeeIdFilter}
                 onChange={(e) => setEmployeeIdFilter(e.target.value)}
-                placeholder="Enter Employee ID to view their pending leave requests"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                onKeyPress={(e) => {
-                  if (e.key === "Enter") {
-                    handleSearch();
-                  }
-                }}
+                options={
+                  employees.length > 0
+                    ? employees.map((emp) => ({
+                        value: emp.employeeId || emp._id,
+                        label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                      }))
+                    : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+                }
+                placeholder="Select employee to view their pending leave requests"
               />
             </div>
             <Button
@@ -263,13 +318,55 @@ export default function ManagerLeaveReviewPage() {
                         Employee ID: {request.employeeId}
                       </p>
                     </div>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                        request.status
-                      )}`}
-                    >
-                      {request.status.toUpperCase()}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                          request.status
+                        )}`}
+                      >
+                        {request.status.toUpperCase()}
+                      </span>
+                      {/* ENHANCED: Show finalized indicator */}
+                      {isFinalized(request) && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800"
+                          title="Finalized by HR Manager"
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          Finalized
+                        </span>
+                      )}
+                      {/* ENHANCED: Show overridden indicator */}
+                      {isOverridden(request) && !isFinalized(request) && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800"
+                          title="Overridden by HR Manager"
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          Overridden
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
