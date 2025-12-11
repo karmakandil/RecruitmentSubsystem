@@ -160,11 +160,21 @@ export default function JobTemplatesPage() {
   // CHANGED - Validate form
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    if (!formData.title.trim()) newErrors.title = "Title is required";
-    if (!formData.department.trim()) newErrors.department = "Department is required";
-    if (!formData.description.trim()) newErrors.description = "Description is required";
-    if (formData.qualifications.length === 0) newErrors.qualifications = "At least one qualification is required";
-    if (formData.skills.length === 0) newErrors.skills = "At least one skill is required";
+    if (!formData.title || formData.title.trim().length === 0) {
+      newErrors.title = "Title is required";
+    }
+    if (!formData.department || formData.department.trim().length === 0) {
+      newErrors.department = "Department is required";
+    }
+    if (!formData.description || formData.description.trim().length === 0) {
+      newErrors.description = "Description is required";
+    }
+    if (formData.qualifications.length === 0) {
+      newErrors.qualifications = "At least one qualification is required";
+    }
+    if (formData.skills.length === 0) {
+      newErrors.skills = "At least one skill is required";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -392,7 +402,7 @@ export default function JobTemplatesPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <CardTitle className="text-lg text-gray-900">{template.title}</CardTitle>
-                      <CardDescription>{template.department}</CardDescription>
+                      <CardDescription className="mt-1">{template.department}</CardDescription>
                     </div>
                   </div>
                 </CardHeader>
@@ -402,32 +412,43 @@ export default function JobTemplatesPage() {
                   </p>
 
                   {/* Qualifications Preview */}
-                  <div className="mb-3">
-                    <p className="text-xs font-semibold text-gray-500 mb-1">Qualifications:</p>
-                    <p className="text-sm text-gray-700">
-                      {template.qualifications?.length || 0} requirement(s)
-                    </p>
-                  </div>
+                  {template.qualifications && template.qualifications.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Qualifications:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {template.qualifications.slice(0, 3).map((q, i) => (
+                          <span key={i} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            {q}
+                          </span>
+                        ))}
+                        {template.qualifications.length > 3 && (
+                          <span className="text-xs text-gray-500">+{template.qualifications.length - 3} more</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Skills Preview */}
-                  <div className="mb-4">
-                    <p className="text-xs font-semibold text-gray-500 mb-1">Skills:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {template.skills?.slice(0, 3).map((skill, index) => (
-                        <span
-                          key={index}
-                          className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                      {(template.skills?.length || 0) > 3 && (
-                        <span className="text-gray-400 text-xs">
-                          +{template.skills!.length - 3} more
-                        </span>
-                      )}
+                  {template.skills && template.skills.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Skills:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {template.skills.slice(0, 3).map((skill, index) => (
+                          <span
+                            key={index}
+                            className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                        {template.skills.length > 3 && (
+                          <span className="text-gray-400 text-xs">
+                            +{template.skills.length - 3} more
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="flex gap-2">
                     <Button

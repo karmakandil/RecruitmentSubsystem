@@ -62,16 +62,23 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    // CHANGED - Enhanced error logging for debugging
-    console.error(
-      `❌ API Error [${error.config?.method?.toUpperCase()} ${
-        error.config?.url
-      }]:`,
-      {
+    // CHANGED - Suppress console errors for expected 404s (e.g., offer not found)
+    // 404 errors are often expected in this app (e.g., checking if offer exists)
+    const is404 = error.response?.status === 404;
+    const isExpected404 = error.config?.url?.includes('/offer/application/') || 
+                          error.config?.url?.includes('/onboarding/employee/');
+    
+    // Only log errors that aren't expected 404s
+    if (!is404 || !isExpected404) {
+      // CHANGED - Enhanced error logging for debugging
+      const errorDetails = {
         status: error.response?.status,
         statusText: error.response?.statusText,
         message: error.message,
         responseData: error.response?.data,
+        requestData: error.config?.data,
+        requestUrl: error.config?.url,
+        requestMethod: error.config?.method,
         headers: error.response?.headers,
         // CHANGED - Additional debug info
         fullURL: error.config?.baseURL + error.config?.url,
@@ -79,11 +86,27 @@ api.interceptors.response.use(
         errorName: error.name,
         isAxiosError: error.isAxiosError,
         hasResponse: !!error.response,
+      };
+      
+      console.error(
+        `❌ API Error [${error.config?.method?.toUpperCase()} ${
+          error.config?.url
+        }]:`,
+        errorDetails
+      );
+      
+      // CHANGED - Log the full error object for debugging
+      if (!error.response) {
+        console.error('⚠️ No response received - possible network error:', error);
+      } else {
+        console.error('📋 Full error response:', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
       }
-    );
-    
-    // CHANGED - Log the full error object for debugging
-    console.error("Full error object:", error);
+    }
 
     // Handle errors
     if (error.response?.status === 401) {

@@ -19,8 +19,9 @@ export default function EmployeeResignationPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<SubmitResignationDto>({
-    effectiveDate: "",
     reason: "",
+    comments: "",
+    requestedLastDay: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -43,19 +44,20 @@ export default function EmployeeResignationPage() {
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    if (!formData.effectiveDate) {
-      newErrors.effectiveDate = "Effective date is required";
-    } else {
-      const selectedDate = new Date(formData.effectiveDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (selectedDate < today) {
-        newErrors.effectiveDate = "Effective date cannot be in the past";
-      }
-    }
+    
     if (!formData.reason.trim()) {
       newErrors.reason = "Reason is required";
     }
+    
+    if (formData.requestedLastDay) {
+      const selectedDate = new Date(formData.requestedLastDay);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate < today) {
+        newErrors.requestedLastDay = "Requested last day cannot be in the past";
+      }
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -69,7 +71,7 @@ export default function EmployeeResignationPage() {
       await recruitmentApi.submitResignation(formData);
       showToast("Resignation request submitted successfully", "success");
       setIsModalOpen(false);
-      setFormData({ effectiveDate: "", reason: "" });
+      setFormData({ reason: "", comments: "", requestedLastDay: "" });
       setErrors({});
       loadResignations();
     } catch (error: any) {
@@ -132,27 +134,50 @@ export default function EmployeeResignationPage() {
                       Submitted: {resignation.createdAt ? formatDate(resignation.createdAt) : "N/A"}
                     </p>
                   </div>
-                  <StatusBadge status={resignation.status} type="application" />
+                  <StatusBadge status={resignation.status} type="resignation" />
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Effective Date:</span>
+                  {resignation.terminationDate && (
+                    <div className="text-sm">
+                      <span className="text-gray-500 font-medium">Requested Last Day:</span>
                       <span className="ml-2 text-gray-900">
-                        {formatDate(resignation.effectiveDate)}
+                        {formatDate(resignation.terminationDate)}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Status:</span>
-                      <span className="ml-2 text-gray-900 capitalize">{resignation.status}</span>
-                    </div>
-                  </div>
+                  )}
+                  
                   <div>
-                    <span className="text-gray-500 text-sm">Reason:</span>
-                    <p className="mt-1 text-gray-900 bg-gray-50 p-3 rounded">{resignation.reason}</p>
+                    <span className="text-gray-500 text-sm font-medium block mb-1">Reason for Resignation:</span>
+                    <p className="text-gray-900 bg-gray-50 p-3 rounded border border-gray-200">
+                      {resignation.reason}
+                    </p>
                   </div>
+                  
+                  {resignation.employeeComments && (
+                    <div>
+                      <span className="text-gray-500 text-sm font-medium block mb-1">Additional Comments:</span>
+                      <p className="text-gray-900 bg-blue-50 p-3 rounded border border-blue-200">
+                        {resignation.employeeComments}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {resignation.hrComments && (
+                    <div>
+                      <span className="text-gray-500 text-sm font-medium block mb-1">HR Response:</span>
+                      <p className="text-gray-900 bg-green-50 p-3 rounded border border-green-200">
+                        {resignation.hrComments}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {resignation.updatedAt && resignation.updatedAt !== resignation.createdAt && (
+                    <div className="text-xs text-gray-500 pt-2 border-t border-gray-200">
+                      Last updated: {formatDate(resignation.updatedAt)}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -165,7 +190,7 @@ export default function EmployeeResignationPage() {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
-          setFormData({ effectiveDate: "", reason: "" });
+          setFormData({ reason: "", comments: "", requestedLastDay: "" });
           setErrors({});
         }}
         title="Submit Resignation Request"
@@ -176,7 +201,7 @@ export default function EmployeeResignationPage() {
               variant="outline"
               onClick={() => {
                 setIsModalOpen(false);
-                setFormData({ effectiveDate: "", reason: "" });
+                setFormData({ reason: "", comments: "", requestedLastDay: "" });
                 setErrors({});
               }}
             >
@@ -189,40 +214,60 @@ export default function EmployeeResignationPage() {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Effective Date *"
-            type="date"
-            value={formData.effectiveDate ? new Date(formData.effectiveDate).toISOString().split("T")[0] : ""}
-            onChange={(e) => {
-              // Convert date to ISO string for backend
-              const date = e.target.value;
-              if (date) {
-                setFormData({ ...formData, effectiveDate: new Date(date).toISOString() });
-              } else {
-                setFormData({ ...formData, effectiveDate: "" });
-              }
-            }}
-            error={errors.effectiveDate}
-            min={new Date().toISOString().split("T")[0]}
-          />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Reason for Resignation *
             </label>
             <textarea
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.reason ? "border-red-500" : "border-gray-300"
+              }`}
               rows={4}
               value={formData.reason}
               onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
               placeholder="Please provide a reason for your resignation..."
+              required
             />
             {errors.reason && (
               <p className="mt-1 text-sm text-red-600">{errors.reason}</p>
             )}
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Additional Comments (Optional)
+            </label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              value={formData.comments || ""}
+              onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+              placeholder="Any additional comments or details..."
+            />
+          </div>
+          
+          <div>
+            <Input
+              label="Requested Last Day (Optional)"
+              type="date"
+              value={formData.requestedLastDay ? new Date(formData.requestedLastDay).toISOString().split("T")[0] : ""}
+              onChange={(e) => {
+                const date = e.target.value;
+                if (date) {
+                  setFormData({ ...formData, requestedLastDay: new Date(date).toISOString() });
+                } else {
+                  setFormData({ ...formData, requestedLastDay: "" });
+                }
+              }}
+              error={errors.requestedLastDay}
+              min={new Date().toISOString().split("T")[0]}
+            />
+            <p className="mt-1 text-sm text-gray-500">When you would like your last day at work to be</p>
           </div>
         </form>
       </Modal>
     </div>
   );
 }
+
 

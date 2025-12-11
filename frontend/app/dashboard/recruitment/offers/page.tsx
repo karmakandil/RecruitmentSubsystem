@@ -32,48 +32,99 @@ export default function OffersPage() {
   const loadOffers = async () => {
     try {
       setLoading(true);
-      const applications = await recruitmentApi.getApplications();
-      const candidateApplications = applications.filter(
-        (app) => app.candidateId === user?.id || app.candidateId === user?.userId
-      );
+      const candidateId = user?.id || user?.userId || user?._id;
       
-      const offerApplications = candidateApplications.filter(
-        (app) => app.status === "offer"
-      );
+      if (!candidateId) {
+        showToast("Could not identify your candidate ID", "error");
+        console.error("Candidate ID not found in user object:", user);
+        return;
+      }
 
-      const offerData: Offer[] = offerApplications.map((app) => ({
-        _id: `offer-${app._id}`,
-        applicationId: app._id,
-        application: app,
-        candidateId: app.candidateId,
-        grossSalary: 0,
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        applicantResponse: OfferResponseStatus.PENDING,
-      }));
+      // Debug logging
+      console.log("=== OFFER LOADING DEBUG ===");
+      console.log("Loading offers for candidate ID:", candidateId);
+      console.log("Full user object:", user);
+      console.log("User ID fields:", { 
+        id: user?.id, 
+        userId: user?.userId, 
+        _id: user?._id,
+        candidateNumber: user?.candidateNumber,
+        fullName: user?.fullName
+      });
 
-      setOffers(offerData);
+      // Use the candidate-specific endpoint to fetch offers
+      try {
+        console.log("Calling API: getOffersByCandidateId with ID:", candidateId);
+        const fetchedOffers = await recruitmentApi.getOffersByCandidateId(candidateId);
+        console.log("API Response - Fetched offers:", fetchedOffers);
+        console.log("Number of offers:", fetchedOffers?.length || 0);
+        
+        if (fetchedOffers && fetchedOffers.length > 0) {
+          console.log("Offer details:", fetchedOffers.map(o => ({
+            _id: o._id,
+            candidateId: o.candidateId,
+            applicationId: o.applicationId,
+            role: o.role,
+            grossSalary: o.grossSalary
+          })));
+        }
+        
+        setOffers(fetchedOffers || []);
+        
+        if (!fetchedOffers || fetchedOffers.length === 0) {
+          console.warn("⚠️ No offers found for candidate ID:", candidateId);
+          console.warn("This might mean:");
+          console.warn("1. The candidateId in offers doesn't match the user's ID");
+          console.warn("2. The offer's candidateId is from the application, not the candidate document");
+          console.warn("3. Check the database - offer.candidateId should match candidate._id");
+        }
+      } catch (error: any) {
+        console.error("Error fetching offers:", error);
+        const errorMsg = error.message?.toLowerCase() || "";
+        const isNotFound = errorMsg.includes("404") || errorMsg.includes("not found") || error.response?.status === 404;
+        
+        if (isNotFound) {
+          // No offers found, which is a valid state
+          console.log("No offers found (404) - this is a valid state");
+          setOffers([]);
+        } else {
+          console.error("Failed to load offers:", error);
+          showToast(error.message || "Failed to load offers", "error");
+          setOffers([]);
+        }
+      }
     } catch (error: any) {
+      console.error("Unexpected error in loadOffers:", error);
       showToast(error.message || "Failed to load offers", "error");
+      setOffers([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleRespondToOffer = async (offer: Offer, response: OfferResponseStatus) => {
+    // Check if we have a valid offer ID (not a temporary one)
+    if (!offer._id || offer._id.startsWith('offer-')) {
+      showToast("Offer details not fully loaded. Please refresh the page or contact HR.", "error");
+      return;
+    }
+
     try {
       await recruitmentApi.respondToOffer(offer._id, {
         applicantResponse: response,
       });
-      showToast(
-        response === OfferResponseStatus.ACCEPTED
-          ? "Offer accepted successfully"
-          : "Offer declined",
-        "success"
-      );
+      const message = response === OfferResponseStatus.ACCEPTED
+        ? "Offer accepted successfully! Please upload your signed contract and required forms. Once HR creates your employee profile, onboarding tasks will begin automatically."
+        : "Offer declined";
+      showToast(message, "success");
       setIsResponseModalOpen(false);
-      loadOffers();
+      await loadOffers();
     } catch (error: any) {
-      showToast(error.message || "Failed to respond to offer", "error");
+      const errorMessage = error?.response?.data?.message || 
+                          error?.response?.data?.error || 
+                          error?.message || 
+                          "Failed to respond to offer";
+      showToast(errorMessage, "error");
     }
   };
 
@@ -210,61 +261,89 @@ export default function OffersPage() {
                       </div>
                     )}
 
-                    <div className="pt-4 border-t flex gap-3">
+                    <div className="pt-4 border-t flex gap-3 flex-wrap">
                       {offer.applicantResponse === OfferResponseStatus.PENDING && (
                         <>
-                          <Button
-                            onClick={() => {
-                              setSelectedOffer(offer);
-                              setIsResponseModalOpen(true);
-                            }}
-                          >
-                            Respond to Offer
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOffer(offer);
-                              setUploadType("contract");
-                              setIsUploadModalOpen(true);
-                            }}
-                          >
-                            Upload Contract
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOffer(offer);
-                              setUploadType("form");
-                              setIsUploadModalOpen(true);
-                            }}
-                          >
-                            Upload Forms
-                          </Button>
+                          {offer._id && !offer._id.startsWith('offer-') ? (
+                            <>
+                              <Button
+                                onClick={() => {
+                                  setSelectedOffer(offer);
+                                  setIsResponseModalOpen(true);
+                                }}
+                              >
+                                Respond to Offer
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedOffer(offer);
+                                  setUploadType("contract");
+                                  setIsUploadModalOpen(true);
+                                }}
+                              >
+                                Upload Contract
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedOffer(offer);
+                                  setUploadType("form");
+                                  setIsUploadModalOpen(true);
+                                }}
+                              >
+                                Upload Forms
+                              </Button>
+                            </>
+                          ) : (
+                            <div className="w-full p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                              <p className="text-sm text-yellow-800">
+                                ⚠️ Offer details are still being prepared. Please check back soon or contact HR if you have questions.
+                              </p>
+                            </div>
+                          )}
                         </>
                       )}
                       {offer.applicantResponse === OfferResponseStatus.ACCEPTED && (
-                        <div className="flex gap-3">
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOffer(offer);
-                              setUploadType("contract");
-                              setIsUploadModalOpen(true);
-                            }}
-                          >
-                            Upload Contract
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOffer(offer);
-                              setUploadType("form");
-                              setIsUploadModalOpen(true);
-                            }}
-                          >
-                            Upload Forms
-                          </Button>
+                        <>
+                          <div className="flex gap-3 flex-wrap">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedOffer(offer);
+                                setUploadType("contract");
+                                setIsUploadModalOpen(true);
+                              }}
+                            >
+                              Upload Contract
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedOffer(offer);
+                                setUploadType("form");
+                                setIsUploadModalOpen(true);
+                              }}
+                            >
+                              Upload Forms
+                            </Button>
+                          </div>
+                          <div className="w-full mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-sm text-green-800 mb-2">
+                              ✅ <strong>Offer Accepted!</strong> Please upload your signed contract and required forms.
+                            </p>
+                            <p className="text-xs text-green-700">
+                              📋 <strong>Next Steps:</strong> After you upload the signed contract, HR will review and create your employee profile. 
+                              Once your employee profile is created, onboarding tasks will automatically begin and you'll be able to track your progress.
+                            </p>
+                          </div>
+                        </>
+                      )}
+                      {offer.applicantResponse === OfferResponseStatus.REJECTED && (
+                        <div className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                          <p className="text-sm text-gray-600">
+                            This offer has been declined.
+                          </p>
                         </div>
                       )}
                     </div>

@@ -24,11 +24,13 @@ export default function ApplicationsPage() {
   const [jobRequisitions, setJobRequisitions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequisitionId, setSelectedRequisitionId] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<ApplicationStatus>(ApplicationStatus.SUBMITTED);
   // CHANGED - Added rejection reason state for REC-022
   const [rejectionReason, setRejectionReason] = useState<string>("");
+  const [updating, setUpdating] = useState(false);
 
   // CHANGED - Only HR Manager can update status, HR Employee can only track/view
   const canUpdateStatus = user?.roles?.some(
@@ -41,7 +43,7 @@ export default function ApplicationsPage() {
 
   useEffect(() => {
     filterApplications();
-  }, [selectedRequisitionId, applications]);
+  }, [selectedRequisitionId, selectedStatus, applications]);
 
   const loadData = async () => {
     try {
@@ -61,13 +63,19 @@ export default function ApplicationsPage() {
   };
 
   const filterApplications = () => {
-    if (!selectedRequisitionId) {
-      setFilteredApplications(applications);
-      return;
+    let filtered = [...applications];
+
+    // Filter by requisition
+    if (selectedRequisitionId) {
+      filtered = filtered.filter((app) => app.requisitionId === selectedRequisitionId);
     }
-    setFilteredApplications(
-      applications.filter((app) => app.requisitionId === selectedRequisitionId)
-    );
+
+    // Filter by status
+    if (selectedStatus) {
+      filtered = filtered.filter((app) => app.status === selectedStatus);
+    }
+
+    setFilteredApplications(filtered);
   };
 
   const handleOpenStatusUpdate = (application: Application) => {
@@ -89,6 +97,7 @@ export default function ApplicationsPage() {
     }
 
     try {
+      setUpdating(true);
       // CHANGED - Include rejection reason in the update
       const updateData: UpdateApplicationStatusDto = {
         status: statusUpdate,
@@ -111,9 +120,15 @@ export default function ApplicationsPage() {
       setIsStatusModalOpen(false);
       setSelectedApplication(null);
       setRejectionReason("");
-      loadData();
+      await loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to update status", "error");
+      const errorMessage = error?.response?.data?.message || 
+                          error?.response?.data?.error || 
+                          error?.message || 
+                          "Failed to update status";
+      showToast(errorMessage, "error");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -168,6 +183,19 @@ export default function ApplicationsPage() {
                   })),
                 ]}
               />
+              <Select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-48"
+                options={[
+                  { value: "", label: "All Statuses" },
+                  { value: ApplicationStatus.SUBMITTED, label: "Submitted" },
+                  { value: ApplicationStatus.IN_PROCESS, label: "In Process" },
+                  { value: ApplicationStatus.OFFER, label: "Offer" },
+                  { value: ApplicationStatus.HIRED, label: "Hired" },
+                  { value: ApplicationStatus.REJECTED, label: "Rejected" },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -184,69 +212,115 @@ export default function ApplicationsPage() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {filteredApplications.map((application) => (
-              <Card key={application._id} className="hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        {/* CHANGED - Added text-gray-900 for visibility */}
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {application.requisition?.template?.title || "Job Opening"}
-                        </h3>
-                        <StatusBadge status={application.status} type="application" />
-                      </div>
-                      {/* CHANGED - Handle candidateId as populated object or string */}
-                      <p className="text-sm text-gray-600 mb-2">
-                        Candidate: {
-                          application.candidate?.fullName || 
-                          (typeof application.candidateId === 'object' 
-                            ? (application.candidateId as any)?.fullName || (application.candidateId as any)?.firstName || 'Unknown'
-                            : application.candidateId || 'Unknown')
-                        }
-                      </p>
-                      <p className="text-sm text-gray-600 mb-2">
-                        Department: {application.requisition?.template?.department || "N/A"}
-                      </p>
-                      {application.stage && (
-                        <p className="text-sm text-gray-600 mb-2">
-                          Stage: {application.stage.replace("_", " ").toUpperCase()}
-                        </p>
-                      )}
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                          <span>Progress</span>
-                          <span>{getProgressPercentage(application.status)}%</span>
+            {filteredApplications.map((application) => {
+              const candidate = application.candidate || (typeof application.candidateId === 'object' ? application.candidateId : null);
+              const candidateName = candidate?.fullName || candidate?.firstName || candidate?.lastName 
+                ? `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || candidate?.fullName
+                : typeof application.candidateId === 'string' ? application.candidateId : 'Unknown Candidate';
+              const candidateEmail = candidate?.personalEmail || candidate?.email || 'N/A';
+              const candidatePhone = candidate?.phoneNumber || candidate?.phone || 'N/A';
+              
+              return (
+                <Card key={application._id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {application.requisition?.template?.title || "Job Opening"}
+                          </h3>
+                          <StatusBadge status={application.status} type="application" />
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all"
-                            style={{ width: `${getProgressPercentage(application.status)}%` }}
-                          />
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase mb-1">Candidate Information</p>
+                            <p className="text-sm text-gray-900 font-medium">{candidateName}</p>
+                            <p className="text-xs text-gray-600">{candidateEmail}</p>
+                            <p className="text-xs text-gray-600">{candidatePhone}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase mb-1">Job Details</p>
+                            <p className="text-sm text-gray-900">
+                              {application.requisition?.template?.department || "N/A"}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              Location: {application.requisition?.location || "N/A"}
+                            </p>
+                            {application.requisition?.openings && (
+                              <p className="text-xs text-gray-600">
+                                Openings: {application.requisition.openings}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {(application.stage || application.currentStage) && (
+                          <div className="mb-3">
+                            <p className="text-xs font-medium text-gray-500 uppercase mb-1">Current Stage</p>
+                            <p className="text-sm text-gray-700">
+                              {(application.stage || application.currentStage || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="mt-3 mb-3">
+                          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                            <span className="font-medium">Application Progress</span>
+                            <span className="font-semibold">{getProgressPercentage(application.status)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2.5">
+                            <div
+                              className={`h-2.5 rounded-full transition-all ${
+                                application.status === ApplicationStatus.REJECTED
+                                  ? 'bg-red-500'
+                                  : application.status === ApplicationStatus.HIRED
+                                  ? 'bg-green-500'
+                                  : 'bg-blue-600'
+                              }`}
+                              style={{ width: `${getProgressPercentage(application.status)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-gray-500 mt-3 pt-3 border-t">
+                          {application.createdAt && (
+                            <span>
+                              Applied: {new Date(application.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          )}
+                          {application.updatedAt && (
+                            <span>
+                              Last Updated: {new Date(application.updatedAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      {application.createdAt && (
-                        <p className="text-xs text-gray-400 mt-2">
-                          Applied: {new Date(application.createdAt).toLocaleDateString()}
-                        </p>
+                      {canUpdateStatus && (
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenStatusUpdate(application)}
+                            disabled={application.status === ApplicationStatus.HIRED || application.status === ApplicationStatus.REJECTED}
+                          >
+                            Update Status
+                          </Button>
+                        </div>
                       )}
                     </div>
-                    {/* CHANGED - Only HR Manager can update status */}
-                    {canUpdateStatus && (
-                      <div className="flex gap-2 ml-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenStatusUpdate(application)}
-                        >
-                          Update Status
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
@@ -296,6 +370,23 @@ export default function ApplicationsPage() {
               </div>
             )}
 
+            {selectedApplication && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                <p className="text-xs text-gray-500 mb-1">Current Status</p>
+                <StatusBadge status={selectedApplication.status} type="application" />
+                <p className="text-xs text-gray-600 mt-2">
+                  Candidate: {selectedApplication.candidate?.fullName || 
+                    (typeof selectedApplication.candidateId === 'object' 
+                      ? selectedApplication.candidateId?.fullName 
+                      : selectedApplication.candidateId) || 
+                    'Unknown'}
+                </p>
+                <p className="text-xs text-gray-600">
+                  Position: {selectedApplication.requisition?.template?.title || 'N/A'}
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 mt-6">
               <Button
                 type="button"
@@ -304,14 +395,20 @@ export default function ApplicationsPage() {
                   setIsStatusModalOpen(false);
                   setRejectionReason("");
                 }}
+                disabled={updating}
               >
                 Cancel
               </Button>
               <Button 
                 onClick={handleUpdateStatus}
                 variant={statusUpdate === ApplicationStatus.REJECTED ? "danger" : "primary"}
+                disabled={updating || !selectedApplication}
               >
-                {statusUpdate === ApplicationStatus.REJECTED ? "Reject Application" : "Update Status"}
+                {updating 
+                  ? "Updating..." 
+                  : statusUpdate === ApplicationStatus.REJECTED 
+                    ? "Reject Application" 
+                    : "Update Status"}
               </Button>
             </div>
           </div>

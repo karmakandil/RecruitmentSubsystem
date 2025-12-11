@@ -57,10 +57,10 @@ export interface JobTemplate {
   _id: string;
   title: string;
   department: string;
-  description: string;
+  description?: string;
   requirements?: string[];
   responsibilities?: string[];
-  qualifications: string[];
+  qualifications?: string[];
   skills?: string[];
   experienceLevel?: string;
   employmentType?: string;
@@ -275,8 +275,9 @@ export interface UpdateOnboardingTaskDto {
 
 // Resignation types
 export interface SubmitResignationDto {
-  effectiveDate: string;
   reason: string;
+  comments?: string;
+  requestedLastDay?: string; // When the employee wants their last day to be
 }
 
 // CHANGED - Added TerminateEmployeeDto for HR Manager termination
@@ -287,7 +288,7 @@ export interface TerminateEmployeeDto {
   terminationDate?: string;
 }
 
-// CHANGED - Added TerminationStatus enum
+// CHANGED - TerminationStatus enum (consolidated from both branches)
 export enum TerminationStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
@@ -307,13 +308,14 @@ export interface TerminationRequest {
   employeeId: string;
   employee?: any;
   effectiveDate?: string;
-  terminationDate?: string;
+  terminationDate?: string; // This is the requested last day for resignations
   reason: string;
-  initiator?: TerminationInitiation;
+  initiator?: TerminationInitiation | string;
   status: TerminationStatus | string;
   hrComments?: string;
   employeeComments?: string;
   performanceScore?: number;
+  contractId?: string;
   createdAt?: string;
   updatedAt?: string;
 }

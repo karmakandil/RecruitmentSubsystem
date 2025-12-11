@@ -49,9 +49,10 @@ export function hasRoleAccess(
   if (!userRoles || !Array.isArray(userRoles)) return false;
 
   return userRoles.some((userRole) => {
-    // CHANGED - Use String() to avoid TypeScript 'never' error
-    const userRoleStr = String(userRole);
-    const requiredRoleStr = String(requiredRole);
+    const userRoleStr =
+      typeof userRole === "string" ? userRole : String(userRole);
+    const requiredRoleStr =
+      typeof requiredRole === "string" ? requiredRole : String(requiredRole);
 
     // Case-insensitive comparison
     return userRoleStr.toLowerCase() === requiredRoleStr.toLowerCase();

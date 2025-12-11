@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -36,6 +37,7 @@ const PREBOARDING_TASK_TEMPLATES = [
 export default function PreboardingPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
+  const searchParams = useSearchParams();
 
   // CHANGED - State for applications ready for pre-boarding
   const [applications, setApplications] = useState<Application[]>([]);
@@ -61,6 +63,20 @@ export default function PreboardingPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // CHANGED - Auto-open pre-boarding modal if applicationId is in query params (REC-029 integration)
+  useEffect(() => {
+    const applicationId = searchParams?.get("applicationId");
+    if (applicationId && applications.length > 0) {
+      const app = applications.find((a) => a._id === applicationId);
+      if (app) {
+        setSelectedApplication(app);
+        setIsCreateTasksModalOpen(true);
+        // Clear the query parameter from URL
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+  }, [applications, searchParams]);
 
   // CHANGED - Load applications and onboardings
   const loadData = async () => {

@@ -330,16 +330,43 @@ export default function MyOnboardingPage() {
                 Welcome to the Team!
               </h2>
               <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                Your onboarding checklist is being prepared by HR. 
-                Please check back soon or contact HR if you have any questions.
+                Your onboarding checklist will appear here once HR creates your employee profile from your accepted offer. 
+                This happens automatically after you upload your signed contract and HR finalizes the offer.
               </p>
-              <Link href="/dashboard">
-                <Button variant="outline">Go to Dashboard</Button>
-              </Link>
+              <div className="flex gap-3 justify-center">
+                <Link href="/dashboard/recruitment/offers">
+                  <Button variant="outline">View My Offers</Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button variant="outline">Go to Dashboard</Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-8">
+            {/* CHANGED - Completion Banner */}
+            {onboarding.completed && (
+              <Card className="bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0 shadow-lg">
+                <CardContent className="py-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold mb-2">🎉 Onboarding Complete!</h2>
+                      <p className="text-green-100">
+                        Congratulations! You've completed all onboarding tasks and are now a full employee. 
+                        You can access all employee features from your dashboard.
+                      </p>
+                    </div>
+                    <Link href="/dashboard">
+                      <Button className="bg-white text-green-600 hover:bg-gray-100">
+                        Go to Dashboard
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* CHANGED - Progress Overview */}
             <Card className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
               <CardContent className="py-8">

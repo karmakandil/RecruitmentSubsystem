@@ -230,7 +230,15 @@ export default function JobDetailPage() {
                       <span>• {job.openings} {job.openings === 1 ? "opening" : "openings"}</span>
                     </div>
                   </div>
-                  <StatusBadge status={job.status} type="application" />
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    job.publishStatus === 'published' 
+                      ? 'bg-green-100 text-green-800' 
+                      : job.publishStatus === 'closed'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {job.publishStatus ? job.publishStatus.charAt(0).toUpperCase() + job.publishStatus.slice(1) : 'Draft'}
+                  </span>
                 </div>
               </CardHeader>
               <CardContent>
@@ -242,14 +250,27 @@ export default function JobDetailPage() {
                     </div>
                   )}
 
-                  {job.template?.responsibilities && job.template.responsibilities.length > 0 && (
+                  {job.template?.qualifications && job.template.qualifications.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Responsibilities</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Qualifications</h3>
                       <ul className="list-disc list-inside space-y-1 text-gray-700">
-                        {job.template.responsibilities.map((resp, idx) => (
-                          <li key={idx}>{resp}</li>
+                        {job.template.qualifications.map((qual, idx) => (
+                          <li key={idx}>{qual}</li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {job.template?.skills && job.template.skills.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Required Skills</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {job.template.skills.map((skill, idx) => (
+                          <span key={idx} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
 

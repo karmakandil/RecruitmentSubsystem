@@ -188,6 +188,16 @@ export const recruitmentApi = {
   },
 
   // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  getOfferByApplicationId: async (applicationId: string): Promise<Offer> => {
+    return await api.get(`/recruitment/offer/application/${applicationId}`);
+  },
+
+  // ✅ Accessible: JOB_CANDIDATE
+  getOffersByCandidateId: async (candidateId: string): Promise<Offer[]> => {
+    return await api.get(`/recruitment/offer/candidate/${candidateId}`);
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
   createEmployeeFromContract: async (
     offerId: string,
     data: CreateEmployeeFromContractDto
@@ -473,7 +483,9 @@ export const recruitmentApi = {
   
   // ✅ Accessible: No role restriction (any authenticated employee)
   submitResignation: async (data: SubmitResignationDto): Promise<TerminationRequest> => {
-    return await api.post("/recruitment/offboarding/resign", data);
+    const response = await api.post("/recruitment/offboarding/resign", data);
+    // Backend returns { message, resignation }, extract resignation
+    return (response as any).resignation || response;
   },
 
   // ✅ Accessible: No role restriction (any authenticated employee)
