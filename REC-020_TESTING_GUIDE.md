@@ -1,17 +1,32 @@
-# REC-020: Structured Assessment and Scoring Forms - Testing Guide
+# REC-020 & REC-021: Interview Assessment and Panel Coordination - Testing Guide
 
-## 📋 User Story
+## 📋 User Stories
+
+### REC-020: Structured Assessment and Scoring Forms
 **As an HR Employee, I want structured assessment and scoring forms per role, so evaluations are consistent and auditable.**
+
+### REC-021: Coordinate Interview Panels
+**As a HR Employee, I want to coordinate interview panels (members, availability, scoring), so scheduling and feedback collection are centralized.**
 
 ---
 
 ## 🎯 Testing Overview
 
-This guide covers comprehensive testing for the Structured Assessment and Scoring Forms feature, including:
-- Interview feedback submission
-- Score validation and aggregation
-- Role-based access control
-- Audit trail verification
+This guide covers comprehensive testing for both REC-020 (Structured Assessment and Scoring Forms) and REC-021 (Coordinate Interview Panels) features, including:
+- **Panel Coordination:**
+  - Panel member selection during interview scheduling
+  - Viewing panel members and their details
+  - Panel coordination dashboard
+  - Panel member availability tracking
+- **Assessment & Scoring:**
+  - Interview feedback submission
+  - Score validation and aggregation
+  - Role-based access control
+  - Audit trail verification
+- **Integration:**
+  - Panel members submitting feedback
+  - Centralized feedback collection
+  - Average score calculation across panel
 - Frontend and backend testing
 
 ---
@@ -35,27 +50,284 @@ You need accounts with the following roles:
 Before testing, ensure you have:
 - ✅ At least 1 published job requisition
 - ✅ At least 1 application in "in_process" or "submitted" status
+- ✅ At least 3-5 employee profiles in the system (for panel member selection)
+- ✅ Employees with different roles (HR_EMPLOYEE, HR_MANAGER, RECRUITER, DEPARTMENT_HEAD)
 - ✅ At least 1 scheduled interview with:
   - Valid `scheduledDate` (can be past or future)
   - Status NOT "cancelled"
   - Panel members assigned (including the test user)
-- ✅ Multiple panel members for the same interview (to test aggregation)
+- ✅ Multiple panel members for the same interview (to test aggregation and coordination)
 
 ---
 
 ## 🧪 Test Scenarios
 
+---
+
+## **TEST GROUP 0: Panel Coordination (REC-021)**
+
+### Test 0.1: Schedule Interview with Panel Members
+**Role:** HR_EMPLOYEE  
+**Priority:** Critical
+
+**Steps:**
+1. Log in as HR_EMPLOYEE
+2. Navigate to `/dashboard/recruitment/hr-interviews`
+3. Find an application in "in_process" or "submitted" status
+4. Click "Schedule Interview"
+5. Fill out the interview form:
+   - Select Interview Stage (e.g., "Screening")
+   - Select Date (future date)
+   - Select Time
+   - Select Interview Method (e.g., "Video")
+   - **Panel Members Section:**
+     - Verify current user is automatically included (cannot be removed)
+     - Select 2-3 additional panel members from the checkbox list
+     - Verify employee names and departments are displayed
+6. Click "Schedule"
+
+**Expected Results:**
+- ✅ Modal opens with interview scheduling form
+- ✅ Panel Members section shows list of employees
+- ✅ Current user is pre-selected and disabled (cannot be unchecked)
+- ✅ Can select multiple panel members via checkboxes
+- ✅ Employee names and departments are visible
+- ✅ Selected count updates as members are selected/deselected
+- ✅ On submit:
+  - Success toast: "Interview scheduled successfully"
+  - Interview is created with all selected panel members
+  - Interview appears in the application card
+
+**Verify:**
+- Check database: Interview has `panel` array with all selected member IDs
+- Panel includes current user ID
+- Panel includes all selected employee IDs
+- Interview card displays panel members
+
+---
+
+### Test 0.2: View Panel Members in Interview Card
+**Role:** HR_EMPLOYEE  
+**Priority:** High
+
+**Steps:**
+1. After scheduling an interview with panel members
+2. View the application card
+3. Check the scheduled interview section
+
+**Expected Results:**
+- ✅ Interview card shows:
+  - Interview stage
+  - Scheduled date and time
+  - Interview method
+  - Panel members count
+  - Panel member names (up to 3, then "+X more")
+  - "View Panel" button
+- ✅ Panel member badges are displayed
+- ✅ Member names are readable
+
+**Verify:**
+- Panel members are correctly displayed
+- Member count matches selected members
+- UI is responsive and readable
+
+---
+
+### Test 0.3: Open Panel Coordination View
+**Role:** HR_EMPLOYEE  
+**Priority:** High
+
+**Steps:**
+1. From interview card, click "View Panel" button
+2. Panel coordination modal opens
+
+**Expected Results:**
+- ✅ Modal opens with "Interview Panel Coordination" title
+- ✅ Shows interview details section:
+  - Stage
+  - Status badge
+  - Date and time
+  - Method
+- ✅ Shows "Panel Members" section
+- ✅ Lists all panel members with:
+  - Member name
+  - "You" badge for current user
+  - Feedback status badge (Pending/Submitted)
+  - Department (if available)
+
+**Verify:**
+- All panel members are listed
+- Current user is clearly marked
+- Feedback status is accurate
+
+---
+
+### Test 0.4: View Panel Member Feedback Status
+**Role:** HR_EMPLOYEE  
+**Priority:** High
+
+**Steps:**
+1. Open panel coordination view for an interview
+2. Some panel members have submitted feedback, some haven't
+3. Review feedback status for each member
+
+**Expected Results:**
+- ✅ Panel members show status badges:
+  - Green "Feedback Submitted" for members who submitted
+  - Yellow "Pending" for members who haven't
+- ✅ Submitted members show:
+  - Score (e.g., "85/100")
+  - Submission date
+  - Comments (if provided)
+- ✅ Pending members show only name and department
+
+**Verify:**
+- Status badges are accurate
+- Submitted feedback details are visible
+- Pending members are clearly indicated
+
+---
+
+### Test 0.5: View Average Score in Panel View
+**Role:** HR_EMPLOYEE  
+**Priority:** High
+
+**Steps:**
+1. Open panel coordination view
+2. Ensure at least 2 panel members have submitted feedback
+3. Check average score section
+
+**Expected Results:**
+- ✅ Average score section displays:
+  - Large, prominent average score (e.g., "85.5/100")
+  - Count of submitted feedback (e.g., "Based on 2 of 3 panel members")
+- ✅ Calculation is correct:
+  - Average = Sum of all scores / Number of submitted feedbacks
+- ✅ Updates when new feedback is submitted
+
+**Verify:**
+- Average calculation is correct
+- Count is accurate
+- Formatting is clear and readable
+
+---
+
+### Test 0.6: Panel Member Selection - Employee List Loading
+**Role:** HR_EMPLOYEE  
+**Priority:** Medium
+
+**Steps:**
+1. Open interview scheduling form
+2. Check panel members section
+3. Observe employee list loading
+
+**Expected Results:**
+- ✅ Shows "Loading employees..." while fetching
+- ✅ Employee list populates after loading
+- ✅ If no employees: Shows "No employees available"
+- ✅ If error: Shows error message
+
+**Verify:**
+- Loading state works correctly
+- Error handling is graceful
+- Empty state is handled
+
+---
+
+### Test 0.7: Panel Member Selection - Search/Filter (If Implemented)
+**Role:** HR_EMPLOYEE  
+**Priority:** Low
+
+**Steps:**
+1. Open interview scheduling form
+2. If search/filter is available, test it
+3. Search for specific employee name or department
+
+**Expected Results:**
+- ✅ Search/filter works (if implemented)
+- ✅ Results update in real-time
+- ✅ Selected members remain selected after filtering
+
+**Verify:**
+- Search functionality works
+- Filtering doesn't lose selections
+
+---
+
+### Test 0.8: Schedule Interview Without Additional Panel Members
+**Role:** HR_EMPLOYEE  
+**Priority:** Medium
+
+**Steps:**
+1. Open interview scheduling form
+2. Don't select any additional panel members (only current user)
+3. Fill out other required fields
+4. Submit
+
+**Expected Results:**
+- ✅ Interview schedules successfully
+- ✅ Panel contains only current user
+- ✅ Backend accepts panel with single member (minimum requirement met)
+
+**Verify:**
+- Single-member panel is valid
+- Interview is created successfully
+
+---
+
+### Test 0.9: Panel Coordination - Multiple Interviews Same Application
+**Role:** HR_EMPLOYEE  
+**Priority:** Medium
+
+**Steps:**
+1. Schedule multiple interviews for the same application (different stages)
+2. Each with different panel members
+3. View application card
+
+**Expected Results:**
+- ✅ All interviews are displayed
+- ✅ Each interview shows its own panel members
+- ✅ Panel members are correctly associated with their interviews
+- ✅ No confusion between different interviews
+
+**Verify:**
+- Multiple interviews display correctly
+- Panel members are correctly associated
+- UI handles multiple interviews well
+
+---
+
+### Test 0.10: Panel Coordination - Update Interview Panel (If Implemented)
+**Role:** HR_EMPLOYEE  
+**Priority:** Low
+
+**Steps:**
+1. If edit functionality exists, edit a scheduled interview
+2. Add or remove panel members
+3. Save changes
+
+**Expected Results:**
+- ✅ Panel can be updated (if feature exists)
+- ✅ Changes are saved correctly
+- ✅ Panel view reflects updates
+
+**Verify:**
+- Updates work correctly
+- Changes persist
+
+---
+
 ## **TEST GROUP 1: Submit Interview Feedback (Happy Path)**
 
-### Test 1.1: Submit Feedback as HR Employee
+### Test 1.1: Submit Feedback as HR Employee (Panel Member)
 **Role:** HR_EMPLOYEE  
 **Priority:** High
 
 **Steps:**
 1. Log in as HR_EMPLOYEE
 2. Navigate to `/dashboard/recruitment/hr-interviews`
-3. Find an application with a scheduled interview
-4. Click "Submit Feedback" button
+3. Find an application with a scheduled interview where you are a panel member
+4. Click "Submit Feedback" button (or "View Panel" → then submit from panel view)
 5. In the feedback modal:
    - Enter score: `85` (0-100 range)
    - Enter comments: `"Candidate demonstrated strong technical skills and good communication. Recommended for next round."`
@@ -70,13 +342,15 @@ Before testing, ensure you have:
   - Success toast: "Feedback submitted successfully"
   - Modal closes
   - Feedback is saved in database
-  - Interview shows updated feedback status
+  - Panel view shows updated feedback status (green badge)
+  - Average score updates if other members have submitted
 
 **Verify:**
 - Check database: `AssessmentResult` collection has new record
 - Record contains: `interviewId`, `interviewerId`, `score: 85`, `comments`
 - Timestamps (`createdAt`, `updatedAt`) are set
 - Interview record links to feedback
+- Panel coordination view shows your feedback as "Submitted"
 
 **API Verification:**
 ```bash
@@ -145,21 +419,26 @@ GET /recruitment/interview/{interviewId}/feedback
 
 **Steps:**
 1. Submit feedback (score: 80, comments: "Initial feedback")
-2. Submit feedback again for the same interview
-3. Enter new score: `90`
-4. Enter new comments: `"Updated: Excellent candidate"`
-5. Submit
+2. Open panel coordination view
+3. Verify your feedback shows as submitted
+4. Submit feedback again for the same interview
+5. Enter new score: `90`
+6. Enter new comments: `"Updated: Excellent candidate"`
+7. Submit
 
 **Expected Results:**
 - ✅ Existing feedback is updated (not duplicated)
 - ✅ New score and comments replace old values
 - ✅ `updatedAt` timestamp changes
 - ✅ `createdAt` timestamp remains unchanged
+- ✅ Panel view shows updated score and comments
+- ✅ Average score recalculates with new value
 
 **Verify:**
 - Database has only ONE record for this interviewer + interview
 - Record shows updated values
 - Timestamps are correct
+- Panel view reflects updates
 
 ---
 
@@ -722,24 +1001,33 @@ GET /recruitment/requisition/{requisitionId}/ranked-applications
 
 ---
 
-### Test 9.2: Multiple Panel Members Submit Feedback
+### Test 9.2: Multiple Panel Members Submit Feedback (Panel Coordination)
 **Role:** HR_EMPLOYEE, HR_MANAGER, RECRUITER  
 **Priority:** High
 
 **Steps:**
-1. Schedule interview with 3 panel members
-2. Each panel member submits feedback:
-   - HR_EMPLOYEE: Score `80`
-   - HR_MANAGER: Score `90`
-   - RECRUITER: Score `85`
-3. View all feedback
-4. Check average score
+1. **HR_EMPLOYEE:** Schedule interview with 3 panel members (HR_EMPLOYEE, HR_MANAGER, RECRUITER)
+2. **HR_EMPLOYEE:** Open panel coordination view
+3. **HR_EMPLOYEE:** Submit feedback - Score `80`, Comments: "Good technical skills"
+4. **HR_MANAGER:** Log in, navigate to interview, submit feedback - Score `90`, Comments: "Excellent communication"
+5. **RECRUITER:** Log in, navigate to interview, submit feedback - Score `85`, Comments: "Strong cultural fit"
+6. **HR_EMPLOYEE:** Refresh panel coordination view
+7. Check all feedback and average score
 
 **Expected Results:**
 - ✅ All 3 feedback entries saved
 - ✅ Each has correct `interviewerId`
-- ✅ Average score calculated correctly: `85`
-- ✅ All feedback visible in view
+- ✅ Panel view shows all 3 members with "Feedback Submitted" badges
+- ✅ Each member's score and comments are visible
+- ✅ Average score calculated correctly: `(80 + 90 + 85) / 3 = 85`
+- ✅ Average score section shows: "Based on 3 of 3 panel members"
+- ✅ All feedback visible in panel coordination view
+
+**Verify:**
+- Panel coordination view shows complete status
+- All scores are visible
+- Average calculation is correct
+- Status badges update correctly
 
 ---
 
@@ -824,7 +1112,14 @@ GET /recruitment/requisition/{requisitionId}/ranked-applications
 ## 📊 Test Execution Checklist
 
 ### Critical Tests (Must Pass)
-- [ ] Test 1.1: Submit Feedback as HR Employee
+**Panel Coordination (REC-021):**
+- [ ] Test 0.1: Schedule Interview with Panel Members
+- [ ] Test 0.2: View Panel Members in Interview Card
+- [ ] Test 0.3: Open Panel Coordination View
+- [ ] Test 0.4: View Panel Member Feedback Status
+
+**Assessment & Scoring (REC-020):**
+- [ ] Test 1.1: Submit Feedback as HR Employee (Panel Member)
 - [ ] Test 2.3: Submit Invalid Score (Negative)
 - [ ] Test 2.4: Submit Invalid Score (Over 100)
 - [ ] Test 3.1: Submit Feedback for Non-existent Interview
@@ -834,8 +1129,14 @@ GET /recruitment/requisition/{requisitionId}/ranked-applications
 - [ ] Test 6.2: Submit Feedback - Unauthorized Role
 - [ ] Test 7.1: Verify Timestamps
 - [ ] Test 7.3: Verify Interviewer ID Tracking
+- [ ] Test 9.2: Multiple Panel Members Submit Feedback (Panel Coordination)
 
 ### High Priority Tests
+**Panel Coordination (REC-021):**
+- [ ] Test 0.5: View Average Score in Panel View
+- [ ] Test 0.6: Panel Member Selection - Employee List Loading
+
+**Assessment & Scoring (REC-020):**
 - [ ] Test 1.2: Submit Feedback as HR Manager
 - [ ] Test 1.3: Submit Feedback as Recruiter
 - [ ] Test 1.5: Update Existing Feedback
@@ -844,9 +1145,13 @@ GET /recruitment/requisition/{requisitionId}/ranked-applications
 - [ ] Test 6.1: Submit Feedback - Authorized Roles
 - [ ] Test 8.1: Feedback Form Display
 - [ ] Test 8.2: Score Input Validation (Frontend)
-- [ ] Test 9.2: Multiple Panel Members Submit Feedback
 
 ### Medium Priority Tests
+**Panel Coordination (REC-021):**
+- [ ] Test 0.8: Schedule Interview Without Additional Panel Members
+- [ ] Test 0.9: Panel Coordination - Multiple Interviews Same Application
+
+**Assessment & Scoring (REC-020):**
 - [ ] Test 1.4: Submit Feedback with Only Score
 - [ ] Test 2.1: Submit Minimum Valid Score (0)
 - [ ] Test 2.2: Submit Maximum Valid Score (100)
@@ -982,17 +1287,117 @@ All tests should pass:
 
 ## 🚀 Quick Test Script
 
-Run these in sequence for a quick smoke test:
+Run these in sequence for a quick smoke test covering both REC-020 and REC-021:
 
+### Panel Coordination (REC-021):
 1. **Login as HR_EMPLOYEE**
-2. **Submit feedback** (score: 85, comments: "Test feedback")
-3. **View feedback** (verify it appears)
-4. **Update feedback** (score: 90, comments: "Updated")
-5. **Get average score** (verify calculation)
-6. **Test invalid score** (score: 101, should fail)
-7. **Test unauthorized role** (login as candidate, should fail)
+2. **Schedule interview** with 2-3 panel members
+3. **View panel** in interview card (verify members displayed)
+4. **Open panel coordination view** (verify all members listed)
+5. **Check feedback status** (should show "Pending" for all)
+
+### Assessment & Scoring (REC-020):
+6. **Submit feedback** (score: 85, comments: "Test feedback")
+7. **View panel again** (verify your status changed to "Submitted")
+8. **View feedback details** (verify score and comments visible)
+9. **Update feedback** (score: 90, comments: "Updated")
+10. **Check average score** (verify calculation updates)
+
+### Integration:
+11. **Login as another panel member** (HR_MANAGER or RECRUITER)
+12. **Submit their feedback** (score: 80)
+13. **Login back as HR_EMPLOYEE**
+14. **View panel coordination** (verify both feedbacks, average = 85)
+15. **Test invalid score** (score: 101, should fail)
+16. **Test unauthorized role** (login as candidate, should fail to submit)
+
+---
+
+## 🔗 Integration Testing Scenarios
+
+### Integration Test 1: Complete Panel Workflow
+**Scenario:** Full workflow from scheduling to feedback collection
+
+**Steps:**
+1. HR_EMPLOYEE schedules interview with 3 panel members
+2. All panel members receive notification (if implemented)
+3. Each panel member logs in and submits feedback
+4. HR_EMPLOYEE views panel coordination dashboard
+5. All feedback is visible and average is calculated
+
+**Expected:**
+- ✅ Complete workflow works end-to-end
+- ✅ Panel coordination centralizes all information
+- ✅ Feedback collection is streamlined
+- ✅ Average score reflects all submissions
+
+---
+
+### Integration Test 2: Panel Member Not in Panel Tries to Submit
+**Scenario:** User tries to submit feedback but isn't in panel
+
+**Steps:**
+1. Schedule interview with specific panel members (User A, B, C)
+2. User D (not in panel) tries to submit feedback
+3. System should reject
+
+**Expected:**
+- ❌ Backend returns: `400 Bad Request`
+- ❌ Error: "Interviewer is not part of the interview panel"
+- ✅ Panel coordination view doesn't show User D
+
+---
+
+### Integration Test 3: Panel Coordination with Partial Feedback
+**Scenario:** Some panel members submit, others don't
+
+**Steps:**
+1. Schedule interview with 4 panel members
+2. 2 members submit feedback
+3. View panel coordination
+
+**Expected:**
+- ✅ Shows 2 "Submitted" and 2 "Pending" badges
+- ✅ Average score based on 2 submissions
+- ✅ Shows "Based on 2 of 4 panel members"
+- ✅ Pending members are clearly indicated
+
+---
+
+## 📝 Test Report Template
+
+For each test, document:
+
+1. **Test ID:** (e.g., Test 0.1, Test 1.1)
+2. **Test Name:** (e.g., "Schedule Interview with Panel Members")
+3. **Feature:** REC-020 / REC-021 / Integration
+4. **Priority:** Critical / High / Medium / Low
+5. **Role:** HR_EMPLOYEE / HR_MANAGER / etc.
+6. **Steps Taken:**
+7. **Expected Result:**
+8. **Actual Result:**
+9. **Status:** ✅ Pass / ❌ Fail / ⚠️ Partial / ⏸️ Blocked
+10. **Notes:** (Issues, observations, screenshots)
+11. **Browser/Device:** (e.g., Chrome/Desktop)
+12. **Backend Version:** (if applicable)
+13. **Frontend Version:** (if applicable)
+
+---
+
+## ✅ Definition of Done
+
+All tests should pass:
+- ✅ All Critical tests pass (both REC-020 and REC-021)
+- ✅ All High Priority tests pass
+- ✅ At least 80% of Medium Priority tests pass
+- ✅ Integration tests demonstrate end-to-end functionality
+- ✅ No blocking bugs
+- ✅ Documentation updated
+- ✅ Code reviewed
 
 ---
 
 **Happy Testing! 🎉**
+
+**Note:** These two user stories (REC-020 and REC-021) are designed to work together. Panel coordination (REC-021) provides the structure for centralized feedback collection, while structured assessment forms (REC-020) ensure consistency and auditability. Test them together to ensure seamless integration.
 
