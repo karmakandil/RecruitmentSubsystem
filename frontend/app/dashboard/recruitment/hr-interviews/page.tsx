@@ -81,17 +81,28 @@ export default function HRInterviewsPage() {
       setApplications(filteredApps);
       
       // Extract interviews from applications if they exist
-      // Note: Backend may populate interviews in application data
+      // Backend now returns interviews attached to applications
       const allInterviews: any[] = [];
-      filteredApps.forEach((app) => {
+      filteredApps.forEach((app: any) => {
+        // Handle both array and undefined/null cases
         if (app.interviews && Array.isArray(app.interviews)) {
           app.interviews.forEach((int: any) => {
-            allInterviews.push({ ...int, applicationId: app._id });
+            // Ensure applicationId is set correctly
+            const interviewWithAppId = { 
+              ...int, 
+              applicationId: app._id || int.applicationId 
+            };
+            allInterviews.push(interviewWithAppId);
           });
         }
       });
+      
+      // Always set interviews array (even if empty) to ensure state is updated
+      setInterviews(allInterviews);
+      
+      // Debug log to verify interviews are being loaded
       if (allInterviews.length > 0) {
-        setInterviews(allInterviews);
+        console.log('Loaded interviews:', allInterviews.length, allInterviews);
       }
     } catch (error: any) {
       showToast(error.message || "Failed to load applications", "error");
@@ -126,7 +137,7 @@ export default function HRInterviewsPage() {
 
   const handleOpenSchedule = (application: any) => {
     setSelectedApplication(application);
-    const currentUserId = user?.id || user?.userId || user?._id;
+    const currentUserId = user?.id || user?.userId || (user as any)?._id;
     setScheduleForm({
       applicationId: application._id,
       stage: ApplicationStage.SCREENING,
@@ -188,7 +199,7 @@ export default function HRInterviewsPage() {
       };
       
       // CHANGED - Add current user to panel so they can submit feedback
-      const currentUserId = user?.id || user?.userId || user?._id;
+      const currentUserId = user?.id || user?.userId || (user as any)?._id;
       if (currentUserId) {
         interviewData.panel = [currentUserId];
       }
@@ -207,13 +218,35 @@ export default function HRInterviewsPage() {
       const interview = await recruitmentApi.scheduleInterview(interviewData);
       showToast("Interview scheduled successfully", "success");
       setIsScheduleModalOpen(false);
-      // Store interview ID for feedback submission
+      
+      // Ensure the interview has applicationId before adding to state
       if (interview && interview._id) {
-        setSelectedInterview(interview);
-        // Add to interviews list
-        setInterviews([...interviews, interview]);
+        // Ensure applicationId is set correctly (handle both ObjectId and string formats)
+        const interviewWithAppId = {
+          ...interview,
+          applicationId: interview.applicationId || scheduleForm.applicationId,
+        };
+        setSelectedInterview(interviewWithAppId);
+        
+        // Add to interviews list optimistically
+        setInterviews((prevInterviews) => {
+          // Check if interview already exists to avoid duplicates
+          const exists = prevInterviews.some((int: any) => 
+            int._id === interviewWithAppId._id || 
+            (int._id?.toString() === interviewWithAppId._id?.toString())
+          );
+          if (exists) {
+            return prevInterviews;
+          }
+          return [...prevInterviews, interviewWithAppId];
+        });
       }
-      loadData();
+      
+      // Reload data to ensure we have the latest from the backend
+      // Use a small delay to ensure database commit is complete
+      setTimeout(() => {
+        loadData();
+      }, 100);
     } catch (error: any) {
       // CHANGED - Better error handling
       const errorMessage = error.response?.data?.message || error.message || "Failed to schedule interview. Check console for details.";
@@ -529,7 +562,7 @@ export default function HRInterviewsPage() {
                           employee.email || 
                           'Unknown';
                         const isSelected = scheduleForm.panel?.includes(employeeId);
-                        const isCurrentUser = employeeId === (user?.id || user?.userId || user?._id);
+                        const isCurrentUser = employeeId === (user?.id || user?.userId || (user as any)?._id);
                         
                         return (
                           <label
@@ -680,11 +713,12 @@ export default function HRInterviewsPage() {
                     </div>
                     <div>
                       <span className="text-gray-600">Status:</span>
-                      <StatusBadge 
-                        status={selectedInterviewForPanel.status} 
-                        type="interview" 
-                        className="ml-2"
-                      />
+                      <span className="ml-2">
+                        <StatusBadge 
+                          status={selectedInterviewForPanel.status} 
+                          type="interview"
+                        />
+                      </span>
                     </div>
                     <div>
                       <span className="text-gray-600">Date:</span>
@@ -705,12 +739,18 @@ export default function HRInterviewsPage() {
                   <h3 className="font-semibold text-gray-900 mb-3">Panel Members</h3>
                   {selectedInterviewForPanel.panel && selectedInterviewForPanel.panel.length > 0 ? (
                     <div className="space-y-3">
-                      {selectedInterviewForPanel.panel.map((panelId: string) => {
+                      {selectedInterviewForPanel.panel
+                        .filter((panelId: string, index: number, self: string[]) => 
+                          // Remove duplicates by keeping only first occurrence
+                          self.indexOf(panelId) === index
+                        )
+                        .map((panelId: string, index: number) => {
                         const panelMember = employees.find(
                           (emp) => (emp._id || emp.id || emp.userId) === panelId
                         );
                         const memberFeedback = panelFeedback.find(
-                          (fb) => fb.interviewerId === panelId
+                          (fb) => fb.interviewerId === panelId || 
+                                  (fb.interviewerId && typeof fb.interviewerId === 'object' && fb.interviewerId.toString() === panelId)
                         );
                         const memberName = panelMember
                           ? panelMember.fullName || 
@@ -718,11 +758,11 @@ export default function HRInterviewsPage() {
                             panelMember.email || 
                             'Unknown'
                           : 'Loading...';
-                        const isCurrentUser = panelId === (user?.id || user?.userId || user?._id);
+                        const isCurrentUser = panelId === (user?.id || user?.userId || (user as any)?._id);
 
                         return (
                           <div
-                            key={panelId}
+                            key={`${panelId}-${index}`}
                             className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50"
                           >
                             <div className="flex items-start justify-between">

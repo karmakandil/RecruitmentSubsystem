@@ -662,6 +662,55 @@ export class RecruitmentService {
       .populate('candidateId')
       .lean();
 
+    // Fetch interviews for all applications and attach them
+    let applicationsWithInterviews = applications;
+    
+    if (applications.length > 0) {
+      const applicationIds = applications.map((app: any) => {
+        // Handle both ObjectId and string formats
+        const id = app._id;
+        return id instanceof Types.ObjectId ? id : new Types.ObjectId(String(id));
+      });
+      
+      const interviews = await this.interviewModel
+        .find({ applicationId: { $in: applicationIds } })
+        .lean();
+
+      // Group interviews by application ID - normalize IDs for consistent comparison
+      const interviewsByApplication: Record<string, any[]> = {};
+      for (const interview of interviews) {
+        const interviewAppId = (interview as any).applicationId;
+        // Normalize to string for consistent comparison
+        const appId = interviewAppId instanceof Types.ObjectId 
+          ? interviewAppId.toString() 
+          : String(interviewAppId);
+        
+        if (!interviewsByApplication[appId]) {
+          interviewsByApplication[appId] = [];
+        }
+        interviewsByApplication[appId].push(interview);
+      }
+
+      // Attach interviews to applications - normalize application IDs too
+      applicationsWithInterviews = applications.map((app: any) => {
+        const appId = app._id instanceof Types.ObjectId 
+          ? app._id.toString() 
+          : String(app._id);
+        
+        return {
+          ...app,
+          interviews: interviewsByApplication[appId] || [],
+        };
+      });
+    } else {
+      // If no applications, ensure each has an empty interviews array
+      applicationsWithInterviews = applications.map((app: any) => ({
+        ...app,
+        interviews: [],
+      }));
+    }
+
+    // Handle referral prioritization
     if (prioritizeReferrals) {
       const referralCandidates = await this.referralModel
         .find()
@@ -674,7 +723,7 @@ export class RecruitmentService {
       const referrals: any[] = [];
       const nonReferrals: any[] = [];
 
-      for (const app of applications) {
+      for (const app of applicationsWithInterviews) {
         const candidateId =
           (app as any).candidateId?._id?.toString() ||
           (app as any).candidateId?.toString();
@@ -689,7 +738,7 @@ export class RecruitmentService {
       return [...referrals, ...nonReferrals];
     }
 
-    return applications;
+    return applicationsWithInterviews;
   }
 
   async updateApplicationStatus(
@@ -920,11 +969,11 @@ export class RecruitmentService {
     }
 
     const interview = new this.interviewModel({
-      applicationId: dto.applicationId,
+      applicationId: new Types.ObjectId(dto.applicationId),
       stage: dto.stage,
       scheduledDate: scheduledDate,
       method: dto.method,
-      panel: dto.panel || [],
+      panel: dto.panel ? dto.panel.map(id => new Types.ObjectId(id)) : [],
       videoLink: dto.videoLink,
       status: 'scheduled',
     });
@@ -1014,7 +1063,8 @@ export class RecruitmentService {
       console.warn('Failed to send interview notifications:', e);
     }
 
-    return saved;
+    // Convert to plain object to ensure proper serialization
+    return saved.toObject ? saved.toObject() : saved;
   }
 
   async updateInterviewStatus(id: string, dto: UpdateInterviewStatusDto) {
@@ -3326,6 +3376,13 @@ Due: ${context.dueDate}`
     score: number,
     comments?: string,
   ): Promise<any> {
+    console.log('🎯 submitInterviewFeedback called:', {
+      interviewId,
+      interviewerId,
+      score,
+      comments,
+      timestamp: new Date().toISOString(),
+    });
     try {
       // Validate ObjectIds
       if (!Types.ObjectId.isValid(interviewId)) {
@@ -3372,49 +3429,107 @@ Due: ${context.dueDate}`
       }
 
       // Check if interviewer is part of the panel
-      const panelIds = interview.panel?.map((id: any) => id.toString()) || [];
+      // Convert interviewerId to string for comparison
+      const interviewerIdStr = String(interviewerId);
+      const panelIds = interview.panel?.map((id: any) => {
+        // Handle both ObjectId and string formats
+        if (id && typeof id === 'object' && id.toString) {
+          return id.toString();
+        }
+        return String(id);
+      }) || [];
+      
       if (panelIds.length === 0) {
         throw new BadRequestException(
           'Interview panel is empty. Cannot submit feedback without panel members.',
         );
       }
-      if (!panelIds.includes(interviewerId)) {
+      
+      if (!panelIds.includes(interviewerIdStr)) {
+        console.error('Panel validation failed:', {
+          interviewerId: interviewerIdStr,
+          panelIds: panelIds,
+          interviewId: interviewId,
+        });
         throw new BadRequestException(
           'Interviewer is not part of the interview panel',
         );
       }
 
       // Check if feedback already exists for this interviewer
+      // Ensure both IDs are valid ObjectIds
+      const interviewerObjectId = new Types.ObjectId(interviewerIdStr);
+      const interviewObjectId = new Types.ObjectId(interviewId);
+      
       const existingFeedback = await this.assessmentResultModel.findOne({
-        interviewId: new Types.ObjectId(interviewId),
-        interviewerId: new Types.ObjectId(interviewerId),
+        interviewId: interviewObjectId,
+        interviewerId: interviewerObjectId,
       });
 
       let assessmentResult;
       if (existingFeedback) {
         // Update existing feedback
+        console.log('📝 Updating existing feedback:', existingFeedback._id);
         assessmentResult = await this.assessmentResultModel.findByIdAndUpdate(
           existingFeedback._id,
           { score, comments },
           { new: true },
         );
+        console.log('✅ Updated existing feedback:', assessmentResult._id);
       } else {
-        // Create new feedback
-        assessmentResult = new this.assessmentResultModel({
-          interviewId: new Types.ObjectId(interviewId),
-          interviewerId: new Types.ObjectId(interviewerId),
-          score,
-          comments: comments || '',
+        // Create new feedback using create() method for better reliability
+        console.log('🆕 Creating new feedback:', {
+          interviewId: interviewId,
+          interviewerId: interviewerIdStr,
+          score: score,
         });
-        assessmentResult = await assessmentResult.save();
+        
+        try {
+          // Save using the model first (for Mongoose validation)
+          assessmentResult = await this.assessmentResultModel.create({
+            interviewId: interviewObjectId,
+            interviewerId: interviewerObjectId,
+            score,
+            comments: comments || '',
+          });
+          
+          // Also save directly to interviewfeedbacks collection using native MongoDB
+          const db = this.assessmentResultModel.db;
+          const interviewfeedbacksCollection = db.collection('interviewfeedbacks');
+          
+          const feedbackDocument = {
+            interviewId: interviewObjectId,
+            interviewerId: interviewerObjectId,
+            score,
+            comments: comments || '',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          
+          const insertResult = await interviewfeedbacksCollection.insertOne(feedbackDocument);
+          
+          if (insertResult.insertedId) {
+            // Update the assessmentResult with the inserted ID for consistency
+            assessmentResult._id = insertResult.insertedId;
+          }
 
-        // Link feedback to interview
-        await this.interviewModel.findByIdAndUpdate(interviewId, {
-          feedbackId: assessmentResult._id,
-        });
+          // Note: Not linking feedbackId to interview since multiple feedbacks can exist per interview
+          // (one per panel member). The interview.feedbackId field would only store one ID.
+        } catch (saveError: any) {
+          throw new BadRequestException(
+            `Failed to save feedback: ${this.getErrorMessage(saveError)}`,
+          );
+        }
       }
 
-      return assessmentResult.toObject();
+      const result = assessmentResult.toObject();
+      console.log('📤 Returning feedback result:', {
+        _id: result._id,
+        interviewId: result.interviewId,
+        interviewerId: result.interviewerId,
+        score: result.score,
+      });
+      return result;
     } catch (error) {
       if (
         error instanceof NotFoundException ||
