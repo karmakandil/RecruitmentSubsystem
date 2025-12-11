@@ -798,12 +798,15 @@ export class RecruitmentService {
     try {
       const candidate = (application as any).candidateId;
       if (candidate && candidate.personalEmail) {
+        // CHANGED - REC-022: Include rejection reason in notification context
         await this.sendNotification(
           'application_status',
           candidate.personalEmail,
           {
             candidateName: candidate.firstName || 'Candidate',
             status: dto.status,
+            // CHANGED - Pass rejection reason if provided
+            rejectionReason: dto.rejectionReason,
           },
           { nonBlocking: true },
         );
@@ -1353,7 +1356,9 @@ export class RecruitmentService {
       | 'onboarding_completed'
       | 'panel_invitation'
       | 'clearance_reminder'
-      | 'access_revoked',
+      | 'access_revoked'
+      // CHANGED - OFF-013: Added final_settlement notification type
+      | 'final_settlement',
     recipientEmail: string,
     context: any,
     options?: { nonBlocking?: boolean },
@@ -1402,6 +1407,10 @@ export class RecruitmentService {
           if (context.status === ApplicationStatus.REJECTED) {
             text +=
               'Thank you for your interest in our company. After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n';
+            // CHANGED - REC-022: Include custom rejection reason if provided
+            if (context.rejectionReason) {
+              text += `Feedback from our hiring team:\n${context.rejectionReason}\n\n`;
+            }
             text +=
               'We appreciate the time you invested in the application process and wish you the best in your job search.\n\n';
           } else if (context.status === ApplicationStatus.IN_PROCESS) {
@@ -1567,6 +1576,30 @@ Due: ${context.dueDate}`
           text += `Best regards,\nSecurity Team`;
           break;
 
+        // CHANGED - OFF-013: Final settlement notification
+        case 'final_settlement':
+          subject = `Final Settlement Initiated - ${context.employeeName || context.employeeNumber || 'Employee'}`;
+          text = `Dear HR Team,\n\n`;
+          text += `Final settlement process has been initiated for the following employee:\n\n`;
+          text += `Employee: ${context.employeeName || 'N/A'}\n`;
+          text += `Employee Number: ${context.employeeNumber || 'N/A'}\n`;
+          text += `Termination Date: ${context.terminationDate || 'N/A'}\n`;
+          text += `Settlement Status: ${context.settlementStatus || 'INITIATED'}\n\n`;
+          text += `Settlement Components:\n`;
+          text += `- Leave Encashment: ${context.leaveEncashment || 'Pending calculation'}\n`;
+          text += `- Benefits Termination: ${context.benefitsTermination || 'Pending processing'}\n`;
+          text += `- Final Pay: ${context.finalPay || 'Pending calculation'}\n\n`;
+          if (context.errors && context.errors.length > 0) {
+            text += `⚠️ Warnings/Errors:\n`;
+            context.errors.forEach((err: any) => {
+              text += `- ${err.step}: ${err.error}\n`;
+            });
+            text += '\n';
+          }
+          text += `Please review the settlement details in the HR system and ensure all calculations are accurate before final payout.\n\n`;
+          text += `Best regards,\nHR System`;
+          break;
+
         default:
           throw new BadRequestException(
             `Unknown notification type: ${notificationType}`,
@@ -1614,8 +1647,19 @@ Due: ${context.dueDate}`
 
     // Check if email credentials are configured
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.warn('Email credentials not configured. Email will not be sent.');
-      return; // Don't throw error, just log warning
+      // CHANGED - REC-022: Log email content for demo/testing purposes
+      console.log('\n' + '='.repeat(60));
+      console.log('📧 EMAIL NOTIFICATION (Demo Mode - No credentials configured)');
+      console.log('='.repeat(60));
+      console.log(`📬 TO:      ${recipient.trim()}`);
+      console.log(`📋 SUBJECT: ${subject.trim()}`);
+      console.log('-'.repeat(60));
+      console.log('📝 BODY:');
+      console.log(text.trim());
+      console.log('='.repeat(60));
+      console.log('ℹ️  To send real emails, configure EMAIL_USER and EMAIL_PASS');
+      console.log('='.repeat(60) + '\n');
+      return; // Don't throw error, just log
     }
 
     try {
@@ -3237,6 +3281,97 @@ Due: ${context.dueDate}`
       }
       throw new BadRequestException(
         'Failed to record candidate consent: ' + this.getErrorMessage(error),
+      );
+    }
+  }
+
+  // CHANGED - Added CV upload method for candidates (REC-003)
+  /**
+   * REC-003: Candidate uploads CV/resume during application
+   * As a Candidate, I want to upload my CV and apply for positions
+   */
+  async uploadCandidateCV(
+    candidateId: string,
+    file: any,
+    manualDocumentData?: { resumeUrl?: string },
+  ): Promise<any> {
+    try {
+      // 1. Validate candidateId
+      if (!Types.ObjectId.isValid(candidateId)) {
+        throw new BadRequestException('Invalid candidate ID format');
+      }
+
+      // 2. Check if file or manual data provided
+      const hasFile = file && file.path;
+      const hasManualData = manualDocumentData && manualDocumentData.resumeUrl;
+
+      if (!hasFile && !hasManualData) {
+        throw new BadRequestException(
+          'Either file upload or resume URL is required',
+        );
+      }
+
+      // 3. Validate candidate exists
+      const candidate = await this.candidateModel.findById(candidateId);
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      let resumeUrl: string;
+
+      if (hasFile) {
+        // File upload flow
+        // Validate file type
+        const allowedTypes = [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+          throw new BadRequestException(
+            'Invalid file type. Only PDF and DOC/DOCX files are allowed for CV',
+          );
+        }
+
+        // Store file path as resume URL
+        resumeUrl = file.path;
+      } else {
+        // Manual URL entry flow
+        resumeUrl = manualDocumentData!.resumeUrl!;
+      }
+
+      // 4. Update candidate with resume URL
+      const updated = await this.candidateModel.findByIdAndUpdate(
+        candidateId,
+        { resumeUrl },
+        { new: true },
+      );
+
+      // 5. Create document record for tracking
+      const document = new this.documentModel({
+        ownerId: candidate._id,
+        type: DocumentType.CV,
+        filePath: resumeUrl,
+        uploadedAt: new Date(),
+      });
+      await document.save();
+
+      return {
+        message: 'CV uploaded successfully',
+        candidateId: updated?._id,
+        resumeUrl,
+        documentId: document._id,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to upload CV: ' + this.getErrorMessage(error),
       );
     }
   }
@@ -5815,30 +5950,32 @@ Due: ${context.dueDate}`
       (termination.hrComments || '') + '\n' + settlementNote;
     await termination.save();
 
-    // Send notification to HR about final settlement initiation
-    // TODO: Add 'final_settlement_initiated' to sendNotification allowed types when ready
-    // For now, this is commented out as the notification type doesn't exist yet
-    //
-    // try {
-    //   const hrManagers = await this.employeeSystemRoleModel.find({
-    //     roles: { $in: [SystemRole.HR_MANAGER] },
-    //     isActive: true
-    //   }).exec();
-    //
-    //   for (const hr of hrManagers) {
-    //     const hrEmployee = await this.employeeModel.findById(hr.employeeProfileId).exec();
-    //     if (hrEmployee && hrEmployee.workEmail) {
-    //       await this.sendNotification('final_settlement_initiated', hrEmployee.workEmail, {
-    //         employeeName: employee.fullName || employee.employeeNumber || 'Employee',
-    //         employeeNumber: employee.employeeNumber,
-    //         terminationDate: termination.terminationDate?.toISOString(),
-    //         settlementStatus: settlementData.status,
-    //       }, { nonBlocking: true });
-    //     }
-    //   }
-    // } catch (err) {
-    //   console.warn('triggerFinalSettlement: Failed to send notifications:', this.getErrorMessage(err) || err);
-    // }
+    // CHANGED - OFF-013: Send notification to HR about final settlement initiation
+    try {
+      const hrManagers = await this.employeeSystemRoleModel.find({
+        roles: { $in: [SystemRole.HR_MANAGER] },
+        isActive: true
+      }).exec();
+
+      for (const hr of hrManagers) {
+        const hrEmployee = await this.employeeModel.findById(hr.employeeProfileId).exec();
+        if (hrEmployee && (hrEmployee.workEmail || hrEmployee.personalEmail)) {
+          await this.sendNotification('final_settlement', hrEmployee.workEmail || hrEmployee.personalEmail, {
+            employeeName: employee.fullName || employee.employeeNumber || 'Employee',
+            employeeNumber: employee.employeeNumber,
+            terminationDate: termination.terminationDate?.toISOString(),
+            settlementStatus: settlementData.status,
+            leaveEncashment: settlementData.components?.leaveEncashment?.encashmentAmount || 'Pending',
+            benefitsTermination: settlementData.components?.benefitsTermination?.benefitsCreated ? 
+              `${settlementData.components.benefitsTermination.benefitsCreated} benefits processed` : 'Pending',
+            finalPay: 'Pending calculation',
+            errors: settlementData.errors,
+          }, { nonBlocking: true });
+        }
+      }
+    } catch (err) {
+      console.warn('triggerFinalSettlement: Failed to send notifications:', this.getErrorMessage(err) || err);
+    }
 
     console.log(
       `triggerFinalSettlement: Initiated for employee ${employee.employeeNumber}, status: ${settlementData.status}`,

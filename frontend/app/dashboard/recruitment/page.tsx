@@ -145,7 +145,15 @@ export default function RecruitmentPage() {
                               {job.template?.department || "Department"} • {job.location || "Location TBD"}
                             </CardDescription>
                           </div>
-                          <StatusBadge status={job.status} type="application" />
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            job.publishStatus === 'published' 
+                              ? 'bg-green-100 text-green-800' 
+                              : job.publishStatus === 'closed'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {job.publishStatus ? job.publishStatus.charAt(0).toUpperCase() + job.publishStatus.slice(1) : 'Draft'}
+                          </span>
                         </div>
                       </CardHeader>
                       <CardContent>
@@ -271,17 +279,20 @@ export default function RecruitmentPage() {
                 </>
               )}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Applications</CardTitle>
-                  <CardDescription>Review and manage candidate applications</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Link href="/dashboard/recruitment/applications">
-                    <Button className="w-full">View Applications</Button>
-                  </Link>
-                </CardContent>
-              </Card>
+              {/* CHANGED - REC-008: HR Employee can track candidates (Recruiter excluded per user story) */}
+              {!isRecruiter && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Candidate Tracking</CardTitle>
+                    <CardDescription>Track candidates through each hiring stage</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/applications">
+                      <Button className="w-full">Track Candidates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader>
@@ -323,19 +334,7 @@ export default function RecruitmentPage() {
                 </Card>
               )}
 
-              {(isHREmployee || isHRManager) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Referrals</CardTitle>
-                    <CardDescription>Tag and track candidate referrals</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Link href="/dashboard/recruitment/referrals">
-                      <Button className="w-full">Manage Referrals</Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Referrals button available in Employee section as "My Referrals" */}
             </div>
           </>
         )}

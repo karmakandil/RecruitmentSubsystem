@@ -301,7 +301,8 @@ export default function AccessManagementPage() {
                                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                                 >
                                   <div>
-                                    <div className="font-medium">{task.name}</div>
+                                    {/* CHANGED - Added text-gray-900 for visibility */}
+                                    <div className="font-medium text-gray-900">{task.name}</div>
                                     <div className="text-xs text-gray-500">
                                       Status: {task.status}
                                     </div>

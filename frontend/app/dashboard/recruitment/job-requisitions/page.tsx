@@ -30,6 +30,11 @@ export default function JobRequisitionsPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // CHANGED - Only HR Manager and System Admin can create jobs (HR Employee can only preview/publish)
+  const canCreateJobs = user?.roles?.some(
+    (role) => String(role).toLowerCase() === "hr manager" || String(role).toLowerCase() === "system admin"
+  );
+
   useEffect(() => {
     loadData();
   }, []);
@@ -141,7 +146,8 @@ export default function JobRequisitionsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN]}>
+    // CHANGED - REC-023: HR Employee can also preview and publish jobs
+    <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN]}>
       <div className="container mx-auto px-6 py-8">
         <Toast
           message={toast.message}
@@ -156,9 +162,12 @@ export default function JobRequisitionsPage() {
               ← Back to Recruitment
             </Link>
             <h1 className="text-3xl font-bold text-gray-900">Job Requisitions</h1>
-            <p className="text-gray-600 mt-1">Create and manage job postings</p>
+            <p className="text-gray-600 mt-1">Preview and publish job postings</p>
           </div>
-          <Button onClick={handleOpenCreate}>Create Job Requisition</Button>
+          {/* CHANGED - Only show Create button for HR Manager/System Admin */}
+          {canCreateJobs && (
+            <Button onClick={handleOpenCreate}>Create Job Requisition</Button>
+          )}
         </div>
 
         {loading ? (
@@ -169,7 +178,10 @@ export default function JobRequisitionsPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <p className="text-gray-500 mb-4">No job requisitions found.</p>
-              <Button onClick={handleOpenCreate}>Create Job Requisition</Button>
+              {/* CHANGED - Only show Create button for HR Manager/System Admin */}
+              {canCreateJobs && (
+                <Button onClick={handleOpenCreate}>Create Job Requisition</Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -204,7 +216,8 @@ export default function JobRequisitionsPage() {
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-500">Openings:</span>
-                      <span className="font-medium">{job.openings}</span>
+                      {/* CHANGED - Added text-gray-900 for visibility */}
+                      <span className="font-medium text-gray-900">{job.openings}</span>
                     </div>
                     {/* CHANGED - Using publishStatus instead of published boolean */}
                     <div className="flex items-center justify-between text-sm">

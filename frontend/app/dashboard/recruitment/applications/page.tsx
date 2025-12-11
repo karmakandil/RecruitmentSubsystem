@@ -28,6 +28,11 @@ export default function ApplicationsPage() {
   const [statusUpdate, setStatusUpdate] = useState<ApplicationStatus>(ApplicationStatus.SUBMITTED);
   const [updating, setUpdating] = useState(false);
 
+  // CHANGED - Only HR Manager can update status, HR Employee can only track/view
+  const canUpdateStatus = user?.roles?.some(
+    (role) => String(role).toLowerCase() === "hr manager" || String(role).toLowerCase() === "system admin"
+  );
+
   useEffect(() => {
     loadData();
   }, []);
@@ -270,16 +275,18 @@ export default function ApplicationsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2 ml-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenStatusUpdate(application)}
-                          disabled={application.status === ApplicationStatus.HIRED || application.status === ApplicationStatus.REJECTED}
-                        >
-                          Update Status
-                        </Button>
-                      </div>
+                      {canUpdateStatus && (
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenStatusUpdate(application)}
+                            disabled={application.status === ApplicationStatus.HIRED || application.status === ApplicationStatus.REJECTED}
+                          >
+                            Update Status
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
