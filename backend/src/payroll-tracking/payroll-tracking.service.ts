@@ -2603,6 +2603,206 @@ export class PayrollTrackingService {
     }
   }
 
+  // REQ-PY-1: Employees download a specific payslip as PDF
+  async downloadPayslipAsPDF(payslipId: string, employeeId: string): Promise<Buffer> {
+    try {
+      const validPayslipId = this.validateObjectId(payslipId, 'payslipId');
+      const validEmployeeId = await this.validateEmployeeExists(employeeId, false);
+
+      // Get payslip with populated data
+      const payslip = await this.payslipModel
+        .findOne({ _id: validPayslipId, employeeId: validEmployeeId })
+        .populate('employeeId', 'firstName lastName employeeNumber fullName')
+        .populate('payrollRunId', 'runId payrollPeriod status entity')
+        .exec();
+
+      if (!payslip) {
+        throw new NotFoundException(
+          `Payslip with ID ${payslipId} not found for this employee`,
+        );
+      }
+
+      // Get employee details
+      const employee = await this.employeeProfileService.findOne(employeeId);
+      if (!employee) {
+        throw new NotFoundException('Employee not found');
+      }
+
+      // Get payroll run for period information
+      const payrollRun = await this.payrollRunsModel.findById(payslip.payrollRunId).exec();
+      const periodDate = payrollRun
+        ? new Date(payrollRun.payrollPeriod)
+        : new Date();
+      const periodMonth = periodDate.toLocaleString('default', {
+        month: 'long',
+        year: 'numeric',
+      });
+
+      // Check if pdfkit is available
+      let PDFDocument: any;
+      try {
+        PDFDocument = require('pdfkit');
+      } catch (e) {
+        throw new BadRequestException(
+          'PDF generation is not available. Please contact system administrator.',
+        );
+      }
+
+      // Generate PDF in memory
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+
+      // Collect PDF data
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      
+      // Generate PDF content
+      doc.fontSize(20).text('PAYSLIP', { align: 'center' });
+      doc.moveDown(0.5);
+      doc.fontSize(12);
+      doc.text(
+        `Employee: ${employee.fullName || `${employee.firstName} ${employee.lastName}`}`,
+      );
+      doc.text(`Employee Number: ${employee.employeeNumber}`);
+      doc.text(`Period: ${periodMonth}`);
+      if (payrollRun?.runId) {
+        doc.text(`Payroll Run: ${payrollRun.runId}`);
+      }
+      doc.moveDown();
+
+      // Earnings section
+      doc.fontSize(14).text('EARNINGS', { underline: true });
+      doc.fontSize(10);
+      doc.text(`Base Salary: $${payslip.earningsDetails.baseSalary.toFixed(2)}`);
+
+      if (
+        payslip.earningsDetails.allowances &&
+        payslip.earningsDetails.allowances.length > 0
+      ) {
+        payslip.earningsDetails.allowances.forEach((allowance: any) => {
+          doc.text(
+            `  ${allowance.allowanceName || 'Allowance'}: $${(allowance.amount || 0).toFixed(2)}`,
+          );
+        });
+      }
+
+      if (
+        payslip.earningsDetails.bonuses &&
+        payslip.earningsDetails.bonuses.length > 0
+      ) {
+        payslip.earningsDetails.bonuses.forEach((bonus: any) => {
+          doc.text(`  ${bonus.bonusName || 'Bonus'}: $${(bonus.amount || 0).toFixed(2)}`);
+        });
+      }
+
+      if (
+        payslip.earningsDetails.benefits &&
+        payslip.earningsDetails.benefits.length > 0
+      ) {
+        payslip.earningsDetails.benefits.forEach((benefit: any) => {
+          doc.text(`  ${benefit.benefitName || 'Benefit'}: $${(benefit.amount || 0).toFixed(2)}`);
+        });
+      }
+
+      if (
+        payslip.earningsDetails.refunds &&
+        payslip.earningsDetails.refunds.length > 0
+      ) {
+        payslip.earningsDetails.refunds.forEach((refund: any) => {
+          doc.text(
+            `  Refund: $${(refund.refundAmount || 0).toFixed(2)} - ${refund.refundDescription || ''}`,
+          );
+        });
+      }
+
+      doc.moveDown();
+      doc
+        .fontSize(12)
+        .text(`Total Gross Salary: $${payslip.totalGrossSalary.toFixed(2)}`, {
+          underline: true,
+        });
+
+      // Deductions section
+      doc.moveDown();
+      doc.fontSize(14).text('DEDUCTIONS', { underline: true });
+      doc.fontSize(10);
+
+      if (
+        payslip.deductionsDetails.taxes &&
+        payslip.deductionsDetails.taxes.length > 0
+      ) {
+        payslip.deductionsDetails.taxes.forEach((tax: any) => {
+          doc.text(
+            `  ${tax.taxName || 'Tax'} (${tax.taxRate || 0}%): $${(tax.taxAmount || 0).toFixed(2)}`,
+          );
+        });
+      }
+
+      if (
+        payslip.deductionsDetails.insurances &&
+        payslip.deductionsDetails.insurances.length > 0
+      ) {
+        payslip.deductionsDetails.insurances.forEach((insurance: any) => {
+          doc.text(
+            `  ${insurance.insuranceName || 'Insurance'}: $${(insurance.employeeContribution || 0).toFixed(2)}`,
+          );
+        });
+      }
+
+      if (payslip.deductionsDetails.penalties) {
+        const penalties = payslip.deductionsDetails.penalties as any;
+        if (penalties.missingHoursDeduction) {
+          doc.text(`  Missing Hours Deduction: $${penalties.missingHoursDeduction.toFixed(2)}`);
+        }
+        if (penalties.missingDaysDeduction) {
+          doc.text(`  Missing Days Deduction: $${penalties.missingDaysDeduction.toFixed(2)}`);
+        }
+        if (penalties.unpaidLeaveDeduction) {
+          doc.text(`  Unpaid Leave Deduction: $${penalties.unpaidLeaveDeduction.toFixed(2)}`);
+        }
+        if (penalties.totalPenalties) {
+          doc.text(`  Total Penalties: $${penalties.totalPenalties.toFixed(2)}`);
+        }
+      }
+
+      doc.moveDown();
+      doc
+        .fontSize(12)
+        .text(`Total Deductions: $${(payslip.totaDeductions || 0).toFixed(2)}`, {
+          underline: true,
+        });
+
+      // Summary
+      doc.moveDown();
+      doc.fontSize(16).text('NET PAY', { align: 'center', underline: true });
+      doc
+        .fontSize(18)
+        .text(`$${payslip.netPay.toFixed(2)}`, { align: 'center' });
+
+      doc.end();
+
+      // Wait for PDF to be generated and return buffer
+      return new Promise<Buffer>((resolve, reject) => {
+        doc.on('end', () => {
+          const pdfBuffer = Buffer.concat(chunks);
+          resolve(pdfBuffer);
+        });
+        doc.on('error', (error) => {
+          reject(error);
+        });
+      });
+    } catch (error: any) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        `Failed to generate PDF: ${error?.message || 'Unknown error'}`,
+      );
+    }
+  }
+
   // REQ-PY-3: Employees view base salary according to employment contract
   async getEmployeeBaseSalary(employeeId: string) {
     try {

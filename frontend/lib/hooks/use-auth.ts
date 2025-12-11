@@ -22,6 +22,14 @@ export const useRequireAuth = (
   const router = useRouter();
   const { isAuthenticated, user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Ensure initialization runs
+  useEffect(() => {
+    const store = useAuthStore.getState();
+    store.initialize();
+    setHasInitialized(true);
+  }, []);
 
   const hasRequiredRole = useMemo(() => {
     if (!requiredRole) return true;
@@ -30,6 +38,9 @@ export const useRequireAuth = (
   }, [user, requiredRole]);
 
   useEffect(() => {
+    // Wait for initialization to complete
+    if (!hasInitialized) return;
+
     if (!loading) {
       if (!isAuthenticated) {
         router.replace(redirectTo || "/auth/login");
@@ -41,8 +52,9 @@ export const useRequireAuth = (
         user.userType !== requiredUserType
       ) {
         router.replace(redirectTo || "/auth/login");
+      } else {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
   }, [
     loading,
@@ -52,9 +64,10 @@ export const useRequireAuth = (
     user?.userType,
     redirectTo,
     router,
+    hasInitialized,
   ]);
 
-  return { isLoading };
+  return { isLoading: isLoading || !hasInitialized || loading };
 };
 
 export const useRequireUserType = (

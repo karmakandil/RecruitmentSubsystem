@@ -29,9 +29,12 @@ export default function DashboardPage() {
             <CardTitle>Payroll</CardTitle>
             <CardDescription>View payslips and salary</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Link href="/dashboard/payroll" className="text-blue-600 hover:underline">
+          <CardContent className="space-y-2">
+            <Link href="/dashboard/payroll" className="text-blue-600 hover:underline block">
               Open Payroll
+            </Link>
+            <Link href="/dashboard/finance" className="text-blue-600 hover:underline block">
+              Finance Dashboard
             </Link>
           </CardContent>
         </Card>

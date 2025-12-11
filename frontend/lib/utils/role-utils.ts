@@ -100,6 +100,9 @@ export function getDashboardByRole(role: string): string {
     case SystemRole.PAYROLL_SPECIALIST:
       return "/dashboard/payroll";
 
+    case SystemRole.FINANCE_STAFF:
+      return "/dashboard/finance";
+
     case SystemRole.DEPARTMENT_HEAD:
     case SystemRole.DEPARTMENT_EMPLOYEE:
       return "/dashboard/employee-profile";

@@ -15,25 +15,38 @@ type AuthState = {
   initialize: () => void;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  loading: false,
-  error: null,
+export const useAuthStore = create<AuthState>((set, get) => {
+  // Initialize synchronously on store creation
+  const token = typeof window !== "undefined" ? authApi.getToken() : null;
+  const user = typeof window !== "undefined" ? authApi.getUser() : null;
+  const isAuthenticated = !!(token && user);
 
-  initialize: () => {
-    const token = authApi.getToken();
-    const user = authApi.getUser();
+  return {
+    user: user,
+    token: token,
+    isAuthenticated: isAuthenticated,
+    loading: false,
+    error: null,
 
-    if (token && user) {
-      set({
-        token,
-        user,
-        isAuthenticated: true,
-      });
-    }
-  },
+    initialize: () => {
+      // Re-check in case localStorage was updated
+      const token = authApi.getToken();
+      const user = authApi.getUser();
+
+      if (token && user) {
+        set({
+          token,
+          user,
+          isAuthenticated: true,
+        });
+      } else {
+        set({
+          token: null,
+          user: null,
+          isAuthenticated: false,
+        });
+      }
+    },
 
   login: async (data) => {
     set({ loading: true, error: null });
@@ -73,12 +86,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  logout: () => {
-    authApi.logout();
-    set({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-    });
-  },
-}));
+    logout: () => {
+      authApi.logout();
+      set({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+      });
+    },
+  };
+});

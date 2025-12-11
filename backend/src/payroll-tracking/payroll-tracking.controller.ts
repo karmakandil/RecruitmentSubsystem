@@ -9,7 +9,9 @@ import {
   Put,
   Query,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { PayrollTrackingService } from './payroll-tracking.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -387,6 +389,28 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
   ) {
     return await this.payrollTrackingService.getPayslipById(payslipId, employeeId);
+  }
+
+  // REQ-PY-1: Employees download a specific payslip as PDF
+  @Get('employee/:employeeId/payslips/:payslipId/download')
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  async downloadPayslip(
+    @Param('employeeId') employeeId: string,
+    @Param('payslipId') payslipId: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.payrollTrackingService.downloadPayslipAsPDF(
+      payslipId,
+      employeeId,
+    );
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=payslip-${payslipId}.pdf`,
+    );
+    res.send(pdfBuffer);
   }
 
   // REQ-PY-3: Employees view base salary according to employment contract

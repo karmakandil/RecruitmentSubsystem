@@ -4,8 +4,11 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
+
+//HENAAA ZBATYHA ABL MA T3MELY PUSH L
+//process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
