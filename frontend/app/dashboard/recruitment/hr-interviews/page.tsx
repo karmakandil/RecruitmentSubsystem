@@ -33,6 +33,18 @@ export default function HRInterviewsPage() {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
   const [selectedInterview, setSelectedInterview] = useState<Interview | null>(null);
+
+  // CHANGED - Recruiter can only schedule interviews, not submit feedback
+  const isRecruiterOnly = user?.roles?.some(
+    (role) => String(role).toLowerCase() === "recruiter"
+  ) && !user?.roles?.some(
+    (role) => ["hr employee", "hr manager", "system admin"].includes(String(role).toLowerCase())
+  );
+  
+  // CHANGED - Only HR Employee, HR Manager, System Admin can submit feedback
+  const canSubmitFeedback = user?.roles?.some(
+    (role) => ["hr employee", "hr manager", "system admin"].includes(String(role).toLowerCase())
+  );
   const [scheduleForm, setScheduleForm] = useState<ScheduleInterviewDto>({
     applicationId: "",
     stage: ApplicationStage.SCREENING,
@@ -41,6 +53,9 @@ export default function HRInterviewsPage() {
     panel: [],
     videoLink: "",
   });
+  // CHANGED - Separate date and time state for better UX
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
   const [feedbackForm, setFeedbackForm] = useState<SubmitInterviewFeedbackDto>({
     score: 0,
     comments: "",
@@ -72,18 +87,66 @@ export default function HRInterviewsPage() {
       panel: [],
       videoLink: "",
     });
+    // CHANGED - Reset date and time fields
+    setScheduleDate("");
+    setScheduleTime("");
     setIsScheduleModalOpen(true);
   };
 
   const handleScheduleInterview = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Ensure date is in ISO format
-      const scheduledDate = new Date(scheduleForm.scheduledDate).toISOString();
-      const interviewData = {
-        ...scheduleForm,
-        scheduledDate,
+      // CHANGED - Combine date and time into ISO format
+      if (!scheduleDate || !scheduleTime) {
+        showToast("Please select both date and time", "error");
+        return;
+      }
+      
+      // CHANGED - Add seconds to time for proper ISO format
+      const timeWithSeconds = scheduleTime.includes(':') && scheduleTime.split(':').length === 2 
+        ? `${scheduleTime}:00` 
+        : scheduleTime;
+      const combinedDateTime = new Date(`${scheduleDate}T${timeWithSeconds}`);
+      
+      // CHANGED - Validate date is valid
+      if (isNaN(combinedDateTime.getTime())) {
+        showToast("Invalid date or time format", "error");
+        return;
+      }
+      
+      // CHANGED - Validate date is in the future
+      if (combinedDateTime <= new Date()) {
+        showToast("Interview date and time must be in the future", "error");
+        return;
+      }
+      
+      const scheduledDate = combinedDateTime.toISOString();
+      
+      // CHANGED - Build clean data object
+      const interviewData: any = {
+        applicationId: scheduleForm.applicationId,
+        stage: scheduleForm.stage,
+        scheduledDate: scheduledDate,
+        method: scheduleForm.method,
       };
+      
+      // CHANGED - Add current user to panel so they can submit feedback
+      const currentUserId = user?.id || user?.userId || user?._id;
+      if (currentUserId) {
+        interviewData.panel = [currentUserId];
+      }
+      
+      // Add any additional panel members
+      if (scheduleForm.panel && scheduleForm.panel.length > 0) {
+        interviewData.panel = [...(interviewData.panel || []), ...scheduleForm.panel];
+      }
+      if (scheduleForm.videoLink) {
+        interviewData.videoLink = scheduleForm.videoLink;
+      }
+      
+      // CHANGED - Log data for debugging
+      console.log("Scheduling interview with data:", JSON.stringify(interviewData, null, 2));
+      
       const interview = await recruitmentApi.scheduleInterview(interviewData);
       showToast("Interview scheduled successfully", "success");
       setIsScheduleModalOpen(false);
@@ -93,7 +156,11 @@ export default function HRInterviewsPage() {
       }
       loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to schedule interview", "error");
+      // CHANGED - Better error handling
+      const errorMessage = error.response?.data?.message || error.message || "Failed to schedule interview. Check console for details.";
+      console.error("Interview scheduling error:", error);
+      console.error("Error response:", error.response);
+      showToast(errorMessage, "error");
     }
   };
 
@@ -171,11 +238,18 @@ export default function HRInterviewsPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-2">
+                      {/* CHANGED - Added text-gray-900 for visibility */}
+                      <h3 className="text-lg font-semibold mb-2 text-gray-900">
                         {application.requisition?.template?.title || "Job Opening"}
                       </h3>
+                      {/* CHANGED - Handle candidateId as populated object or string */}
                       <p className="text-sm text-gray-600 mb-2">
-                        Candidate: {application.candidate?.fullName || application.candidateId}
+                        Candidate: {
+                          application.candidate?.fullName || 
+                          (typeof application.candidateId === 'object' 
+                            ? (application.candidateId as any)?.fullName || (application.candidateId as any)?.firstName || 'Unknown'
+                            : application.candidateId || 'Unknown')
+                        }
                       </p>
                       <p className="text-sm text-gray-600 mb-2">
                         Status: <StatusBadge status={application.status} type="application" />
@@ -194,13 +268,16 @@ export default function HRInterviewsPage() {
                       >
                         Schedule Interview
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenFeedback(application)}
-                      >
-                        Submit Feedback
-                      </Button>
+                      {/* CHANGED - Only HR Employee/Manager/Admin can submit feedback, not Recruiter */}
+                      {canSubmitFeedback && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenFeedback(application)}
+                        >
+                          Submit Feedback
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -235,23 +312,28 @@ export default function HRInterviewsPage() {
                 />
               </div>
 
+              {/* CHANGED - Separate date and time inputs for better UX */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Scheduled Date & Time *
+                  Interview Date *
                 </label>
                 <Input
-                  type="datetime-local"
-                  value={scheduleForm.scheduledDate}
-                  onChange={(e) => {
-                    // Convert local datetime to ISO string for backend
-                    const localDate = e.target.value;
-                    if (localDate) {
-                      const date = new Date(localDate);
-                      setScheduleForm({ ...scheduleForm, scheduledDate: date.toISOString() });
-                    } else {
-                      setScheduleForm({ ...scheduleForm, scheduledDate: "" });
-                    }
-                  }}
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Interview Time *
+                </label>
+                <Input
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
                   required
                 />
               </div>
