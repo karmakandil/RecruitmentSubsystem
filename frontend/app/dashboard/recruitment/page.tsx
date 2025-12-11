@@ -310,6 +310,20 @@ export default function RecruitmentPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {(isHREmployee || isHRManager) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Appraisal Templates</CardTitle>
+                    <CardDescription>Structured assessment and scoring forms per role</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/templates">
+                      <Button className="w-full">Manage Templates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {isHRManager && (
