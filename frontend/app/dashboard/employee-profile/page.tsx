@@ -74,6 +74,18 @@ export default function EmployeeDashboardPage() {
               </Link>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Time Management</CardTitle>
+              <CardDescription>Clock in/out and manage attendance</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/dashboard/employee-profile/time-management" className="text-blue-600 hover:underline">
+                Manage Attendance
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </ProtectedRoute>
