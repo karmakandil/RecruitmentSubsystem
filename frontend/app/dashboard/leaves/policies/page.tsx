@@ -47,10 +47,15 @@ export default function LeavePoliciesPage() {
       const policiesData = await leavesApi.getLeavePolicies();
       setPolicies(policiesData);
       
-      // TODO: Load leave types when endpoint is ready
-      // const types = await leavesApi.getLeaveTypes();
-      // setLeaveTypes(types);
-      setLeaveTypes([]);
+      // Load leave types
+      try {
+        const types = await leavesApi.getLeaveTypes();
+        setLeaveTypes(types);
+      } catch (typeError: any) {
+        // If types endpoint fails, show empty
+        console.warn("Leave types endpoint not available:", typeError);
+        setLeaveTypes([]);
+      }
     } catch (error: any) {
       showToast(error.message || "Failed to load leave policies", "error");
     } finally {

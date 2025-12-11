@@ -1,74 +1,80 @@
-// components/auth/protected-route.tsx (Updated - No LoadingSpinner import)
-'use client';
+// components/auth/protected-route.tsx - UPDATED
+"use client";
 
-import { ReactNode } from 'react';
-import { useRequireAuth, useRequireUserType } from '@/lib/hooks/use-auth';
-import { SystemRole } from '@/types';
+import { useAuth } from "@/lib/hooks/use-auth";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { SystemRole } from "@/types";
 
 interface ProtectedRouteProps {
-  children: ReactNode;
-  requiredRole?: SystemRole | string;
-  requiredUserType?: 'employee' | 'candidate';
+  children: React.ReactNode;
+  allowedRoles?: SystemRole[] | string[];
+  requiredUserType?: string;
   redirectTo?: string;
-  fallback?: ReactNode;
-}
-
-// Simple loading component
-function DefaultFallback() {
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600" />
-    </div>
-  );
 }
 
 export function ProtectedRoute({
   children,
-  requiredRole,
+  allowedRoles,
   requiredUserType,
-  redirectTo,
-  fallback = <DefaultFallback />,
+  redirectTo = "/dashboard",
 }: ProtectedRouteProps) {
-  const { isLoading } = useRequireAuth(
-    requiredRole,
-    redirectTo,
-    requiredUserType
-  );
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
-  if (isLoading) {
-    return <>{fallback}</>;
-  }
+  useEffect(() => {
+    if (isLoading) return;
 
-  return <>{children}</>;
-}
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
 
-export function CandidateRoute({
-  children,
-  fallback,
-}: {
-  children: ReactNode;
-  fallback?: ReactNode;
-}) {
-  const { isLoading } = useRequireUserType('candidate');
+    let hasAccess = true;
 
-  if (isLoading) {
-    return <>{fallback || <DefaultFallback />}</>;
-  }
+    // Check user type if required
+    if (requiredUserType && user.userType !== requiredUserType) {
+      hasAccess = false;
+    }
 
-  return <>{children}</>;
-}
+    // Check roles if required
+    if (allowedRoles && allowedRoles.length > 0) {
+      const userRoles = user.roles || [];
 
-export function EmployeeRoute({
-  children,
-  fallback,
-}: {
-  children: ReactNode;
-  fallback?: ReactNode;
-}) {
-  const { isLoading } = useRequireUserType('employee');
+      // Convert both arrays to strings for comparison
+      const userRoleStrings = userRoles.map((role) =>
+        typeof role === "string" ? role : (role as any).toString()
+      );
 
-  if (isLoading) {
-    return <>{fallback || <DefaultFallback />}</>;
+      const allowedRoleStrings = allowedRoles.map((role) =>
+        typeof role === "string" ? role : (role as any).toString()
+      );
+
+      // Check if any user role matches any allowed role
+      const hasRoleAccess = userRoleStrings.some((userRole) =>
+        allowedRoleStrings.includes(userRole)
+      );
+
+      if (!hasRoleAccess) {
+        hasAccess = false;
+      }
+    }
+
+    if (!hasAccess) {
+      router.push(redirectTo);
+      return;
+    }
+
+    setIsAuthorized(true);
+  }, [user, isLoading, allowedRoles, requiredUserType, router, redirectTo]);
+
+  if (isLoading || !isAuthorized) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return <>{children}</>;
