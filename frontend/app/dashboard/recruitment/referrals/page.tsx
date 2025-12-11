@@ -44,7 +44,16 @@ export default function EmployeeReferralsPage() {
       
       for (const app of apps) {
         try {
-          const candidateReferrals = await recruitmentApi.getCandidateReferrals(app.candidateId);
+          // Extract candidate ID - handle both string and object cases
+          const candidateId = typeof app.candidateId === 'string' 
+            ? app.candidateId 
+            : (app.candidateId as any)?._id || (app.candidateId as any)?.id || app.candidateId;
+          
+          if (!candidateId) continue;
+          
+          const candidateReferrals = await recruitmentApi.getCandidateReferrals(
+            typeof candidateId === 'string' ? candidateId : String(candidateId)
+          );
           if (candidateReferrals && candidateReferrals.length > 0) {
             // Check if current user is the referring employee (for employees) or show all (for HR)
             const userReferrals = isHR
@@ -143,7 +152,13 @@ export default function EmployeeReferralsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleOpenTag(app.candidateId)}
+                        onClick={() => {
+                          // Extract candidate ID - handle both string and object cases
+                          const candidateId = typeof app.candidateId === 'string' 
+                            ? app.candidateId 
+                            : (app.candidateId as any)?._id || (app.candidateId as any)?.id || app.candidateId;
+                          handleOpenTag(typeof candidateId === 'string' ? candidateId : String(candidateId));
+                        }}
                       >
                         Tag as Referral
                       </Button>

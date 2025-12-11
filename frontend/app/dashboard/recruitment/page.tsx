@@ -231,18 +231,44 @@ export default function RecruitmentPage() {
         {isHR && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {isHRManager && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Job Requisitions</CardTitle>
-                    <CardDescription>Create and manage job postings</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Link href="/dashboard/recruitment/job-requisitions">
-                      <Button className="w-full">Manage Jobs</Button>
-                    </Link>
-                  </CardContent>
-                </Card>
+              {(isHRManager || isSystemAdmin) && (
+                <>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Job Templates</CardTitle>
+                      <CardDescription>Create and manage job description templates</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Link href="/dashboard/recruitment/job-templates">
+                        <Button className="w-full">Manage Templates</Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Job Requisitions</CardTitle>
+                      <CardDescription>Create and manage job postings</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Link href="/dashboard/recruitment/job-requisitions">
+                        <Button className="w-full">Manage Jobs</Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recruitment Progress</CardTitle>
+                      <CardDescription>Monitor progress across all open positions</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Link href="/dashboard/recruitment/recruitment-progress">
+                        <Button className="w-full">View Progress</Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                </>
               )}
 
               <Card>
@@ -269,7 +295,7 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
-              {isHRManager && (
+              {(isHRManager || isSystemAdmin) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Offers</CardTitle>
@@ -311,58 +337,6 @@ export default function RecruitmentPage() {
                 </Card>
               )}
             </div>
-
-            {isHRManager && (
-              <div className="mt-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">All Job Requisitions</h2>
-                
-                {loading ? (
-                  <div className="text-center py-12">
-                    <p className="text-gray-500">Loading job requisitions...</p>
-                  </div>
-                ) : jobRequisitions.length === 0 ? (
-                  <Card>
-                    <CardContent className="py-12 text-center">
-                      <p className="text-gray-500">No job requisitions available.</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {jobRequisitions.map((job) => (
-                      <Card key={job._id} className="hover:shadow-lg transition-shadow">
-                        <CardHeader>
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <CardTitle className="text-xl">
-                                {job.template?.title || "Job Opening"}
-                              </CardTitle>
-                              <CardDescription className="mt-1">
-                                {job.template?.department || "Department"} • {job.location || "Location TBD"}
-                              </CardDescription>
-                            </div>
-                            <StatusBadge status={job.status} type="application" />
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-gray-600 mb-4 line-clamp-3">
-                            {job.template?.description || "No description available"}
-                          </p>
-                          <div className="flex items-center justify-between">
-                            {/* CHANGED - Using publishStatus instead of published boolean */}
-                            <span className="text-sm text-gray-500">
-                              {job.openings} {job.openings === 1 ? "opening" : "openings"} • {job.publishStatus === 'published' ? "Published" : job.publishStatus === 'closed' ? "Closed" : "Draft"}
-                            </span>
-                            <Link href={`/dashboard/recruitment/jobs/${job._id}`}>
-                              <Button size="sm">View Details</Button>
-                            </Link>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </>
         )}
 

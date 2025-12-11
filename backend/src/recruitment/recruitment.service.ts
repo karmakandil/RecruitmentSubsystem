@@ -203,41 +203,41 @@ export class RecruitmentService {
       // Validate templateId
       if (!dto.templateId || !Types.ObjectId.isValid(dto.templateId)) {
         console.error('❌ Invalid template ID:', dto.templateId);
-        throw new BadRequestException('Invalid template ID format');
-      }
+      throw new BadRequestException('Invalid template ID format');
+    }
 
       // Check if template exists
       console.log('🔍 Checking template existence...');
       const templateExists = await this.jobTemplateModel.findById(dto.templateId);
       if (!templateExists) {
         console.error('❌ Template not found:', dto.templateId);
-        throw new NotFoundException('Job template not found');
-      }
+      throw new NotFoundException('Job template not found');
+    }
       console.log('✅ Template found');
 
       // Validate openings
       if (!dto.openings || dto.openings <= 0 || !Number.isInteger(dto.openings)) {
         console.error('❌ Invalid openings:', dto.openings);
-        throw new BadRequestException('Openings must be a positive integer');
-      }
+      throw new BadRequestException('Openings must be a positive integer');
+    }
 
       // Validate hiringManagerId if provided
-      if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
+    if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
         console.error('❌ Invalid hiring manager ID:', dto.hiringManagerId);
-        throw new BadRequestException('Invalid hiring manager ID format');
-      }
+      throw new BadRequestException('Invalid hiring manager ID format');
+    }
 
       // Generate unique requisition ID
-      const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       console.log('🆔 Generated requisition ID:', requisitionId);
       
       // Build job requisition data - only include fields that have values
       // This ensures optional fields are completely omitted if not provided
       const jobRequisitionData: any = {
-        requisitionId,
+      requisitionId,
         templateId: new Types.ObjectId(dto.templateId), // Convert string to ObjectId
-        openings: dto.openings,
-        publishStatus: 'draft',
+      openings: dto.openings,
+      publishStatus: 'draft',
       };
 
       // Only include optional fields if they have valid values
@@ -1307,6 +1307,24 @@ export class RecruitmentService {
     }
 
     return updated;
+  }
+
+  async getOfferByApplicationId(applicationId: string) {
+    if (!Types.ObjectId.isValid(applicationId)) {
+      throw new BadRequestException('Invalid application ID format');
+    }
+
+    const offer = await this.offerModel
+      .findOne({ applicationId: new Types.ObjectId(applicationId) })
+      .populate('applicationId')
+      .populate('candidateId')
+      .lean();
+
+    if (!offer) {
+      throw new NotFoundException('Offer not found for this application');
+    }
+
+    return offer;
   }
 
   // ============================================================================

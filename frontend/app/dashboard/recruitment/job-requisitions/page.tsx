@@ -13,7 +13,6 @@ import { Input } from "@/components/shared/ui/Input";
 import { Select } from "@/components/leaves/Select";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
-import { StatusBadge } from "@/components/recruitment/StatusBadge";
 
 export default function JobRequisitionsPage() {
   const { user } = useAuth();
@@ -21,6 +20,7 @@ export default function JobRequisitionsPage() {
   const [jobRequisitions, setJobRequisitions] = useState<JobRequisition[]>([]);
   const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState<CreateJobRequisitionDto>({
     templateId: "",
@@ -71,15 +71,52 @@ export default function JobRequisitionsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm() || submitting) return;
 
     try {
-      await recruitmentApi.createJobRequisition(formData);
+      setSubmitting(true);
+      
+      // Prepare data: convert empty strings to undefined for optional fields and ensure openings is a number
+      const submitData: any = {
+        templateId: formData.templateId.trim(),
+        openings: Number(formData.openings), // Ensure it's a number
+      };
+
+      // Only include optional fields if they have values
+      if (formData.location?.trim()) {
+        submitData.location = formData.location.trim();
+      }
+      if (formData.hiringManagerId?.trim()) {
+        submitData.hiringManagerId = formData.hiringManagerId.trim();
+      }
+
+      console.log('📤 Submitting job requisition:', submitData);
+      const result = await recruitmentApi.createJobRequisition(submitData);
+      console.log('✅ Job requisition created:', result);
+      
       showToast("Job requisition created successfully", "success");
       setIsModalOpen(false);
-      loadData();
+      
+      // Reset form
+      setFormData({
+        templateId: "",
+        openings: 1,
+        location: "",
+        hiringManagerId: "",
+      });
+      setErrors({});
+      
+      // Reload data
+      await loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to create job requisition", "error");
+      console.error('❌ Error creating job requisition:', error);
+      const errorMessage = error?.response?.data?.message || 
+                          error?.response?.data?.error || 
+                          error?.message || 
+                          "Failed to create job requisition";
+      showToast(errorMessage, "error");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -149,7 +186,15 @@ export default function JobRequisitionsPage() {
                         {job.template?.department || "Department"} • {job.location || "Location TBD"}
                       </CardDescription>
                     </div>
-                    <StatusBadge status={job.status} type="application" />
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      job.publishStatus === 'published' 
+                        ? "bg-green-100 text-green-800" 
+                        : job.publishStatus === 'closed' 
+                        ? "bg-red-100 text-red-800" 
+                        : "bg-gray-100 text-gray-800"
+                    }`}>
+                      {job.publishStatus === 'published' ? 'Published' : job.publishStatus === 'closed' ? 'Closed' : 'Draft'}
+                    </span>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -266,7 +311,9 @@ export default function JobRequisitionsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create</Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Creating..." : "Create"}
+              </Button>
             </div>
           </form>
         </Modal>
