@@ -68,21 +68,48 @@ export default function HROnboardingPage() {
     setIsCreateModalOpen(true);
   };
 
+  // CHANGED - Added validation and better error handling
   const handleCreateOnboarding = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // CHANGED - Validate employee ID format (MongoDB ObjectId is 24 hex characters)
+    const employeeId = createForm.employeeId.trim();
+    if (!employeeId) {
+      showToast("Please enter an Employee ID", "error");
+      return;
+    }
+    
+    // CHANGED - Check if it looks like a valid MongoDB ObjectId
+    const mongoIdRegex = /^[a-fA-F0-9]{24}$/;
+    if (!mongoIdRegex.test(employeeId)) {
+      showToast("Invalid Employee ID format. Must be a 24-character MongoDB ObjectId (e.g., 507f1f77bcf86cd799439011)", "error");
+      return;
+    }
+    
     try {
+      // CHANGED - Debug logging
+      console.log("🔍 Creating onboarding with:", {
+        employeeId,
+        contractId: createForm.contractId || undefined,
+        tasksCount: (createForm.tasks || []).length,
+      });
+      
       // Backend requires tasks array (can be empty initially)
       const onboardingData: CreateOnboardingDto = {
-        employeeId: createForm.employeeId,
+        employeeId: employeeId,
         contractId: createForm.contractId || undefined,
         tasks: createForm.tasks || [], // Ensure tasks array is present
       };
+      
       await recruitmentApi.createOnboarding(onboardingData);
       showToast("Onboarding created successfully", "success");
       setIsCreateModalOpen(false);
       loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to create onboarding", "error");
+      // CHANGED - Better error display
+      console.error("Create onboarding error:", error);
+      const errorMessage = error.message || "Failed to create onboarding";
+      showToast(errorMessage, "error");
     }
   };
 
@@ -273,8 +300,14 @@ export default function HROnboardingPage() {
                 <Input
                   value={createForm.employeeId}
                   onChange={(e) => setCreateForm({ ...createForm, employeeId: e.target.value })}
+                  placeholder="24-character MongoDB ObjectId"
                   required
                 />
+                {/* CHANGED - Added helper text */}
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the employee's MongoDB ObjectId (24 hex characters). 
+                  You can find this in the Employee Profile database.
+                </p>
               </div>
 
               <div>

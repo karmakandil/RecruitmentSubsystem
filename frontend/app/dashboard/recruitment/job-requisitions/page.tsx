@@ -30,9 +30,14 @@ export default function JobRequisitionsPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // CHANGED - Only HR Manager and System Admin can create jobs (HR Employee can only preview/publish)
+  // CHANGED - Only HR Manager and System Admin can create jobs
   const canCreateJobs = user?.roles?.some(
     (role) => String(role).toLowerCase() === "hr manager" || String(role).toLowerCase() === "system admin"
+  );
+
+  // CHANGED - Only HR Employee can publish jobs (NOT HR Manager)
+  const canPublishJobs = user?.roles?.some(
+    (role) => String(role).toLowerCase() === "hr employee"
   );
 
   useEffect(() => {
@@ -187,8 +192,8 @@ export default function JobRequisitionsPage() {
                     <Link href={`/dashboard/recruitment/jobs/${job._id}`} className="flex-1">
                       <Button variant="outline" size="sm" className="w-full">View</Button>
                     </Link>
-                    {/* CHANGED - Check publishStatus === 'draft' instead of !job.published */}
-                    {job.publishStatus === 'draft' && (
+                    {/* CHANGED - Only HR Employee can publish (NOT HR Manager) */}
+                    {job.publishStatus === 'draft' && canPublishJobs && (
                       <Button
                         variant="outline"
                         size="sm"

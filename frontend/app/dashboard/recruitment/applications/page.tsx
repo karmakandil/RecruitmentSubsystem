@@ -10,6 +10,8 @@ import { Application, ApplicationStatus, UpdateApplicationStatusDto } from "@/ty
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { Select } from "@/components/leaves/Select";
+// CHANGED - Added Textarea for rejection reason
+import { Textarea } from "@/components/leaves/Textarea";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
@@ -25,6 +27,8 @@ export default function ApplicationsPage() {
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [statusUpdate, setStatusUpdate] = useState<ApplicationStatus>(ApplicationStatus.SUBMITTED);
+  // CHANGED - Added rejection reason state for REC-022
+  const [rejectionReason, setRejectionReason] = useState<string>("");
 
   // CHANGED - Only HR Manager can update status, HR Employee can only track/view
   const canUpdateStatus = user?.roles?.some(
@@ -69,19 +73,44 @@ export default function ApplicationsPage() {
   const handleOpenStatusUpdate = (application: Application) => {
     setSelectedApplication(application);
     setStatusUpdate(application.status);
+    // CHANGED - Reset rejection reason when opening modal
+    setRejectionReason("");
     setIsStatusModalOpen(true);
   };
 
+  // CHANGED - Updated to include rejection reason for REC-022
   const handleUpdateStatus = async () => {
     if (!selectedApplication) return;
 
+    // CHANGED - Validate rejection reason is provided when rejecting
+    if (statusUpdate === ApplicationStatus.REJECTED && !rejectionReason.trim()) {
+      showToast("Please provide a rejection reason", "error");
+      return;
+    }
+
     try {
-      await recruitmentApi.updateApplicationStatus(selectedApplication._id, {
+      // CHANGED - Include rejection reason in the update
+      const updateData: UpdateApplicationStatusDto = {
         status: statusUpdate,
-      });
-      showToast("Application status updated successfully", "success");
+      };
+      
+      // CHANGED - REC-022: Add rejection reason if rejecting
+      if (statusUpdate === ApplicationStatus.REJECTED && rejectionReason.trim()) {
+        updateData.rejectionReason = rejectionReason.trim();
+      }
+
+      await recruitmentApi.updateApplicationStatus(selectedApplication._id, updateData);
+      
+      // CHANGED - Show appropriate message based on status
+      if (statusUpdate === ApplicationStatus.REJECTED) {
+        showToast("Application rejected. Candidate will be notified automatically.", "success");
+      } else {
+        showToast("Application status updated successfully", "success");
+      }
+      
       setIsStatusModalOpen(false);
       setSelectedApplication(null);
+      setRejectionReason("");
       loadData();
     } catch (error: any) {
       showToast(error.message || "Failed to update status", "error");
@@ -224,7 +253,10 @@ export default function ApplicationsPage() {
         {/* Status Update Modal */}
         <Modal
           isOpen={isStatusModalOpen}
-          onClose={() => setIsStatusModalOpen(false)}
+          onClose={() => {
+            setIsStatusModalOpen(false);
+            setRejectionReason("");
+          }}
           title="Update Application Status"
         >
           <div className="space-y-4">
@@ -244,15 +276,43 @@ export default function ApplicationsPage() {
                 ]}
               />
             </div>
+
+            {/* CHANGED - REC-022: Show rejection reason field when rejecting */}
+            {statusUpdate === ApplicationStatus.REJECTED && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <label className="block text-sm font-medium text-red-800 mb-2">
+                  Rejection Reason * (will be sent to candidate)
+                </label>
+                <Textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please provide a respectful reason for rejection. This will be included in the notification email sent to the candidate."
+                  rows={4}
+                  className="w-full"
+                />
+                <p className="text-xs text-red-600 mt-2">
+                  ⚠️ This message will be included in the automated rejection email to the candidate.
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 mt-6">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsStatusModalOpen(false)}
+                onClick={() => {
+                  setIsStatusModalOpen(false);
+                  setRejectionReason("");
+                }}
               >
                 Cancel
               </Button>
-              <Button onClick={handleUpdateStatus}>Update</Button>
+              <Button 
+                onClick={handleUpdateStatus}
+                variant={statusUpdate === ApplicationStatus.REJECTED ? "danger" : "primary"}
+              >
+                {statusUpdate === ApplicationStatus.REJECTED ? "Reject Application" : "Update Status"}
+              </Button>
             </div>
           </div>
         </Modal>

@@ -172,6 +172,19 @@ export default function RecruitmentPage() {
         {/* Employee View */}
         {isEmployee && !isCandidate && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* CHANGED - ONB-004: Onboarding Tracker for New Hires */}
+            <Card className="border-blue-200 bg-blue-50">
+              <CardHeader>
+                <CardTitle className="text-blue-900">My Onboarding</CardTitle>
+                <CardDescription className="text-blue-700">Track your onboarding progress</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/dashboard/recruitment/my-onboarding">
+                  <Button className="w-full">View Onboarding Tracker</Button>
+                </Link>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>My Referrals</CardTitle>
@@ -231,6 +244,21 @@ export default function RecruitmentPage() {
         {isHR && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* CHANGED - REC-003: Job Templates - Only HR Manager can create templates */}
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Job Templates</CardTitle>
+                    <CardDescription>Define standardized job descriptions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/job-templates">
+                      <Button className="w-full">Manage Templates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* CHANGED - REC-023: HR Employee can also preview and publish jobs */}
               {(isHRManager || isHREmployee) && (
                 <Card>
@@ -296,6 +324,81 @@ export default function RecruitmentPage() {
                   <CardContent>
                     <Link href="/dashboard/recruitment/hr-onboarding">
                       <Button className="w-full">Manage Onboarding</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - ONB-012: Equipment Management for HR Employee */}
+              {isHREmployee && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Equipment Management</CardTitle>
+                    <CardDescription>Reserve desk, equipment & access cards</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/equipment-management">
+                      <Button className="w-full">Manage Equipment</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - Added Pre-boarding button for HR Employee user story */}
+              {(isHRManager || isHREmployee) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Pre-boarding</CardTitle>
+                    <CardDescription>Trigger pre-boarding tasks after offer acceptance</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/preboarding">
+                      <Button className="w-full">Manage Pre-boarding</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - REC-022: Notification Templates for HR Manager */}
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Notification Templates</CardTitle>
+                    <CardDescription>Manage rejection and status notification templates</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/notification-templates">
+                      <Button className="w-full">Manage Templates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - Added Termination Reviews button for HR Manager (OFF-001) */}
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Termination Reviews</CardTitle>
+                    <CardDescription>Initiate terminations based on performance</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/terminations">
+                      <Button className="w-full">Manage Terminations</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - Added Offboarding Checklists button for HR Manager */}
+              {isHRManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Offboarding Checklists</CardTitle>
+                    <CardDescription>Track IT assets, ID cards, equipment return</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/offboarding-checklists">
+                      <Button className="w-full">Manage Checklists</Button>
                     </Link>
                   </CardContent>
                 </Card>

@@ -19,6 +19,8 @@ import {
   JobTemplate,
   SubmitResignationDto,
   TerminationRequest,
+  // CHANGED - Added termination types
+  TerminateEmployeeDto,
   UpdateClearanceItemStatusDto,
   CreateEmployeeFromContractDto,
 } from "../../../types/recruitment";
@@ -424,6 +426,33 @@ export const recruitmentApi = {
     });
   },
 
+  // CHANGED - Added CV upload method for candidates (REC-003)
+  // ✅ Accessible: JOB_CANDIDATE
+  uploadCandidateCV: async (
+    candidateId: string,
+    file?: File,
+    resumeUrl?: string
+  ): Promise<any> => {
+    if (file) {
+      // File upload
+      const formData = new FormData();
+      formData.append("file", file);
+      return await api.post(
+        `/recruitment/candidate/${candidateId}/upload-cv`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+    } else if (resumeUrl) {
+      // Manual URL entry
+      return await api.post(`/recruitment/candidate/${candidateId}/upload-cv`, {
+        manualEntry: true,
+        resumeUrl,
+      });
+    } else {
+      throw new Error("Either file or resume URL is required");
+    }
+  },
+
   // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
   tagCandidateAsReferral: async (
     candidateId: string,
@@ -453,15 +482,35 @@ export const recruitmentApi = {
   },
 
   // ============================================
-  // CLEARANCE (Department Head)
+  // CLEARANCE (Department Head & HR Manager)
   // ============================================
   
-  // ✅ Accessible: DEPARTMENT_HEAD (explicitly allowed)
+  // ✅ Accessible: Multiple roles (Department Head, HR Manager, etc.)
   updateClearanceItemStatus: async (
     checklistId: string,
     data: UpdateClearanceItemStatusDto
   ): Promise<any> => {
     return await api.patch(`/recruitment/offboarding/clearance/${checklistId}/item`, data);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Create clearance checklist)
+  createClearanceChecklist: async (terminationId: string): Promise<any> => {
+    return await api.post("/recruitment/offboarding/clearance", { terminationId });
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Get checklist by employee)
+  getClearanceChecklistByEmployee: async (employeeId: string): Promise<any> => {
+    return await api.get(`/recruitment/offboarding/clearance/employee/${employeeId}`);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Mark checklist complete)
+  markClearanceChecklistComplete: async (checklistId: string): Promise<any> => {
+    return await api.patch(`/recruitment/offboarding/clearance/${checklistId}/complete`);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Send clearance reminders)
+  sendClearanceReminders: async (force?: boolean): Promise<any> => {
+    return await api.post("/recruitment/offboarding/clearance/send-reminders", { force });
   },
 
   // ============================================
@@ -487,6 +536,49 @@ export const recruitmentApi = {
   // CHANGED - Added: Get employee by ID for access management
   getEmployeeById: async (employeeId: string): Promise<any> => {
     return await api.get(`/employee-profile/${employeeId}`);
+  },
+
+  // ============================================
+  // CHANGED - TERMINATION MANAGEMENT (HR Manager)
+  // Implements OFF-001: HR Manager initiates termination based on performance
+  // ============================================
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (OFF-001: Terminate employee based on performance)
+  terminateEmployee: async (data: TerminateEmployeeDto): Promise<any> => {
+    return await api.post("/recruitment/offboarding/terminate", data);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Get termination request by ID)
+  getTerminationRequest: async (id: string): Promise<TerminationRequest> => {
+    return await api.get(`/recruitment/offboarding/termination/${id}`);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Update termination status)
+  updateTerminationStatus: async (
+    id: string,
+    status: string,
+    hrComments?: string
+  ): Promise<TerminationRequest> => {
+    return await api.patch(`/recruitment/offboarding/termination/${id}/status`, {
+      status,
+      hrComments,
+    });
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Get employee performance for termination review)
+  getEmployeePerformance: async (employeeId: string): Promise<any> => {
+    return await api.get(`/recruitment/offboarding/appraisal/${employeeId}`);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER (Trigger final settlement)
+  triggerFinalSettlement: async (
+    employeeId: string,
+    terminationId: string
+  ): Promise<any> => {
+    return await api.post("/recruitment/offboarding/final-settlement", {
+      employeeId,
+      terminationId,
+    });
   },
 };
 

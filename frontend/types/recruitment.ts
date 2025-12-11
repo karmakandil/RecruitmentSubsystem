@@ -58,11 +58,12 @@ export interface JobTemplate {
   title: string;
   department: string;
   description: string;
-  requirements: string[];
-  responsibilities: string[];
+  requirements?: string[];
+  responsibilities?: string[];
   qualifications: string[];
-  experienceLevel: string;
-  employmentType: string;
+  skills?: string[];
+  experienceLevel?: string;
+  employmentType?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -212,6 +213,8 @@ export interface CreateApplicationDto {
 
 export interface UpdateApplicationStatusDto {
   status: ApplicationStatus;
+  // CHANGED - REC-022: Added rejection reason for automated rejection notifications
+  rejectionReason?: string;
 }
 
 export interface ScheduleInterviewDto {
@@ -276,13 +279,41 @@ export interface SubmitResignationDto {
   reason: string;
 }
 
+// CHANGED - Added TerminateEmployeeDto for HR Manager termination
+export interface TerminateEmployeeDto {
+  employeeId: string; // employeeNumber e.g. "EMP-001"
+  reason: string;
+  hrComments?: string;
+  terminationDate?: string;
+}
+
+// CHANGED - Added TerminationStatus enum
+export enum TerminationStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  COMPLETED = 'completed',
+}
+
+// CHANGED - Added TerminationInitiation enum
+export enum TerminationInitiation {
+  EMPLOYEE = 'employee',
+  HR = 'hr',
+  MANAGER = 'manager',
+}
+
 export interface TerminationRequest {
   _id: string;
   employeeId: string;
   employee?: any;
-  effectiveDate: string;
+  effectiveDate?: string;
+  terminationDate?: string;
   reason: string;
-  status: string;
+  initiator?: TerminationInitiation;
+  status: TerminationStatus | string;
+  hrComments?: string;
+  employeeComments?: string;
+  performanceScore?: number;
   createdAt?: string;
   updatedAt?: string;
 }

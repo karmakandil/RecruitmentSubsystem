@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -23,12 +23,22 @@ export default function JobDetailPage() {
   const [applying, setApplying] = useState(false);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
+  // CHANGED - Track if user has already applied to this job
+  const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false);
+
+  // CHANGED - Added state for CV upload (REC-003)
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [cvUploading, setCvUploading] = useState(false);
+  const [cvUploaded, setCvUploaded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (params.id) {
       loadJob();
+      // CHANGED - Check if user has already applied
+      checkIfAlreadyApplied();
     }
-  }, [params.id]);
+  }, [params.id, user]);
 
   const loadJob = async () => {
     try {
@@ -39,6 +49,63 @@ export default function JobDetailPage() {
       showToast(error.message || "Failed to load job details", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // CHANGED - Check if user has already applied to this job
+  const checkIfAlreadyApplied = async () => {
+    try {
+      const candidateId = user?.id || user?.userId;
+      if (!candidateId || !params.id) return;
+
+      const applications = await recruitmentApi.getApplications();
+      const alreadyApplied = applications.some((app: any) => {
+        const appCandidateId = typeof app.candidateId === 'object' 
+          ? app.candidateId?._id 
+          : app.candidateId;
+        return appCandidateId === candidateId && app.requisitionId === params.id;
+      });
+      
+      setHasAlreadyApplied(alreadyApplied);
+    } catch (error) {
+      // If we can't check, allow them to try (backend will validate)
+      console.warn("Could not check existing applications:", error);
+    }
+  };
+
+  // CHANGED - Handle CV file selection (REC-003)
+  const handleCvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      showToast("Invalid file type. Please upload a PDF or DOC/DOCX file.", "error");
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("File size exceeds 5MB limit.", "error");
+      return;
+    }
+
+    setCvFile(file);
+    setCvUploaded(false);
+  };
+
+  // CHANGED - Remove selected CV file
+  const handleRemoveCv = () => {
+    setCvFile(null);
+    setCvUploaded(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -53,15 +120,43 @@ export default function JobDetailPage() {
       return;
     }
 
+    const candidateId = user.id || user.userId || "";
+
     try {
       setApplying(true);
+
+      // CHANGED - Debug: Log the request details
+      console.log("🔍 DEBUG - Applying with:", {
+        candidateId,
+        requisitionId: job!._id,
+        userObject: user,
+      });
+
+      // CHANGED - Skip CV upload for now to isolate the issue
+      // CV upload is temporarily disabled for debugging
+      if (cvFile && !cvUploaded) {
+        console.log("📄 CV file selected but skipping upload for debug");
+        // setCvUploading(true);
+        // try {
+        //   await recruitmentApi.uploadCandidateCV(candidateId, cvFile);
+        //   setCvUploaded(true);
+        //   showToast("CV uploaded successfully!", "success");
+        // } catch (cvError: any) {
+        //   console.warn("CV upload failed:", cvError.message);
+        //   showToast("CV upload failed, but continuing with application...", "warning");
+        // } finally {
+        //   setCvUploading(false);
+        // }
+      }
+
       // Backend expects consentGiven in the body along with CreateApplicationDto
       const applicationData: CreateApplicationDto & { consentGiven: boolean } = {
-        candidateId: user.id || user.userId || "",
+        candidateId,
         requisitionId: job!._id,
         consentGiven: true,
       };
 
+      console.log("📤 Sending application data:", applicationData);
       await recruitmentApi.createApplication(applicationData);
       showToast("Application submitted successfully!", "success");
       setIsApplyModalOpen(false);
@@ -72,6 +167,17 @@ export default function JobDetailPage() {
       showToast(error.message || "Failed to submit application", "error");
     } finally {
       setApplying(false);
+    }
+  };
+
+  // CHANGED - Reset modal state when closing
+  const handleCloseModal = () => {
+    setIsApplyModalOpen(false);
+    setConsentGiven(false);
+    setCvFile(null);
+    setCvUploaded(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -187,9 +293,24 @@ export default function JobDetailPage() {
                   <div className="pt-6 border-t">
                     {/* CHANGED - Check publishStatus === 'published' instead of job.published */}
                     {job.publishStatus === 'published' && user?.userType === "candidate" ? (
-                      <Button onClick={() => setIsApplyModalOpen(true)} size="lg" className="w-full md:w-auto">
-                        Apply for this Position
-                      </Button>
+                      // CHANGED - Disable button if user has already applied
+                      hasAlreadyApplied ? (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <p className="text-green-800 font-medium">✅ You have already applied for this position</p>
+                          <p className="text-green-600 text-sm mt-1">
+                            Check your applications page to track your application status.
+                          </p>
+                          <Link href="/dashboard/recruitment/my-applications">
+                            <Button variant="outline" size="sm" className="mt-3">
+                              View My Applications
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <Button onClick={() => setIsApplyModalOpen(true)} size="lg" className="w-full md:w-auto">
+                          Apply for this Position
+                        </Button>
+                      )
                     ) : job.publishStatus !== 'published' ? (
                       <p className="text-gray-500">This job is not currently accepting applications.</p>
                     ) : null}
@@ -203,33 +324,103 @@ export default function JobDetailPage() {
         {/* Apply Modal */}
         <Modal
           isOpen={isApplyModalOpen}
-          onClose={() => {
-            setIsApplyModalOpen(false);
-            setConsentGiven(false);
-          }}
+          onClose={handleCloseModal}
           title="Apply for Position"
-          size="md"
+          size="lg"
           footer={
             <>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setIsApplyModalOpen(false);
-                  setConsentGiven(false);
-                }}
+                onClick={handleCloseModal}
               >
                 Cancel
               </Button>
-              <Button onClick={handleApply} disabled={!consentGiven || applying}>
-                {applying ? "Submitting..." : "Submit Application"}
+              <Button onClick={handleApply} disabled={!consentGiven || applying || cvUploading}>
+                {cvUploading ? "Uploading CV..." : applying ? "Submitting..." : "Submit Application"}
               </Button>
             </>
           }
         >
-          <div className="space-y-4">
+          <div className="space-y-6">
             <p className="text-gray-700">
-              You are about to apply for: <strong>{job?.template?.title}</strong>
+              You are about to apply for: <strong className="text-gray-900">{job?.template?.title}</strong>
             </p>
+
+            {/* CHANGED - CV Upload Section (REC-003) */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                Upload Your CV/Resume <span className="text-gray-500 font-normal">(Optional)</span>
+              </h4>
+              
+              {!cvFile ? (
+                <div className="flex flex-col items-center justify-center">
+                  <label
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <svg
+                        className="w-8 h-8 mb-3 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        />
+                      </svg>
+                      <p className="mb-2 text-sm text-gray-500">
+                        <span className="font-semibold">Click to upload</span> or drag and drop
+                      </p>
+                      <p className="text-xs text-gray-500">PDF, DOC, DOCX (MAX. 5MB)</p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={handleCvFileChange}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <svg
+                      className="w-8 h-8 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-green-800">{cvFile.name}</p>
+                      <p className="text-xs text-green-600">
+                        {(cvFile.size / 1024 / 1024).toFixed(2)} MB
+                        {cvUploaded && " • Ready to submit"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCv}
+                    className="text-red-600 hover:text-red-800 text-sm font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Consent Checkbox */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <input
@@ -257,4 +448,3 @@ export default function JobDetailPage() {
     </ProtectedRoute>
   );
 }
-

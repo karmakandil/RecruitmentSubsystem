@@ -5,8 +5,12 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
+// CHANGED - Fixed port to match backend (5000)
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+
+// CHANGED - Debug: Log the API base URL on load
+console.log("🔧 API_BASE_URL configured as:", API_BASE_URL);
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -58,6 +62,7 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    // CHANGED - Enhanced error logging for debugging
     console.error(
       `❌ API Error [${error.config?.method?.toUpperCase()} ${
         error.config?.url
@@ -68,8 +73,17 @@ api.interceptors.response.use(
         message: error.message,
         responseData: error.response?.data,
         headers: error.response?.headers,
+        // CHANGED - Additional debug info
+        fullURL: error.config?.baseURL + error.config?.url,
+        errorCode: error.code,
+        errorName: error.name,
+        isAxiosError: error.isAxiosError,
+        hasResponse: !!error.response,
       }
     );
+    
+    // CHANGED - Log the full error object for debugging
+    console.error("Full error object:", error);
 
     // Handle errors
     if (error.response?.status === 401) {
