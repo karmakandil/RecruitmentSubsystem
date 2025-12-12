@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 
 export type ConfigStatus = 'draft' | 'approved' | 'rejected';
@@ -5,11 +7,13 @@ export type ConfigStatus = 'draft' | 'approved' | 'rejected';
 interface StatusBadgeProps {
   status: ConfigStatus;
   className?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
   status,
   className = '',
+  size = 'md',
 }) => {
   const statusConfig = {
     draft: {
@@ -26,14 +30,21 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
     },
   };
 
+  const sizeClasses = {
+    sm: 'px-2 py-1 text-xs',
+    md: 'px-3 py-1.5 text-sm',
+    lg: 'px-4 py-2 text-base'
+  };
+
   const config = statusConfig[status] || statusConfig.draft;
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.className} ${className}`}
+      className={`inline-flex items-center rounded-full border font-medium ${config.className} ${sizeClasses[size]} ${className}`}
     >
       {config.label}
     </span>
   );
 };
 
+export default StatusBadge;
