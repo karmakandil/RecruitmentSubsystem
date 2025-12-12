@@ -108,6 +108,7 @@ export interface TeamMember {
   dateOfHire: string;
   workEmail?: string;
   mobilePhone?: string;
+  profilePictureUrl?: string; // ADD THIS LINE
 }
 
 // Update Profile DTO - based on your backend DTOs

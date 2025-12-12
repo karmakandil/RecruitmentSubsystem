@@ -1361,23 +1361,91 @@ export class EmployeeProfileService {
   // ==================== TEAM MANAGEMENT ====================
 
   async getTeamMembers(managerId: string): Promise<EmployeeProfile[]> {
-    // Find manager's position
-    const manager = await this.findOne(managerId);
+    console.log('🔍 ===== DEBUG getTeamMembers START =====');
+    console.log('Manager ID from request:', managerId);
 
-    if (!manager.primaryPositionId) {
+    // Find manager
+    const manager = await this.employeeModel.findById(managerId).exec();
+    console.log('Manager found:', manager?.fullName);
+    console.log('Manager primaryPositionId:', manager?.primaryPositionId);
+    console.log(
+      'Type of primaryPositionId:',
+      typeof manager?.primaryPositionId,
+    );
+
+    if (!manager?.primaryPositionId) {
+      console.log('❌ Manager has no primaryPositionId');
+      console.log('===== DEBUG getTeamMembers END =====');
       return [];
     }
 
-    // Find all employees where supervisorPositionId matches manager's position
-    return this.employeeModel
+    // Check what type of ID we have
+    const managerPositionId = manager.primaryPositionId;
+    console.log('Manager position ID to match:', managerPositionId);
+
+    // Test query 1: As ObjectId
+    const queryAsObjectId = {
+      supervisorPositionId: new Types.ObjectId(managerPositionId.toString()),
+      status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+    };
+
+    // Test query 2: As string
+    const queryAsString = {
+      supervisorPositionId: managerPositionId.toString(),
+      status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+    };
+
+    console.log('Query as ObjectId:', JSON.stringify(queryAsObjectId));
+    console.log('Query as string:', JSON.stringify(queryAsString));
+
+    // Run both queries
+    const result1 = await this.employeeModel
+      .find(queryAsObjectId)
+      .count()
+      .exec();
+    const result2 = await this.employeeModel.find(queryAsString).count().exec();
+
+    console.log('Results - ObjectId query count:', result1);
+    console.log('Results - String query count:', result2);
+
+    // Check what supervisorPositionId values exist in database
+    const sampleEmployees = await this.employeeModel
       .find({
-        supervisorPositionId: manager.primaryPositionId,
         status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
       })
-      .populate('primaryDepartmentId', 'name code')
-      .populate('primaryPositionId', 'title code')
-      .select('-password')
+      .select('fullName supervisorPositionId primaryPositionId')
+      .limit(5)
       .exec();
+
+    console.log('Sample employees with supervisorPositionId:');
+    sampleEmployees.forEach((emp) => {
+      console.log(
+        `- ${emp.fullName}: supervisor=${emp.supervisorPositionId}, type=${typeof emp.supervisorPositionId}`,
+      );
+    });
+
+    console.log('===== DEBUG getTeamMembers END =====');
+
+    // Return whatever works
+    if (result1 > 0) {
+      return this.employeeModel
+        .find(queryAsObjectId)
+        .populate('primaryDepartmentId', 'name code')
+        .populate('primaryPositionId', 'title code')
+        .select('-password')
+        .exec();
+    }
+
+    if (result2 > 0) {
+      return this.employeeModel
+        .find(queryAsString)
+        .populate('primaryDepartmentId', 'name code')
+        .populate('primaryPositionId', 'title code')
+        .select('-password')
+        .exec();
+    }
+
+    return [];
   }
 
   async getTeamStatistics(managerId: string): Promise<any> {
