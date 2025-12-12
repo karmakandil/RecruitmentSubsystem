@@ -7,10 +7,15 @@ import { getPrimaryDashboard } from "../utils/role-utils";
 
 export const useAuth = () => {
   const store = useAuthStore();
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    store.initialize();
-  }, []);
+    // Initialize auth state from localStorage
+    if (!initialized) {
+      store.initialize();
+      setInitialized(true);
+    }
+  }, [initialized, store]);
 
   return store;
 };
@@ -23,39 +28,98 @@ export const useRequireAuth = (
   const router = useRouter();
   const { isAuthenticated, user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  // Wait for auth to initialize from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Check if auth data exists in localStorage
+      const token = localStorage.getItem("auth_token");
+      const userStr = localStorage.getItem("user");
+      
+      // Give a small delay to ensure zustand store has initialized
+      const timer = setTimeout(() => {
+        setAuthInitialized(true);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setAuthInitialized(true);
+    }
+  }, []);
 
   const hasRequiredRole = useMemo(() => {
     if (!requiredRole) return true;
-    const roles = user?.roles || [];
+    if (!user) return false;
+    const roles = user.roles || [];
+    
+    // Convert roles to strings for comparison
+    const userRoleStrings = roles.map((r) => String(r).toLowerCase().trim());
+    
     if (Array.isArray(requiredRole)) {
-      return requiredRole.some((r) => roles.includes(r));
+      return requiredRole.some((r) => {
+        const requiredRoleStr = String(r).toLowerCase().trim();
+        return userRoleStrings.includes(requiredRoleStr);
+      });
     }
-    return roles.includes(requiredRole);
+    
+    const requiredRoleStr = String(requiredRole).toLowerCase().trim();
+    return userRoleStrings.includes(requiredRoleStr);
   }, [user, requiredRole]);
 
   useEffect(() => {
-    if (!loading) {
+    // Wait for both loading to finish AND auth to be initialized
+    if (!loading && authInitialized) {
+      // Debug logging
+      if (requiredRole) {
+        console.log('🔍 Role Check:', {
+          requiredRole,
+          userRoles: user?.roles,
+          isAuthenticated,
+          hasRequiredRole,
+          userType: user?.userType,
+        });
+      }
+      
       if (!isAuthenticated) {
+        console.log('❌ Not authenticated, redirecting to login');
         router.replace(redirectTo || "/auth/login");
-      } else if (!hasRequiredRole) {
+        setIsLoading(false);
+        return;
+      }
+      
+      if (requiredRole && !hasRequiredRole) {
+        console.log('❌ Missing required role, redirecting to dashboard');
         const fallback = getPrimaryDashboard(user);
         router.replace(fallback);
-      } else if (
+        setIsLoading(false);
+        return;
+      }
+      
+      if (
         requiredUserType &&
         user?.userType &&
         user.userType !== requiredUserType
       ) {
+        console.log('❌ Wrong user type, redirecting to dashboard');
         const fallback = getPrimaryDashboard(user);
         router.replace(fallback);
+        setIsLoading(false);
+        return;
       }
+      
+      console.log('✅ Access granted');
       setIsLoading(false);
     }
   }, [
     loading,
+    authInitialized,
     isAuthenticated,
     hasRequiredRole,
+    requiredRole,
     requiredUserType,
     user?.userType,
+    user,
     redirectTo,
     router,
   ]);
