@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "../shared/ui/Button";
 import { Input } from "../shared/ui/Input";
+import { Select } from "./Select";
 import { leavesApi } from "../../lib/api/leaves/leaves";
-import { CreateLeaveRequestDto, LeaveType } from "../../types/leaves";
+import { authApi } from "../../lib/api/auth/auth";
+import { CreateLeaveRequestDto, LeaveType, Calendar } from "../../types/leaves";
 import { useAuthStore } from "../../lib/stores/auth.store";
 import { FileUpload } from "./FileUpload";
 
@@ -26,7 +28,7 @@ export const CreateLeaveRequestForm: React.FC<CreateLeaveRequestFormProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState<CreateLeaveRequestDto>({
-    employeeId: user?.id || user?.userId || "",
+    employeeId: authApi.getUserId() || user?.id || user?.userId || "",
     leaveTypeId: "",
     dates: {
       from: "",
@@ -43,10 +45,11 @@ export const CreateLeaveRequestForm: React.FC<CreateLeaveRequestFormProps> = ({
       try {
         setLoadingLeaveTypes(true);
         const types = await leavesApi.getLeaveTypes();
-        setLeaveTypes(types);
+        setLeaveTypes(types || []);
       } catch (error: any) {
         // Silently fail - user can still enter leave type ID manually
         console.warn("Failed to fetch leave types (this is okay - you can enter ID manually):", error.message);
+        setLeaveTypes([]);
         // Don't call onError here - this shouldn't block form submission
       } finally {
         setLoadingLeaveTypes(false);
@@ -56,40 +59,181 @@ export const CreateLeaveRequestForm: React.FC<CreateLeaveRequestFormProps> = ({
     fetchLeaveTypes();
   }, []); // Remove onError from dependencies to prevent re-fetching on error
 
-  // Update employeeId when user changes
+  // Update employeeId when user changes - prioritize JWT token
   useEffect(() => {
-    if (user?.id || user?.userId) {
+    const employeeId = authApi.getUserId() || user?.id || user?.userId;
+    if (employeeId) {
       setFormData((prev) => ({
         ...prev,
-        employeeId: user?.id || user?.userId || "",
+        employeeId: employeeId,
       }));
     }
   }, [user]);
 
-  // Calculate duration days when dates change (excluding weekends)
+  // Calculate duration days when dates change (excluding weekends, holidays, and blocked periods)
   useEffect(() => {
     if (formData.dates.from && formData.dates.to) {
-      const from = new Date(formData.dates.from);
-      const to = new Date(formData.dates.to);
-      
-      if (to >= from) {
-        let workingDays = 0;
-        const currentDate = new Date(from);
-        
-        while (currentDate <= to) {
-          const dayOfWeek = currentDate.getDay();
-          // Count only weekdays (Monday-Friday, excluding weekends)
-          if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-            workingDays++;
+      const calculateDuration = async () => {
+        try {
+          const from = new Date(formData.dates.from);
+          const to = new Date(formData.dates.to);
+          
+          if (to < from) {
+            setFormData((prev) => ({ ...prev, durationDays: 0 }));
+            return;
           }
-          currentDate.setDate(currentDate.getDate() + 1);
+
+          // Normalize dates to start of day
+          from.setHours(0, 0, 0, 0);
+          to.setHours(23, 59, 59, 999);
+
+          // Fetch calendars for relevant years
+          const startYear = from.getFullYear();
+          const endYear = to.getFullYear();
+          const yearsToFetch = new Set<number>();
+          
+          for (let year = startYear; year <= endYear; year++) {
+            yearsToFetch.add(year);
+          }
+
+          // Fetch calendars (may fail if user doesn't have HR_ADMIN role)
+          // getCalendarByYear already handles 403 errors silently, so no need for catch here
+          const calendarPromises = Array.from(yearsToFetch).map(year =>
+            leavesApi.getCalendarByYear(year)
+          );
+          
+          const calendars = (await Promise.all(calendarPromises)).filter(
+            (cal): cal is Calendar => cal !== null
+          );
+
+          // Extract holiday dates from all calendars
+          const holidayDates = new Set<string>();
+          
+          for (const calendar of calendars) {
+            if (!calendar.holidays || calendar.holidays.length === 0) {
+              continue;
+            }
+
+            for (const holiday of calendar.holidays) {
+              if (typeof holiday === 'string') {
+                continue; // Skip ID strings, can't resolve on frontend
+              } else if (typeof holiday === 'object' && holiday !== null) {
+                const h = holiday as any;
+                
+                if (h.active === false) {
+                  continue;
+                }
+
+                let holidayStart: Date | null = null;
+                let holidayEnd: Date | null = null;
+
+                if (h.startDate) {
+                  holidayStart = new Date(h.startDate);
+                } else if (h.date) {
+                  holidayStart = new Date(h.date);
+                } else {
+                  continue;
+                }
+
+                if (h.endDate) {
+                  holidayEnd = new Date(h.endDate);
+                } else {
+                  holidayEnd = holidayStart;
+                }
+
+                if (holidayStart && !isNaN(holidayStart.getTime())) {
+                  const currentHolidayDate = new Date(holidayStart);
+                  currentHolidayDate.setHours(0, 0, 0, 0);
+                  const endHolidayDate = new Date(holidayEnd);
+                  endHolidayDate.setHours(23, 59, 59, 999);
+
+                  while (currentHolidayDate <= endHolidayDate) {
+                    const dateStr = currentHolidayDate.toISOString().split('T')[0];
+                    holidayDates.add(dateStr);
+                    currentHolidayDate.setDate(currentHolidayDate.getDate() + 1);
+                  }
+                }
+              }
+            }
+          }
+
+          // Collect blocked periods from all calendars
+          const blockedPeriods: Array<{ from: Date; to: Date }> = [];
+          for (const calendar of calendars) {
+            if (calendar.blockedPeriods && calendar.blockedPeriods.length > 0) {
+              for (const period of calendar.blockedPeriods) {
+                blockedPeriods.push({
+                  from: new Date(period.from),
+                  to: new Date(period.to),
+                });
+              }
+            }
+          }
+
+          // Calculate working days
+          let workingDays = 0;
+          const currentDate = new Date(from);
+
+          while (currentDate <= to) {
+            const dayOfWeek = currentDate.getDay();
+            const dateString = currentDate.toISOString().split('T')[0];
+
+            // Skip weekends (Saturday = 6, Sunday = 0)
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+              // Check if it's a holiday
+              const isHoliday = holidayDates.has(dateString);
+
+              // Check if it's in a blocked period
+              const isBlocked = blockedPeriods.some((period) => {
+                const periodStart = new Date(period.from);
+                periodStart.setHours(0, 0, 0, 0);
+                const periodEnd = new Date(period.to);
+                periodEnd.setHours(23, 59, 59, 999);
+                return currentDate >= periodStart && currentDate <= periodEnd;
+              });
+
+              // Count as working day if not holiday and not blocked
+              if (!isHoliday && !isBlocked) {
+                workingDays++;
+              }
+            }
+
+            // Move to next day
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+          
+          setFormData((prev) => ({
+            ...prev,
+            durationDays: workingDays,
+          }));
+        } catch (error) {
+          console.error("Error calculating working days:", error);
+          // Fallback to simple weekend exclusion if calendar fetch fails
+          const from = new Date(formData.dates.from);
+          const to = new Date(formData.dates.to);
+          
+          if (to >= from) {
+            let workingDays = 0;
+            const currentDate = new Date(from);
+            
+            while (currentDate <= to) {
+              const dayOfWeek = currentDate.getDay();
+              // Count only weekdays (Monday-Friday, excluding weekends)
+              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                workingDays++;
+              }
+              currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            setFormData((prev) => ({
+              ...prev,
+              durationDays: workingDays,
+            }));
+          }
         }
-        
-        setFormData((prev) => ({
-          ...prev,
-          durationDays: workingDays,
-        }));
-      }
+      };
+
+      calculateDuration();
     }
   }, [formData.dates.from, formData.dates.to]);
 
@@ -346,69 +490,36 @@ export const CreateLeaveRequestForm: React.FC<CreateLeaveRequestFormProps> = ({
       <div className="space-y-4">
         {/* Leave Type */}
         <div>
-          <label className="mb-2 block text-sm font-medium text-gray-700">
-            Leave Type <span className="text-red-500">*</span>
-          </label>
-          {leaveTypes.length > 0 ? (
-            <select
-              name="leaveTypeId"
-              value={formData.leaveTypeId}
-              onChange={handleChange}
-              disabled={loadingLeaveTypes}
-              className={`w-full rounded-md border ${
-                errors.leaveTypeId ? "border-red-500" : "border-gray-300"
-              } px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 disabled:cursor-not-allowed`}
-            >
-              <option value="">Select leave type</option>
-              {leaveTypes.map((type) => (
-                <option key={type._id} value={type._id}>
-                  {type.name} {type.requiresAttachment && "(Requires Attachment)"}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <Input
-              label=""
-              type="text"
-              name="leaveTypeId"
-              value={formData.leaveTypeId}
-              onChange={handleChange}
-              onPaste={(e) => {
-                // Handle paste event to trim whitespace
-                e.preventDefault();
-                const pastedText = e.clipboardData.getData('text').trim().replace(/\s+/g, '');
-                setFormData((prev) => ({
-                  ...prev,
-                  leaveTypeId: pastedText,
-                }));
-                if (errors.leaveTypeId) {
-                  setErrors((prev) => {
-                    const newErrors = { ...prev };
-                    delete newErrors.leaveTypeId;
-                    return newErrors;
-                  });
-                }
-              }}
-              error={errors.leaveTypeId}
-              placeholder="Enter leave type ID (24-character MongoDB ObjectId)"
-              required
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
-          )}
-          {errors.leaveTypeId && (
-            <p className="mt-1 text-sm text-red-600">{errors.leaveTypeId}</p>
-          )}
-          {loadingLeaveTypes && (
-            <p className="mt-1 text-sm text-gray-500">Loading leave types...</p>
-          )}
-          {!loadingLeaveTypes && leaveTypes.length === 0 && (
-            <p className="mt-1 text-xs text-gray-500">
-              Note: Leave types endpoint not available. Please enter the leave type ID manually.
-            </p>
-          )}
+          <Select
+            label="Leave Type *"
+            value={formData.leaveTypeId}
+            onChange={(e) => {
+              const selectedId = e.target.value;
+              setFormData((prev) => ({
+                ...prev,
+                leaveTypeId: selectedId,
+              }));
+              // Clear error if selection is made
+              if (errors.leaveTypeId) {
+                setErrors((prev) => {
+                  const newErrors = { ...prev };
+                  delete newErrors.leaveTypeId;
+                  return newErrors;
+                });
+              }
+            }}
+            error={errors.leaveTypeId}
+            disabled={loadingLeaveTypes}
+            options={
+              leaveTypes.length > 0
+                ? leaveTypes.map((type) => ({
+                    value: type._id,
+                    label: `${type.name}${type.requiresAttachment ? " (Requires Attachment)" : ""}`,
+                  }))
+                : [{ value: "", label: loadingLeaveTypes ? "Loading leave types..." : "No leave types available" }]
+            }
+            placeholder="Select leave type"
+          />
           {selectedLeaveType?.description && (
             <p className="mt-1 text-xs text-gray-600">{selectedLeaveType.description}</p>
           )}

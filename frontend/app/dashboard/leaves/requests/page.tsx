@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { leavesApi } from "@/lib/api/leaves/leaves";
+import { authApi } from "@/lib/api/auth/auth";
 import { LeaveRequest, LeaveType } from "@/types/leaves";
 import { useAuthStore } from "@/lib/stores/auth.store";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -23,20 +24,35 @@ export default function LeaveRequestsPage() {
   useRequireAuth();
 
   useEffect(() => {
-    if (user?.id || user?.userId) {
+    // Get employeeId from multiple sources - prioritize JWT token (most reliable)
+    const employeeId = authApi.getUserId() || user?.id || user?.userId;
+    if (employeeId && employeeId.trim()) {
       fetchLeaveRequests();
       fetchLeaveTypes();
+    } else {
+      console.warn("No employee ID found. User:", user);
+      setError("Unable to retrieve employee ID. Please log in again.");
+      setLoading(false);
     }
   }, [user]);
 
   const fetchLeaveRequests = async () => {
     try {
       setLoading(true);
-      const employeeId = user?.id || user?.userId || "";
-      const requests = await leavesApi.getEmployeeLeaveRequests(employeeId);
-      setLeaveRequests(requests);
+      setError("");
+      // Get employeeId from multiple sources - prioritize JWT token
+      const employeeId = authApi.getUserId() || user?.id || user?.userId || "";
+      
+      if (!employeeId || !employeeId.trim()) {
+        throw new Error("Employee ID is required. Please log in again.");
+      }
+      
+      const requests = await leavesApi.getEmployeeLeaveRequests(employeeId.trim());
+      setLeaveRequests(Array.isArray(requests) ? requests : []);
     } catch (error: any) {
+      console.error("Error fetching leave requests:", error);
       setError(error.message || "Failed to load leave requests");
+      setLeaveRequests([]);
     } finally {
       setLoading(false);
     }
@@ -45,9 +61,10 @@ export default function LeaveRequestsPage() {
   const fetchLeaveTypes = async () => {
     try {
       const types = await leavesApi.getLeaveTypes();
-      setLeaveTypes(types);
+      setLeaveTypes(types || []);
     } catch (error) {
-      console.warn("Failed to fetch leave types");
+      console.warn("Failed to fetch leave types:", error);
+      setLeaveTypes([]);
     }
   };
 
@@ -60,6 +77,30 @@ export default function LeaveRequestsPage() {
   const handleCancelError = (errorMessage: string) => {
     setError(errorMessage);
     setTimeout(() => setError(""), 5000);
+  };
+
+  // NEW CODE: Check if leave request is finalized
+  const isFinalized = (request: LeaveRequest): boolean => {
+    if (!request.approvalFlow || request.approvalFlow.length === 0) {
+      return false;
+    }
+    // Check if approvalFlow contains an HR Manager approval
+    return request.approvalFlow.some(
+      (approval) =>
+        approval.role === "HR Manager" && approval.status?.toLowerCase() === "approved"
+    );
+  };
+
+  // ENHANCED: Check if leave request is overridden by HR Manager
+  const isOverridden = (request: LeaveRequest): boolean => {
+    if (!request.approvalFlow || request.approvalFlow.length === 0) {
+      return false;
+    }
+    // Check if approvalFlow contains an HR Manager override (can be approved or rejected)
+    const hrApproval = request.approvalFlow.find(
+      (approval) => approval.role === "HR Manager"
+    );
+    return hrApproval !== undefined;
   };
 
   const getStatusColor = (status: string) => {
@@ -77,12 +118,29 @@ export default function LeaveRequestsPage() {
     }
   };
 
-  const getLeaveTypeName = (leaveTypeId: string | LeaveType): string => {
+  const getLeaveTypeName = (request: LeaveRequest): string => {
+    // First, check if leaveTypeName is directly provided (from backend population)
+    if (request.leaveTypeName) {
+      return request.leaveTypeName;
+    }
+    
+    // Otherwise, try to resolve from leaveTypeId
+    const leaveTypeId = request.leaveTypeId;
+    if (!leaveTypeId) {
+      return "Unknown Leave Type";
+    }
+    
     if (typeof leaveTypeId === "string") {
       const type = leaveTypes.find((lt) => lt._id === leaveTypeId);
       return type?.name || leaveTypeId;
     }
-    return leaveTypeId.name;
+    
+    // If it's an object (LeaveType), check if it has a name property
+    if (typeof leaveTypeId === "object" && leaveTypeId !== null) {
+      return (leaveTypeId as LeaveType).name || "Unknown Leave Type";
+    }
+    
+    return "Unknown Leave Type";
   };
 
   const formatDate = (date: Date | string | undefined): string => {
@@ -164,9 +222,9 @@ export default function LeaveRequestsPage() {
             <Card key={request._id} className="p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {getLeaveTypeName(request.leaveTypeId)}
+                      {getLeaveTypeName(request)}
                     </h3>
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
@@ -175,6 +233,46 @@ export default function LeaveRequestsPage() {
                     >
                       {request.status}
                     </span>
+                    {/* ENHANCED: Show finalized indicator */}
+                    {isFinalized(request) && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800"
+                        title="Finalized by HR Manager - Leave balances have been updated"
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Finalized
+                      </span>
+                    )}
+                    {/* ENHANCED: Show overridden indicator */}
+                    {isOverridden(request) && !isFinalized(request) && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800"
+                        title="Overridden by HR Manager"
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Overridden
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
                     <div>
