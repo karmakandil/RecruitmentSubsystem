@@ -16,4 +16,12 @@ export enum NotificationType {
   MISSED_PUNCH = 'missed_punch',
   MISSED_PUNCH_EMPLOYEE_ALERT = 'MISSED_PUNCH_EMPLOYEE_ALERT',
   MISSED_PUNCH_MANAGER_ALERT = 'MISSED_PUNCH_MANAGER_ALERT',
+
+  // Payroll Tracking Module Notifications
+  DISPUTE_APPROVED_FOR_FINANCE = 'dispute_approved_for_finance',
+  CLAIM_APPROVED_FOR_FINANCE = 'claim_approved_for_finance',
+  DISPUTE_APPROVED = 'dispute_approved',
+  CLAIM_APPROVED = 'claim_approved',
+  DISPUTE_REJECTED = 'dispute_rejected',
+  CLAIM_REJECTED = 'claim_rejected',
 }

@@ -54,6 +54,9 @@ import {
 } from './enums/payroll-tracking-enum';
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import { ConfigStatus } from '../payroll-configuration/enums/payroll-configuration-enums';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
+import { EmployeeSystemRole } from '../employee-profile/models/employee-system-role.schema';
 
 @Injectable()
 export class PayrollTrackingService {
@@ -87,6 +90,12 @@ export class PayrollTrackingService {
     private readonly positionModel: Model<PositionDocument>,
     @InjectModel(PositionAssignment.name)
     private readonly positionAssignmentModel: Model<PositionAssignmentDocument>,
+    @InjectModel(EmployeeSystemRole.name)
+    private readonly employeeSystemRoleModel: Model<any>,
+    @InjectModel('NotificationLog')
+    private readonly notificationLogModel: Model<any>,
+    @Inject(NotificationsService)
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // Helper method to generate unique IDs
@@ -365,13 +374,63 @@ export class PayrollTrackingService {
   }
 
   /**
-   * Notification method for QA/testing purposes
-   * This method handles notifications for various payroll tracking events.
-   * Logs notifications for QA/testing purposes. This is a standalone method
-   * that does not integrate with any external notification service.
+   * Get all employees with a specific role
+   */
+  private async getEmployeesByRole(role: SystemRole): Promise<string[]> {
+    try {
+      console.log(`[getEmployeesByRole] Searching for employees with role: ${role}`);
+      
+      // Try both exact match and case-insensitive match
+      const systemRoles = await this.employeeSystemRoleModel
+        .find({
+          roles: { $in: [role] },
+          isActive: true,
+        })
+        .select('employeeProfileId roles')
+        .lean()
+        .exec();
+
+      console.log(`[getEmployeesByRole] Found ${systemRoles.length} employees with role ${role}`);
+      
+      if (systemRoles.length === 0) {
+        // Try case-insensitive search as fallback
+        console.log(`[getEmployeesByRole] Trying case-insensitive search...`);
+        const allRoles = await this.employeeSystemRoleModel
+          .find({ isActive: true })
+          .select('employeeProfileId roles')
+          .lean()
+          .exec();
+        
+        const matchingRoles = allRoles.filter((sr: any) => {
+          return sr.roles && sr.roles.some((r: string) => 
+            r.toLowerCase() === role.toLowerCase()
+          );
+        });
+        
+        console.log(`[getEmployeesByRole] Found ${matchingRoles.length} employees with case-insensitive match`);
+        
+        return matchingRoles.map((sr: any) => sr.employeeProfileId.toString());
+      }
+
+      const employeeIds = systemRoles.map((sr: any) => {
+        const empId = sr.employeeProfileId;
+        return empId instanceof Types.ObjectId ? empId.toString() : String(empId);
+      });
+      
+      console.log(`[getEmployeesByRole] Returning ${employeeIds.length} employee IDs:`, employeeIds);
+      return employeeIds;
+    } catch (error: any) {
+      console.error(`[getEmployeesByRole] Error fetching employees with role ${role}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Notification method that integrates with the NotificationsService
+   * This method sends notifications to users through the centralized notification system.
    * 
-   * @param notificationType - Type of notification (e.g., 'DISPUTE_APPROVED', 'CLAIM_APPROVED', 'REFUND_PROCESSED')
-   * @param recipientId - Employee ID of the notification recipient
+   * @param notificationType - Type of notification from NotificationType enum
+   * @param recipientId - Employee ID of the notification recipient (or 'FINANCE_STAFF' for all finance staff)
    * @param recipientRole - Role of the recipient (e.g., 'FINANCE_STAFF', 'DEPARTMENT_EMPLOYEE')
    * @param message - Notification message
    * @param metadata - Additional metadata about the notification (optional)
@@ -384,29 +443,72 @@ export class PayrollTrackingService {
     metadata?: Record<string, any>,
   ): Promise<void> {
     try {
-      // Convert recipientId to string for logging
+      // Convert recipientId to string for processing
       const recipientIdStr = recipientId instanceof Types.ObjectId 
         ? recipientId.toString() 
         : recipientId;
 
-      // Log notification for QA/testing purposes
-      // This method logs notifications to console for testing and QA purposes
-      // In a real-world scenario, these logs can be:
-      // 1. Captured by logging services (e.g., Winston, Pino)
-      // 2. Stored in application logs
-      // 3. Used for debugging and audit purposes
-      
-      const notificationLog = {
-        type: notificationType,
-        recipientId: recipientIdStr,
-        recipientRole,
-        message,
-        metadata: metadata || {},
-        timestamp: new Date().toISOString(),
-      };
+      // If recipientId is 'FINANCE_STAFF', get all finance staff employees
+      if (recipientIdStr === 'FINANCE_STAFF' || recipientRole === 'FINANCE_STAFF') {
+        console.log('[PAYROLL_TRACKING_NOTIFICATION] Notifying all finance staff...');
+        const financeStaffIds = await this.getEmployeesByRole(SystemRole.FINANCE_STAFF);
+        
+        if (financeStaffIds.length === 0) {
+          console.warn('[PAYROLL_TRACKING_NOTIFICATION] No finance staff found to notify');
+          console.warn('[PAYROLL_TRACKING_NOTIFICATION] This might mean:');
+          console.warn('  1. No employees have the FINANCE_STAFF role assigned');
+          console.warn('  2. The role name does not match exactly');
+          console.warn('  3. All finance staff have isActive=false');
+          return;
+        }
 
-      // Log to console for QA/testing
-      console.log('[PAYROLL_TRACKING_NOTIFICATION]', JSON.stringify(notificationLog, null, 2));
+        console.log(`[PAYROLL_TRACKING_NOTIFICATION] Creating notifications for ${financeStaffIds.length} finance staff members`);
+
+        // Send notification to each finance staff member
+        const notifications = financeStaffIds.map(async (staffId: string) => {
+          try {
+            if (!Types.ObjectId.isValid(staffId)) {
+              console.error(`[PAYROLL_TRACKING_NOTIFICATION] Invalid employee ID: ${staffId}`);
+              return;
+            }
+            
+            const notification = await this.notificationLogModel.create({
+              to: new Types.ObjectId(staffId),
+              type: notificationType,
+              message: message,
+              isRead: false,
+            });
+            
+            console.log(`[PAYROLL_TRACKING_NOTIFICATION] ✅ Created notification ${notification._id} for finance staff ${staffId}`);
+            return notification;
+          } catch (err: any) {
+            console.error(`[PAYROLL_TRACKING_NOTIFICATION] ❌ Error creating notification for ${staffId}:`, err?.message || err);
+            console.error(`[PAYROLL_TRACKING_NOTIFICATION] Error details:`, err);
+          }
+        });
+
+        const results = await Promise.all(notifications);
+        const successful = results.filter(r => r !== undefined).length;
+        console.log(`[PAYROLL_TRACKING_NOTIFICATION] ✅ Successfully sent ${successful} out of ${notifications.length} notifications to finance staff`);
+        return;
+      }
+
+      // For individual recipients, create notification directly
+      if (recipientIdStr && Types.ObjectId.isValid(recipientIdStr)) {
+        try {
+          await this.notificationLogModel.create({
+            to: new Types.ObjectId(recipientIdStr),
+            type: notificationType,
+            message: message,
+            isRead: false,
+          });
+          console.log(`[PAYROLL_TRACKING_NOTIFICATION] Sent notification to ${recipientIdStr}`);
+        } catch (err: any) {
+          console.error(`[PAYROLL_TRACKING_NOTIFICATION] Error creating notification:`, err);
+        }
+      } else {
+        console.warn(`[PAYROLL_TRACKING_NOTIFICATION] Invalid recipient ID: ${recipientIdStr}`);
+      }
 
     } catch (error: any) {
       // Don't throw error - notifications should not break the main workflow
@@ -2121,7 +2223,7 @@ export class PayrollTrackingService {
         : (employeeIdValue as any)?._id?.toString() || String(employeeIdValue);
       
       await this.sendNotification(
-        'CLAIM_REJECTED',
+        NotificationType.CLAIM_REJECTED,
         employeeId,
         'DEPARTMENT_EMPLOYEE',
         `Your expense claim ${claimId} has been rejected. Reason: ${rejectClaimBySpecialistDTO.rejectionReason}`,
@@ -2294,7 +2396,7 @@ export class PayrollTrackingService {
         : (employeeIdValue as any)?._id?.toString() || String(employeeIdValue);
       
       await this.sendNotification(
-        'DISPUTE_REJECTED',
+        NotificationType.DISPUTE_REJECTED,
         employeeId,
         'DEPARTMENT_EMPLOYEE',
         `Your payroll dispute ${disputeId} has been rejected. Reason: ${rejectDisputeBySpecialistDTO.rejectionReason}`,
@@ -2376,13 +2478,11 @@ export class PayrollTrackingService {
       }
 
       // Notify finance staff that a dispute has been approved and is ready for refund processing
-      // Get all finance staff (in a real system, you'd query for users with FINANCE_STAFF role)
-      // For now, we'll notify that finance staff should check approved disputes
       await this.sendNotification(
-        'DISPUTE_APPROVED_FOR_FINANCE',
-        'FINANCE_STAFF', // This would be a list of finance staff IDs in production
+        NotificationType.DISPUTE_APPROVED_FOR_FINANCE,
         'FINANCE_STAFF',
-        `A new dispute ${disputeId} has been approved and is ready for refund processing. Employee: ${(updatedDispute.employeeId as any)?.firstName || ''} ${(updatedDispute.employeeId as any)?.lastName || ''}`,
+        'FINANCE_STAFF',
+        `A new dispute ${disputeId} has been approved by the Payroll Manager and is ready for refund processing. Employee: ${(updatedDispute.employeeId as any)?.firstName || ''} ${(updatedDispute.employeeId as any)?.lastName || ''}`,
         {
           disputeId: updatedDispute.disputeId,
           employeeId: (() => {
@@ -2402,7 +2502,7 @@ export class PayrollTrackingService {
         : (employeeIdValue as any)?._id?.toString() || String(employeeIdValue);
       
       await this.sendNotification(
-        'DISPUTE_APPROVED',
+        NotificationType.DISPUTE_APPROVED,
         employeeId,
         'DEPARTMENT_EMPLOYEE',
         `Your payroll dispute ${disputeId} has been fully approved by the payroll manager. Finance staff will process your refund.`,
@@ -2479,12 +2579,14 @@ export class PayrollTrackingService {
         );
       }
 
-      // Notify finance staff that a claim has been approved and is ready for refund processing
+      // REQ: As Finance staff, I want to view and get notified with approved expense claims, so that adjustments can be done.
+      // Notify all finance staff that a claim has been approved and is ready for refund processing
+      console.log(`[confirmClaimApproval] Notifying finance staff about approved claim ${claimId}`);
       await this.sendNotification(
-        'CLAIM_APPROVED_FOR_FINANCE',
-        'FINANCE_STAFF', // This would be a list of finance staff IDs in production
+        NotificationType.CLAIM_APPROVED_FOR_FINANCE,
         'FINANCE_STAFF',
-        `A new expense claim ${claimId} has been approved and is ready for refund processing. Employee: ${(updatedClaim.employeeId as any)?.firstName || ''} ${(updatedClaim.employeeId as any)?.lastName || ''}. Amount: ${updatedClaim.approvedAmount || updatedClaim.amount}`,
+        'FINANCE_STAFF',
+        `New Approved Expense Claim: ${claimId} - Employee: ${(updatedClaim.employeeId as any)?.firstName || ''} ${(updatedClaim.employeeId as any)?.lastName || ''} (${(updatedClaim.employeeId as any)?.employeeNumber || 'N/A'}) - Amount: $${(updatedClaim.approvedAmount || updatedClaim.amount).toFixed(2)} - Ready for refund processing`,
         {
           claimId: updatedClaim.claimId,
           employeeId: (() => {
@@ -2493,10 +2595,13 @@ export class PayrollTrackingService {
               ? empId.toString()
               : (empId as any)?._id?.toString() || String(empId);
           })(),
+          employeeName: `${(updatedClaim.employeeId as any)?.firstName || ''} ${(updatedClaim.employeeId as any)?.lastName || ''}`,
+          employeeNumber: (updatedClaim.employeeId as any)?.employeeNumber || 'N/A',
           approvedAmount: updatedClaim.approvedAmount || updatedClaim.amount,
           status: ClaimStatus.APPROVED,
         },
       );
+      console.log(`[confirmClaimApproval] Finance staff notification sent for claim ${claimId}`);
 
       // Also notify employee that claim has been fully approved
       const employeeIdValue = updatedClaim.employeeId;
@@ -2505,10 +2610,10 @@ export class PayrollTrackingService {
         : (employeeIdValue as any)?._id?.toString() || String(employeeIdValue);
       
       await this.sendNotification(
-        'CLAIM_APPROVED',
+        NotificationType.CLAIM_APPROVED,
         employeeId,
         'DEPARTMENT_EMPLOYEE',
-        `Your expense claim ${claimId} has been fully approved by the payroll manager. Finance staff will process your refund of ${updatedClaim.approvedAmount || updatedClaim.amount}.`,
+        `Your expense claim ${claimId} has been fully approved by the payroll manager. Finance staff will process your refund of $${(updatedClaim.approvedAmount || updatedClaim.amount).toFixed(2)}.`,
         {
           claimId: updatedClaim.claimId,
           approvedAmount: updatedClaim.approvedAmount || updatedClaim.amount,
