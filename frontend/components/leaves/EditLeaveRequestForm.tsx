@@ -701,9 +701,4 @@ export const EditLeaveRequestForm: React.FC<EditLeaveRequestFormProps> = ({
       </div>
     </form>
   );
-<<<<<<< HEAD
 };
-
-=======
-};
->>>>>>> 01aa0a1bbfa90e4f02141b2df50719b4bac3866b
