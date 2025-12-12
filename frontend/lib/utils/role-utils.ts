@@ -50,9 +50,9 @@ export function hasRoleAccess(
 
   return userRoles.some((userRole) => {
     const userRoleStr =
-      typeof userRole === "string" ? userRole : userRole.toString();
+      typeof userRole === "string" ? userRole : String(userRole);
     const requiredRoleStr =
-      typeof requiredRole === "string" ? requiredRole : requiredRole.toString();
+      typeof requiredRole === "string" ? requiredRole : String(requiredRole);
 
     // Case-insensitive comparison
     return userRoleStr.toLowerCase() === requiredRoleStr.toLowerCase();
