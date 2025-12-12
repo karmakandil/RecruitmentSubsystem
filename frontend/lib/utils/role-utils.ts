@@ -50,9 +50,9 @@ export function hasRoleAccess(
 
   return userRoles.some((userRole) => {
     const userRoleStr =
-      typeof userRole === "string" ? userRole : userRole.toString();
+      typeof userRole === "string" ? userRole : String(userRole);
     const requiredRoleStr =
-      typeof requiredRole === "string" ? requiredRole : requiredRole.toString();
+      typeof requiredRole === "string" ? requiredRole : String(requiredRole);
 
     // Case-insensitive comparison
     return userRoleStr.toLowerCase() === requiredRoleStr.toLowerCase();
@@ -166,8 +166,12 @@ export function getDashboardByRole(role: string): string {
       return "/dashboard/recruitment";
 
     case SystemRole.PAYROLL_MANAGER:
+      return "/dashboard";
     case SystemRole.PAYROLL_SPECIALIST:
-      return "/dashboard/payroll";
+      return "/dashboard";
+
+    case SystemRole.FINANCE_STAFF:
+      return "/dashboard/finance";
 
     case SystemRole.DEPARTMENT_HEAD:
     case SystemRole.DEPARTMENT_EMPLOYEE:
@@ -265,9 +269,9 @@ export function getPrimaryDashboard(user: User | null): string {
   if (roles.includes(SystemRole.SYSTEM_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_MANAGER)) return "/dashboard/hr";
-  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard/payroll";
+  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard";
   if (roles.includes(SystemRole.PAYROLL_SPECIALIST))
-    return "/dashboard/payroll";
+    return "/dashboard";
   if (roles.includes(SystemRole.RECRUITER)) return "/dashboard/recruitment";
   if (roles.includes(SystemRole.DEPARTMENT_HEAD))
     return "/dashboard/employee-profile";

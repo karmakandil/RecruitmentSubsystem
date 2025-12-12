@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { LeaveController } from './leaves.controller';
 import { LeavesService } from './leaves.service';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LeaveType, LeaveTypeSchema } from './models/leave-type.schema';
 import { LeaveRequest, LeaveRequestSchema } from './models/leave-request.schema';
 import { LeavePolicy, LeavePolicySchema } from './models/leave-policy.schema';
@@ -14,6 +15,7 @@ import { EmployeeProfileModule } from '../employee-profile/employee-profile.modu
 import { forwardRef } from '@nestjs/common';
 import { TimeManagementModule } from '../time-management/time-management.module';
 import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
+import { NotificationsModule } from '../notifications/notifications.module';
 // import { PositionAssignment, PositionAssignmentSchema } from '../organization-structure/models/position-assignment.schema';
 // import { Position, PositionSchema } from '../organization-structure/models/position.schema';
 
@@ -34,6 +36,7 @@ import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/mode
     ]),
     EmployeeProfileModule,
     forwardRef(() => TimeManagementModule),
+    NotificationsModule,
   ],
   controllers: [LeaveController],
   providers: [LeavesService],

@@ -141,12 +141,14 @@ export interface UpdateLeaveEntitlementDto {
 // Leave Adjustments
 export interface LeaveAdjustment {
   _id: string;
-  employeeId: string;
-  leaveTypeId: string;
+  // FIXED: Can be string or populated object from backend
+  employeeId: string | { _id: string; employeeId?: string; firstName?: string; lastName?: string };
+  leaveTypeId: string | { _id: string; name?: string; code?: string };
   adjustmentType: 'add' | 'deduct' | 'encashment';
   amount: number;
   reason: string;
-  hrUserId: string;
+  // FIXED: Can be string or populated object from backend
+  hrUserId: string | { _id: string; employeeId?: string; firstName?: string; lastName?: string };
   createdAt?: string;
   updatedAt?: string;
 }
@@ -217,7 +219,8 @@ export interface UpdateLeaveRequestDto {
 export interface LeaveRequest {
   _id: string;
   employeeId: string;
-  leaveTypeId: string | LeaveType;
+  leaveTypeId: string | LeaveType | null;
+  leaveTypeName?: string | null; // Optional field from backend when leaveTypeId is populated
   dates: {
     from: Date | string;
     to: Date | string;

@@ -5,16 +5,29 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LeavesPage() {
   const { user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Check if user is HR Admin, HR Manager, or Department Head
   useEffect(() => {
-    if (!loading && isAuthenticated && user) {
+    // Wait for mount and auth initialization
+    if (!mounted || loading) return;
+    
+    if (!isAuthenticated) {
+      router.replace("/auth/login");
+      return;
+    }
+    
+    if (user) {
       const roles = user.roles || [];
       const isHRAdmin = roles.includes(SystemRole.HR_ADMIN);
       const isHRManager = roles.includes(SystemRole.HR_MANAGER);
@@ -26,7 +39,7 @@ export default function LeavesPage() {
         return;
       }
     }
-  }, [loading, isAuthenticated, user, router]);
+  }, [mounted, loading, isAuthenticated, user, router]);
 
   // Only show admin page if user is HR Admin, HR Manager, or Department Head
   const roles = user?.roles || [];
@@ -34,13 +47,31 @@ export default function LeavesPage() {
   const isHRManager = roles.includes(SystemRole.HR_MANAGER);
   const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
 
-  // Show loading or redirect if not HR Admin, HR Manager, or Department Head
-  if (loading || !isAuthenticated || (!isHRAdmin && !isHRManager && !isDepartmentHead)) {
+  // Show loading while checking auth
+  if (!mounted || loading || !isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Check if user is HR Admin, HR Manager, or Department Head
+  const roles = user?.roles || [];
+  const isHRAdmin = roles.includes(SystemRole.HR_ADMIN);
+  const isHRManager = roles.includes(SystemRole.HR_MANAGER);
+  const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
+  
+  // If not HR role, the useEffect will redirect, but show loading in the meantime
+  if (!isHRAdmin && !isHRManager && !isDepartmentHead) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Redirecting...</p>
         </div>
       </div>
     );
@@ -73,19 +104,22 @@ export default function LeavesPage() {
         </Card>
       )}
 
-      {/* HR Manager Section - Empty for now (different requirements) */}
+      {/* NEW CODE: HR Manager Section - Only for HR_MANAGER (HR_ADMIN excluded) */}
       {isHRManager && !isHRAdmin && (
-        <Card>
+        <Card className="mb-6 border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle>Leaves Management</CardTitle>
-            <CardDescription>
-              HR Manager leaves management features are coming soon
+            <CardTitle className="text-blue-900">HR Manager Actions</CardTitle>
+            <CardDescription className="text-blue-700">
+              Finalize approved requests, override decisions, and process requests in bulk
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600 text-center py-8">
-              This section is under development. HR Manager-specific leave management features will be available here.
-            </p>
+            <Link 
+              href="/dashboard/leaves/hr-manager" 
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Manage Leave Requests →
+            </Link>
           </CardContent>
         </Card>
       )}

@@ -5,8 +5,10 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
+
+// Backend API runs on port 6000 by default (can be overridden with PORT env var)
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -86,6 +88,16 @@ api.interceptors.response.use(
       console.log("🚫 403 Forbidden - Insufficient permissions");
       console.log("Endpoint:", error.config?.url);
       console.log("User role may not have access to this endpoint");
+      // Redirect to forbidden page instead of login
+      // But only if we're not on a dashboard page (to avoid breaking dashboard functionality)
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname;
+        // Only redirect if we're not already on the forbidden page or a dashboard page
+        // Dashboard pages should handle 403 errors gracefully without redirecting
+        if (!currentPath.includes("/forbidden") && !currentPath.includes("/dashboard")) {
+          window.location.href = "/forbidden";
+        }
+      }
     }
 
     // Extract error message

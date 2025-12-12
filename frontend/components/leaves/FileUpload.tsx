@@ -21,7 +21,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   maxSizeMB = 5,
   label = "Upload Document",
   required = false,
-  allowManualEntry = true,
+  allowManualEntry = false, // NEW CODE: Disable manual entry - employees should upload files directly
   onManualEntry,
 }) => {
   const [uploading, setUploading] = useState(false);

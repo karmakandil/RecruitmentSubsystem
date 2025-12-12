@@ -27,10 +27,13 @@ export const leavesApi = {
     try {
       return await api.get("/leaves/types");
     } catch (error: any) {
-      // Silently fail for 404 - this endpoint is optional
-      if (error.message?.includes("not available") || error.message?.includes("404") || error.message?.includes("not found")) {
+      // Silently fail for 403/404/500 - this endpoint may not be accessible to all roles
+      const status = error.response?.status;
+      if (status === 403 || status === 404 || status === 500) {
+        console.warn("Leave types endpoint not accessible or failed:", status);
         return [];
       }
+      // For other errors, log but still return empty array
       console.warn("Failed to fetch leave types:", error.message || "Unknown error");
       return [];
     }
@@ -53,8 +56,17 @@ export const leavesApi = {
   },
 
   deleteLeaveType: async (id: string): Promise<void> => {
-    // TODO: Backend endpoint missing - DELETE /leaves/type/:id
-    throw new Error("Backend endpoint not implemented yet");
+    try {
+      await api.delete(`/leaves/type/${id}`);
+    } catch (error: any) {
+      // If the delete succeeded but returned an empty response, ignore the error
+      // The backend returns the deleted document, but if it's empty, that's fine
+      if (error.response?.status >= 200 && error.response?.status < 300) {
+        return;
+      }
+      // Re-throw actual errors
+      throw error;
+    }
   },
 
   // Leave Categories
@@ -167,7 +179,17 @@ export const leavesApi = {
   },
 
   getCalendarByYear: async (year: number): Promise<Calendar | null> => {
-    return await api.get(`/leaves/calendar/${year}`);
+    try {
+      return await api.get(`/leaves/calendar/${year}`);
+    } catch (error: any) {
+      // Silently handle 403 (Forbidden) - expected for non-HR_ADMIN users
+      // Calendar access is optional for duration calculation (fallback to weekend-only)
+      if (error.response?.status === 403) {
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 
   updateCalendar: async (
@@ -240,6 +262,86 @@ export const leavesApi = {
    */
   getLeaveRequestById: async (id: string): Promise<LeaveRequest> => {
     return await api.get(`/leaves/request/${id}`) as unknown as LeaveRequest;
+  },
+
+  /**
+   * Download attachment/document
+   * GET /attachments/:attachmentId/download
+   * Required roles: HR_MANAGER, HR_ADMIN
+   */
+  downloadAttachment: async (attachmentId: string): Promise<Blob> => {
+    try {
+      const token = typeof window !== 'undefined' 
+        ? localStorage.getItem('auth_token') || '' 
+        : '';
+      
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
+      
+      // FIXED: Use correct endpoint /leaves/attachments/:id/download
+      const response = await fetch(
+        `${API_BASE_URL}/leaves/attachments/${attachmentId}/download`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to download attachment: ${response.statusText}`);
+      }
+
+      return await response.blob();
+    } catch (error: any) {
+      console.error("Error downloading attachment:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Verify document (mark as verified)
+   * POST /leaves/request/:id/verify-document
+   * Required roles: HR_MANAGER
+   */
+  verifyDocument: async (
+    leaveRequestId: string,
+    verificationNotes?: string
+  ): Promise<LeaveRequest> => {
+    try {
+      const payload: any = { verified: true };
+      if (verificationNotes) {
+        payload.verificationNotes = verificationNotes;
+      }
+      const result = await api.post(`/leaves/request/${leaveRequestId}/verify-document`, payload);
+      return result as unknown as LeaveRequest;
+    } catch (error: any) {
+      console.error("Error verifying document:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Reject document (mark as invalid)
+   * POST /leaves/request/:id/reject-document
+   * Required roles: HR_MANAGER
+   */
+  rejectDocument: async (
+    leaveRequestId: string,
+    rejectionReason: string
+  ): Promise<LeaveRequest> => {
+    try {
+      const payload = { 
+        verified: false,
+        rejectionReason 
+      };
+      const result = await api.post(`/leaves/request/${leaveRequestId}/reject-document`, payload);
+      return result as unknown as LeaveRequest;
+    } catch (error: any) {
+      console.error("Error rejecting document:", error);
+      throw error;
+    }
   },
 
   /**
@@ -367,50 +469,33 @@ export const leavesApi = {
         : '';
 
       const API_BASE_URL =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
 
-      // Try different possible endpoints
-      const endpoints = [
-        '/documents/upload',
-        '/attachments/upload',
-        '/leaves/attachment/upload',
-      ];
+      // Use the correct endpoint
+      const endpoint = '/leaves/attachment/upload';
 
-      let lastError: Error | null = null;
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
 
-      for (const endpoint of endpoints) {
-        try {
-          const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-            body: formData,
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            const attachmentId = data._id || data.id || data.documentId || data.attachmentId;
-            if (attachmentId) {
-              return { attachmentId };
-            }
-          } else if (response.status !== 404) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || 'Failed to upload attachment');
-          }
-        } catch (error: any) {
-          if (error.message && !error.message.includes('404')) {
-            throw error;
-          }
-          lastError = error;
-          continue;
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to upload attachment');
       }
 
-      throw new Error(
-        'File upload endpoint not found. Please contact support or upload the file manually and enter the attachment ID.'
-      );
+      const data = await response.json();
+      const attachmentId = data._id || data.id || data.documentId || data.attachmentId;
+      if (!attachmentId) {
+        throw new Error('Invalid response: attachment ID not found');
+      }
+      
+      return { attachmentId };
     } catch (error: any) {
+      console.error("Error uploading attachment:", error);
       throw error;
     }
   },
@@ -443,7 +528,25 @@ export const leavesApi = {
       const url = `/leaves/past-requests/${employeeId.trim()}${queryString ? `?${queryString}` : ''}`;
       
       const result = await api.get(url);
-      return result as unknown as LeaveRequest[];
+      
+      // Handle different response formats
+      if (Array.isArray(result)) {
+        return result as LeaveRequest[];
+      }
+      
+      // If response has data property
+      if (result && typeof result === 'object' && 'data' in result && Array.isArray(result.data)) {
+        return result.data as LeaveRequest[];
+      }
+      
+      // If response has items property
+      if (result && typeof result === 'object' && 'items' in result && Array.isArray(result.items)) {
+        return result.items as LeaveRequest[];
+      }
+      
+      // Fallback: return empty array if format is unexpected
+      console.warn("Unexpected response format from getEmployeeLeaveRequests:", result);
+      return [];
     } catch (error: any) {
       console.error("Error fetching employee leave requests:", error);
       throw error;
@@ -497,6 +600,71 @@ export const leavesApi = {
   getPendingLeaveRequestsForManager: async (): Promise<LeaveRequest[]> => {
     // Placeholder - managers will search by employee ID instead
     return [];
+  },
+
+  // ===== HR MANAGER FUNCTIONS =====
+  // NEW CODE: Added HR Manager API functions for finalizing, overriding, and bulk processing leave requests
+
+  /**
+   * Finalize an approved leave request (HR Manager action)
+   * POST /leaves/request/finalize
+   * Required roles: HR_MANAGER, HR_ADMIN
+   * This updates employee records and adjusts payroll automatically
+   * Note: Backend gets hrUserId from authenticated user, not from payload
+   */
+  finalizeLeaveRequest: async (leaveRequestId: string): Promise<LeaveRequest> => {
+    try {
+      // FIXED: Backend gets hrUserId from req.user, so we only send leaveRequestId
+      const payload = { leaveRequestId };
+      const result = await api.post(`/leaves/request/finalize`, payload);
+      return result as unknown as LeaveRequest;
+    } catch (error: any) {
+      console.error("Error finalizing leave request:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * HR Manager override a manager's decision
+   * POST /leaves/request/override
+   * Required roles: HR_MANAGER, HR_ADMIN
+   * Allows HR to override manager decisions in special circumstances
+   */
+  overrideDecision: async (
+    leaveRequestId: string,
+    hrUserId: string,
+    overrideToApproved: boolean,
+    overrideReason: string
+  ): Promise<LeaveRequest> => {
+    try {
+      const payload = { leaveRequestId, hrUserId, overrideToApproved, overrideReason };
+      const result = await api.post(`/leaves/request/override`, payload);
+      return result as unknown as LeaveRequest;
+    } catch (error: any) {
+      console.error("Error overriding leave decision:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Process multiple leave requests at once (HR Manager action)
+   * POST /leaves/request/process-multiple
+   * Required roles: HR_MANAGER, HR_ADMIN
+   * Allows bulk processing for efficiency
+   */
+  processMultipleRequests: async (
+    leaveRequestIds: string[],
+    hrUserId: string,
+    approved: boolean
+  ): Promise<LeaveRequest[]> => {
+    try {
+      const payload = { leaveRequestIds, hrUserId, approved };
+      const result = await api.post(`/leaves/request/process-multiple`, payload);
+      return result as unknown as LeaveRequest[];
+    } catch (error: any) {
+      console.error("Error processing multiple leave requests:", error);
+      throw error;
+    }
   },
 };
 

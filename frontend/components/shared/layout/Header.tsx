@@ -1,15 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 import { SystemRole } from "@/types";
 
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, loading } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering conditional content after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -36,7 +44,8 @@ export default function Header() {
           <span className="text-xl font-bold text-gray-900">HR System</span>
         </Link>
 
-        {isAuthenticated && (
+        {/* Only render navigation after mount to prevent hydration mismatch */}
+        {mounted && !loading && isAuthenticated && (
           <nav className="flex items-center space-x-6">
             {/* HR Admin Navigation */}
             {isHRAdmin && (
@@ -116,6 +125,14 @@ export default function Header() {
               </>
             )}
 
+            {/* Dashboard Link - Available for all authenticated users */}
+            <Link
+              href="/dashboard"
+              className={navItemClass("/dashboard")}
+            >
+              Dashboard
+            </Link>
+
             {/* Regular Employee Navigation */}
             {!isHR && (
               <Link
@@ -125,6 +142,9 @@ export default function Header() {
                 My Profile
               </Link>
             )}
+
+            {/* Notification Bell - Available for All Users */}
+            <NotificationBell />
 
             <span className="text-sm text-gray-600">
               Welcome, {user?.fullName || user?.firstName}
@@ -139,7 +159,8 @@ export default function Header() {
           </nav>
         )}
 
-        {!isAuthenticated && (
+        {/* Only render login/register after mount to prevent hydration mismatch */}
+        {mounted && !loading && !isAuthenticated && (
           <nav className="flex items-center space-x-4">
             <Link
               href="/auth/login"
