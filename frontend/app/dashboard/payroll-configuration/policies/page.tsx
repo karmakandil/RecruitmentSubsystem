@@ -2,12 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import { policiesApi } from '@/lib/api/payroll-configuration/policies';
 import { PayrollPolicy } from '@/lib/api/payroll-configuration/types';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 
 export default function PoliciesPage() {
+  // Only Payroll Specialist can create/edit policies
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [allPolicies, setAllPolicies] = useState<PayrollPolicy[]>([]); // Store all policies for stats
   const [policies, setPolicies] = useState<PayrollPolicy[]>([]); // Filtered policies for display

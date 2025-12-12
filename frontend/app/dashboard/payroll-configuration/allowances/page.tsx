@@ -2,11 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function AllowancesPage() {
+  // Only Payroll Specialist can create/edit allowances
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
+  
   const router = useRouter();
   const [allowances, setAllowances] = useState<any[]>([]);
   const [allAllowances, setAllAllowances] = useState<any[]>([]);

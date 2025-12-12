@@ -53,7 +53,7 @@ export default function PayrollSelectionPage() {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <div className="flex items-center gap-3 mb-2">
-              <div className="text-3xl">⚙️</div>
+              <div className="text-3xl">⚙</div>
               <CardTitle className="text-xl">Payroll Configuration</CardTitle>
             </div>
             <CardDescription>
@@ -122,4 +122,3 @@ export default function PayrollSelectionPage() {
     </div>
   );
 }
-

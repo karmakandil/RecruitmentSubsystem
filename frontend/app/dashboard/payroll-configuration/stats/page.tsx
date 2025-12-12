@@ -11,7 +11,18 @@ import Link from 'next/link';
 
 export default function StatsPage() {
   const { user } = useAuth();
-  useRequireAuth(SystemRole.PAYROLL_MANAGER, '/dashboard');
+  // Allow Payroll Manager, System Admin, HR Manager, HR Admin, Employee (view-only), and Department Head (view-only)
+  useRequireAuth(
+    [
+      SystemRole.PAYROLL_MANAGER,
+      SystemRole.SYSTEM_ADMIN,
+      SystemRole.HR_MANAGER,
+      SystemRole.HR_ADMIN,
+      SystemRole.DEPARTMENT_EMPLOYEE,
+      SystemRole.DEPARTMENT_HEAD,
+    ],
+    '/dashboard'
+  );
 
   const [stats, setStats] = useState<ConfigurationStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
