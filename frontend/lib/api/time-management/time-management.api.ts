@@ -254,5 +254,64 @@ export const timeManagementApi = {
   ): Promise<ExportReportResponse> => {
     return await api.post("/time-management/reports/export", request);
   },
+
+  // ===== Additional Endpoints for Line Manager Features =====
+
+  // GET shift expiry notifications
+  getShiftExpiryNotifications: async (): Promise<any> => {
+    return await api.get("/notification/shift-expiry");
+  },
+
+  // GET missed punches
+  getMissedPunches: async (filters?: {
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+  }): Promise<any> => {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append("startDate", filters.startDate);
+    if (filters?.endDate) params.append("endDate", filters.endDate);
+    if (filters?.status) params.append("status", filters.status);
+
+    const queryString = params.toString();
+    return await api.get(`/time-management/missed-punches${queryString ? `?${queryString}` : ""}`);
+  },
+
+  // GET repeated lateness
+  getRepeatedLateness: async (): Promise<any> => {
+    return await api.get("/time-management/repeated-lateness");
+  },
+
+  // GET escalation alerts
+  getEscalationAlerts: async (): Promise<any> => {
+    return await api.get("/notification/escalation-alerts");
+  },
+
+  // GET overtime report (alternative endpoint)
+  getOvertimeReport: async (filters?: {
+    startDate?: string;
+    endDate?: string;
+    employeeId?: string;
+    departmentId?: string;
+  }): Promise<any> => {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append("startDate", filters.startDate);
+    if (filters?.endDate) params.append("endDate", filters.endDate);
+    if (filters?.employeeId) params.append("employeeId", filters.employeeId);
+    if (filters?.departmentId) params.append("departmentId", filters.departmentId);
+
+    const queryString = params.toString();
+    return await api.get(`/time-management/overtime-report${queryString ? `?${queryString}` : ""}`);
+  },
+
+  // POST sync data
+  syncData: async (): Promise<any> => {
+    return await api.post("/time-management/sync-data");
+  },
+
+  // GET sync status
+  getSyncStatus: async (): Promise<any> => {
+    return await api.get("/time-management/sync-status");
+  },
 };
 

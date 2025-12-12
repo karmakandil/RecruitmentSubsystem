@@ -25,12 +25,27 @@ export default function EmployeeTimeManagementPage() {
         const fetchRecords = async () => {
             try {
                 setLoadingRecords(true);
-                const status = await timeManagementApi.getAttendanceStatus(user.id);
+                const response = await timeManagementApi.getAttendanceRecords(user.id);
 
-                // Create a record from current status for demonstration
-                if (status.currentRecord) {
-                    setAttendanceRecords([status.currentRecord]);
+                let records: any[] = [];
+
+                if (response?.records && Array.isArray(response.records)) {
+                    records = response.records;
+                } else if (Array.isArray(response)) {
+                    records = response;
+                } else if (response?.data?.records && Array.isArray(response.data.records)) {
+                    records = response.data.records;
                 }
+
+                // Fallback: if no list came back, try current status record
+                if (records.length === 0) {
+                    const status = await timeManagementApi.getAttendanceStatus(user.id);
+                    if (status.currentRecord) {
+                        records = [status.currentRecord];
+                    }
+                }
+
+                setAttendanceRecords(records);
             } catch (err) {
                 console.error("Failed to fetch attendance records:", err);
             } finally {
@@ -165,6 +180,18 @@ function CorrectionRequestFormWithDropdown({
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const { user } = useAuth();
+
+    // Default select the first record when available
+    useEffect(() => {
+        if (preSelectedRecordId) {
+            setSelectedRecordId(preSelectedRecordId);
+            return;
+        }
+        if (attendanceRecords.length > 0 && !selectedRecordId) {
+            const first = attendanceRecords[0];
+            setSelectedRecordId((first as any)._id || (first as any).id || "");
+        }
+    }, [attendanceRecords, preSelectedRecordId, selectedRecordId]);
 
     const formatRecordLabel = (record: AttendanceRecord) => {
         const date = new Date(record.date).toLocaleDateString([], {

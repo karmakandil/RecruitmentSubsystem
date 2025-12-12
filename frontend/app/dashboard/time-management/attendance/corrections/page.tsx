@@ -38,9 +38,14 @@ export default function AttendanceCorrectionsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
 
-  // Check if user is admin
+  // Check if user is admin-level for corrections
   useEffect(() => {
-    if (user?.roles?.includes(SystemRole.HR_ADMIN) || user?.roles?.includes(SystemRole.SYSTEM_ADMIN) || user?.roles?.includes(SystemRole.DEPARTMENT_HEAD)) {
+    if (
+      user?.roles?.includes(SystemRole.HR_ADMIN) ||
+      user?.roles?.includes(SystemRole.SYSTEM_ADMIN) ||
+      user?.roles?.includes(SystemRole.DEPARTMENT_HEAD) ||
+      user?.roles?.includes(SystemRole.HR_MANAGER)
+    ) {
       setIsAdmin(true);
     } else {
       setIsAdmin(false);
@@ -381,9 +386,9 @@ export default function AttendanceCorrectionsPage() {
                         key={requestId}
                         className="border-b border-gray-100 hover:bg-gray-50"
                       >
-                        <td className="py-3 px-4">{employeeDisplay}</td>
-                        <td className="py-3 px-4">{attendanceDate}</td>
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 text-gray-900">{employeeDisplay}</td>
+                        <td className="py-3 px-4 text-gray-900">{attendanceDate}</td>
+                        <td className="py-3 px-4 text-gray-900">
                           <div className="max-w-xs truncate" title={request.reason || "No reason provided"}>
                             {request.reason || "N/A"}
                           </div>
@@ -397,9 +402,9 @@ export default function AttendanceCorrectionsPage() {
                             {request.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4">{formatDate(request.createdAt)}</td>
+                        <td className="py-3 px-4 text-gray-900">{formatDate(request.createdAt)}</td>
                         {viewMode === "pending" && (request as any).waitingDays !== undefined && (
-                          <td className="py-3 px-4">{(request as any).waitingDays} days</td>
+                          <td className="py-3 px-4 text-gray-900">{(request as any).waitingDays} days</td>
                         )}
                         <td className="py-3 px-4">
                           <div className="flex gap-2">
@@ -410,9 +415,7 @@ export default function AttendanceCorrectionsPage() {
                             >
                               View
                             </Button>
-                            {canApproveOrReject(request.status) && (
-                              <>
-                            {isAdmin && (
+                            {canApproveOrReject(request.status) && isAdmin && (
                               <>
                                 <Button
                                   variant="primary"

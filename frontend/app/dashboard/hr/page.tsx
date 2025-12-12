@@ -125,6 +125,48 @@ export default function HRManagerDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Time Management Section */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Time Management
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <CardTitle>Approvals & Reporting</CardTitle>
+              <CardDescription>
+                Review and approve time exceptions, view lateness reports, overtime reports, and manage notifications
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/time-management/approvals"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                Manage Approvals →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Time Management</CardTitle>
+              <CardDescription>
+                Manage attendance, schedules, shifts, and time tracking
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/time-management"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                Time Management →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
