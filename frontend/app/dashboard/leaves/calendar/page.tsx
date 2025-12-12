@@ -49,13 +49,57 @@ export default function CalendarPage() {
       setLoading(true);
       const data = await leavesApi.getCalendarByYear(year);
       if (data) {
-        setCalendar(data);
+        // Backend returns holidays as populated Holiday documents from time-management
+        // Holiday structure: { _id, type, startDate, endDate, name, active }
+        // We need to map to: { name, date, description }
+        const holidays = Array.isArray(data.holidays) 
+          ? data.holidays.map((h: any) => {
+              // If it's a string/ID (not populated), skip it
+              if (typeof h === 'string' || !h || !h._id) {
+                return null;
+              }
+              
+              // If it's a populated Holiday document from time-management
+              // It has: _id, type, startDate, endDate, name (optional), active
+              if (h.startDate) {
+                return {
+                  name: h.name || 'Holiday',
+                  date: new Date(h.startDate).toISOString().split('T')[0], // Convert Date to YYYY-MM-DD
+                  description: '', // Holiday model doesn't have description
+                };
+              }
+              
+              // If it's already in our format { name, date, description }
+              if (h.date && h.name) {
+                return h;
+              }
+              
+              return null;
+            }).filter((h: any) => h !== null)
+          : [];
+        
+        // Map blocked periods to ensure dates are strings in YYYY-MM-DD format
+        const blockedPeriods = Array.isArray(data.blockedPeriods)
+          ? data.blockedPeriods.map((bp: any) => ({
+              from: typeof bp.from === 'string' 
+                ? bp.from 
+                : new Date(bp.from).toISOString().split('T')[0],
+              to: typeof bp.to === 'string' 
+                ? bp.to 
+                : new Date(bp.to).toISOString().split('T')[0],
+              reason: bp.reason || '',
+            }))
+          : [];
+        
+        setCalendar({
+          ...data,
+          holidays: holidays,
+          blockedPeriods: blockedPeriods,
+        });
         setFormData({
           year: data.year,
-          holidays: Array.isArray(data.holidays) && typeof data.holidays[0] === 'object' 
-            ? data.holidays as Holiday[]
-            : [],
-          blockedPeriods: data.blockedPeriods || [],
+          holidays: holidays,
+          blockedPeriods: blockedPeriods,
         });
       } else {
         setCalendar(null);
@@ -86,42 +130,106 @@ export default function CalendarPage() {
     setIsBlockedModalOpen(true);
   };
 
-  const handleAddHoliday = () => {
+  const saveCalendarData = async (updatedFormData: CreateCalendarDto) => {
+    try {
+      let savedCalendar: Calendar;
+      if (calendar) {
+        savedCalendar = await leavesApi.updateCalendar(year, updatedFormData);
+      } else {
+        savedCalendar = await leavesApi.createCalendar(updatedFormData);
+      }
+      
+      // Update calendar state with saved data (to match formData structure)
+      setCalendar({
+        ...savedCalendar,
+        holidays: updatedFormData.holidays || [],
+        blockedPeriods: updatedFormData.blockedPeriods || [],
+      });
+      
+      // Also update formData to keep them in sync
+      setFormData(updatedFormData);
+      
+      return true;
+    } catch (error: any) {
+      showToast(error.message || "Failed to save calendar", "error");
+      return false;
+    }
+  };
+
+  const handleAddHoliday = async () => {
     if (!holidayForm.name || !holidayForm.date) {
       showToast("Name and date are required", "error");
       return;
     }
-    setFormData({
+    
+    const updatedFormData = {
       ...formData,
       holidays: [...(formData.holidays || []), { ...holidayForm }],
-    });
+    };
+    
+    // Update formData immediately for UI
+    setFormData(updatedFormData);
     setIsHolidayModalOpen(false);
     setHolidayForm({ name: "", date: "", description: "" });
+    
+    // Save to backend immediately
+    const success = await saveCalendarData(updatedFormData);
+    if (success) {
+      showToast("Holiday added successfully", "success");
+    }
   };
 
-  const handleAddBlockedPeriod = () => {
+  const handleAddBlockedPeriod = async () => {
     if (!blockedForm.from || !blockedForm.to) {
       showToast("From and To dates are required", "error");
       return;
     }
-    setFormData({
+    
+    const updatedFormData = {
       ...formData,
       blockedPeriods: [...(formData.blockedPeriods || []), { ...blockedForm }],
-    });
+    };
+    
+    // Update formData immediately for UI
+    setFormData(updatedFormData);
     setIsBlockedModalOpen(false);
     setBlockedForm({ from: "", to: "", reason: "" });
+    
+    // Save to backend immediately
+    const success = await saveCalendarData(updatedFormData);
+    if (success) {
+      showToast("Blocked period added successfully", "success");
+    }
   };
 
-  const handleRemoveHoliday = (index: number) => {
+  const handleRemoveHoliday = async (index: number) => {
     const newHolidays = [...(formData.holidays || [])];
     newHolidays.splice(index, 1);
-    setFormData({ ...formData, holidays: newHolidays });
+    const updatedFormData = { ...formData, holidays: newHolidays };
+    
+    // Update formData immediately for UI
+    setFormData(updatedFormData);
+    
+    // Save to backend immediately
+    const success = await saveCalendarData(updatedFormData);
+    if (success) {
+      showToast("Holiday removed successfully", "success");
+    }
   };
 
-  const handleRemoveBlockedPeriod = (index: number) => {
+  const handleRemoveBlockedPeriod = async (index: number) => {
     const newBlocked = [...(formData.blockedPeriods || [])];
     newBlocked.splice(index, 1);
-    setFormData({ ...formData, blockedPeriods: newBlocked });
+    const updatedFormData = { ...formData, blockedPeriods: newBlocked };
+    
+    // Update formData immediately for UI
+    setFormData(updatedFormData);
+    
+    // Save to backend immediately
+    const success = await saveCalendarData(updatedFormData);
+    if (success) {
+      showToast("Blocked period removed successfully", "success");
+    }
   };
 
   const handleSave = async () => {
@@ -190,7 +298,9 @@ export default function CalendarPage() {
               {Array.isArray(calendar.holidays) && calendar.holidays.length > 0 ? (
                 <div className="space-y-2">
                   {calendar.holidays.map((holiday, index) => {
-                    const h = typeof holiday === 'string' ? { name: holiday, date: '', description: '' } : holiday;
+                    // Holiday should already be in format { name, date, description } from loadCalendar
+                    if (!holiday || typeof holiday !== 'object') return null;
+                    const h = holiday as { name: string; date: string; description?: string };
                     return (
                       <div
                         key={index}

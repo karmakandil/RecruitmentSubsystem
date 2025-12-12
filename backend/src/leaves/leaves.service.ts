@@ -65,6 +65,7 @@ import {
 } from './dto/AutoAccrueLeave.dto';
 import { RunCarryForwardDto } from './dto/CarryForward.dto';
 import { AccrualAdjustmentDto } from './dto/AccrualAdjustment.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class LeavesService {
@@ -229,7 +230,7 @@ export class LeavesService {
     // @InjectModel(Position.name) private positionModel: mongoose.Model<PositionDocument>,
     @InjectModel(LeaveCategory.name)
     private leaveCategoryModel: mongoose.Model<LeaveCategoryDocument>,
-    //private notificationService: NotificationService, // Assuming a Notification service is available
+    private notificationsService: NotificationsService,
   ) {}
 
   // In-memory storage for delegation records (Map<managerId, Array<delegation>>)
@@ -311,7 +312,7 @@ export class LeavesService {
     return await newCategory.save();
   }
 
-async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
+  async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
     return await this.leaveCategoryModel.find().exec();
   }
 
@@ -508,6 +509,10 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       .exec();
 
     const savedLeaveRequest = await leaveRequest.save();
+    
+    // Notify manager when new leave request is created
+    await this.notifyStakeholders(savedLeaveRequest, 'created');
+    
     return savedLeaveRequest;
   }
 
@@ -749,8 +754,21 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
     // Step 6: Save the updated leave request
     const updatedLeaveRequest = await leaveRequest.save();
 
+    // Step 7: Notify employee when leave request is approved/rejected
+    if (status === LeaveStatus.APPROVED) {
+      await this.notifyStakeholders(updatedLeaveRequest, 'approved');
+    } else if (status === LeaveStatus.REJECTED) {
+      await this.notifyStakeholders(updatedLeaveRequest, 'rejected');
+    }
+
     return updatedLeaveRequest;
   }
+
+    
+    
+
+  
+  
 
   // Phase 2: REQ-022 - Manager reject leave request
   async rejectLeaveRequest(
@@ -877,8 +895,12 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       );
     }
 
-    return leaveEntitlement;
+  if (!leaveEntitlement) {
+    throw new NotFoundException("Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found" );
   }
+
+  return leaveEntitlement;
+}
 
   async updateLeaveEntitlement(
     id: string,
@@ -944,14 +966,15 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       );
     }
 
-    // Atomically add personalized entitlement: increase accruedActual and decrease remaining
+    // Atomically add personalized entitlement: increase both accruedActual and remaining
+    // This gives the employee extra days beyond their normal policy
     const updated = await this.leaveEntitlementModel
       .findByIdAndUpdate(
         entitlement._id,
         {
           $inc: {
             accruedActual: personalizedEntitlement,
-            remaining: -personalizedEntitlement,
+            remaining: personalizedEntitlement,
           },
         },
         { new: true },
@@ -1025,6 +1048,18 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
 
   //leave type
 
+  async getLeaveTypes(): Promise<LeaveTypeDocument[]> {
+    return await this.leaveTypeModel.find().exec();
+  }
+
+  async getLeaveTypeById(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return leaveType;
+  }
+
   async createLeaveType(
     createLeaveTypeDto: CreateLeaveTypeDto,
   ): Promise<LeaveTypeDocument> {
@@ -1046,10 +1081,18 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
       .findByIdAndUpdate(id, updateLeaveTypeDto, { new: true })
       .exec();
     if (!updatedLeaveType) {
-      throw new Error(`LeaveType with ID ${id} not found`);
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
     }
 
     return updatedLeaveType;
+  }
+
+  async deleteLeaveType(id: string): Promise<LeaveTypeDocument> {
+    const leaveType = await this.leaveTypeModel.findById(id).exec();
+    if (!leaveType) {
+      throw new NotFoundException(`LeaveType with ID ${id} not found`);
+    }
+    return await this.leaveTypeModel.findByIdAndDelete(id).exec() as LeaveTypeDocument;
   }
   // REQ-013: Get pending requests for manager review
   // async getPendingRequestsForManager(managerId: string): Promise<LeaveRequestDocument[]> {
@@ -1306,8 +1349,8 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
     // Step 8: REQ-029, BR 32 - Auto-update leave balances with proper calculation
     await this.finalizeApprovedLeaveRequest(leaveRequest);
 
-    // Step 9: REQ-030 - Notify stakeholders
-    //await this.notifyStakeholders(leaveRequest, 'finalized');
+    // Step 9: REQ-030 - Notify stakeholders (HR Manager, Employee, Manager)
+    await this.notifyStakeholders(leaveRequest, 'finalized');
 
     // Step 10: REQ-042, BR 692 - Sync with payroll system
     ///await this.syncWithPayroll(leaveRequest);
@@ -1432,12 +1475,131 @@ async getLeaveCategories(): Promise<LeaveCategoryDocument[]> {
   }
 
   // Phase 2: REQ-030, N-053 - Notify stakeholders
-  // Notifications are disabled per requirements (no-op)
+  // Notify relevant parties when leave request status changes
   private async notifyStakeholders(
-    _: LeaveRequestDocument,
-    __: string,
+    leaveRequest: LeaveRequestDocument,
+    event: string,
   ): Promise<void> {
-    return; // intentionally no-op
+    try {
+      // Populate employee and leave type to get necessary details
+      const populatedRequest = await this.leaveRequestModel
+        .findById(leaveRequest._id)
+        .populate('employeeId', 'firstName lastName email directManagerId')
+        .populate('leaveTypeId', 'name code')
+        .exec();
+
+      if (!populatedRequest) {
+        console.error('Could not populate leave request for notifications');
+        return;
+      }
+
+      const employee = populatedRequest.employeeId as any;
+      const leaveType = populatedRequest.leaveTypeId as any;
+      const employeeId = employee._id?.toString() || employee.toString();
+      const employeeName = employee.firstName && employee.lastName 
+        ? `${employee.firstName} ${employee.lastName}`
+        : 'Employee';
+      
+      // Get manager ID - try directManagerId first, otherwise we'll need to get it from employee profile
+      let managerId: string | null = null;
+      if (employee.directManagerId) {
+        managerId = employee.directManagerId.toString();
+      } else {
+        // Try to get manager from employee profile
+        const employeeProfile = await this.employeeProfileModel
+          .findById(employeeId)
+          .select('directManagerId')
+          .exec();
+        if (employeeProfile && (employeeProfile as any).directManagerId) {
+          managerId = (employeeProfile as any).directManagerId.toString();
+        }
+      }
+
+      const leaveDetails = {
+        employeeName,
+        fromDate: populatedRequest.dates.from.toISOString().split('T')[0],
+        toDate: populatedRequest.dates.to.toISOString().split('T')[0],
+        leaveTypeName: leaveType?.name || 'Leave',
+        status: leaveRequest.status,
+      };
+
+      // Handle different notification events
+      switch (event) {
+        case 'created':
+          // Notify manager when new leave request is created
+          if (managerId) {
+            await this.notificationsService.notifyLeaveRequestCreated(
+              leaveRequest._id.toString(),
+              employeeId,
+              managerId,
+              leaveDetails,
+            );
+          }
+          break;
+
+        case 'approved':
+          // Notify employee when leave request is approved
+          await this.notificationsService.notifyLeaveRequestStatusChanged(
+            leaveRequest._id.toString(),
+            employeeId,
+            'APPROVED',
+          );
+          break;
+
+        case 'rejected':
+          // Notify employee when leave request is rejected
+          await this.notificationsService.notifyLeaveRequestStatusChanged(
+            leaveRequest._id.toString(),
+            employeeId,
+            'REJECTED',
+          );
+          break;
+
+        case 'modified':
+          // Notify employee when leave request is modified
+          await this.notificationsService.notifyLeaveRequestStatusChanged(
+            leaveRequest._id.toString(),
+            employeeId,
+            'MODIFIED',
+          );
+          break;
+
+        case 'returned':
+          // Notify employee when leave request is returned for correction
+          await this.notificationsService.notifyLeaveRequestStatusChanged(
+            leaveRequest._id.toString(),
+            employeeId,
+            'RETURNED_FOR_CORRECTION',
+          );
+          break;
+
+        case 'finalized':
+        case 'overridden_approved':
+        case 'overridden_rejected':
+          // Notify HR Manager, employee, and manager when leave request is finalized
+          // For HR Manager, we need to find an HR Manager user
+          // For now, we'll use the managerId as coordinatorId (can be improved)
+          const hrManagerId = managerId || employeeId; // Fallback - should be improved to find actual HR Manager
+          const coordinatorId = hrManagerId; // Attendance coordinator - should be improved
+          
+          if (managerId && hrManagerId && coordinatorId) {
+            await this.notificationsService.notifyLeaveRequestFinalized(
+              leaveRequest._id.toString(),
+              employeeId,
+              managerId,
+              coordinatorId,
+              leaveDetails,
+            );
+          }
+          break;
+
+        default:
+          console.log(`Unknown notification event: ${event}`);
+      }
+    } catch (error) {
+      console.error('Error sending leave request notifications:', error);
+      // Don't throw - notifications should not break the main flow
+    }
   }
 
   // Phase 2: REQ-042, BR 692 - Sync with payroll system (internal helper)
