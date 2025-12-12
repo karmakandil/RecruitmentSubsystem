@@ -2320,11 +2320,12 @@ Due: ${context.dueDate}`
             onboarding.employeeId.toString(),
           );
           if (employee && employee.status === EmployeeStatus.PROBATION) {
-            await this.employeeProfileService.update(employee._id.toString(), {
+            // Use onboarding.employeeId directly instead of employee._id to avoid TypeScript issues
+            await this.employeeProfileService.update(onboarding.employeeId.toString(), {
               status: EmployeeStatus.ACTIVE,
             });
             console.log(
-              `✅ Employee ${employee.employeeNumber} (${employee._id}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+              `✅ Employee ${employee.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
             );
           }
         } catch (error) {
@@ -2642,11 +2643,12 @@ Due: ${context.dueDate}`
             // When onboarding is completed, automatically change employee status from PROBATION to ACTIVE
             // This is a business rule: employees become ACTIVE after completing onboarding
             if (employee.status === EmployeeStatus.PROBATION) {
-              await this.employeeProfileService.update(employee._id.toString(), {
+              // Use onboarding.employeeId directly instead of employee._id to avoid TypeScript issues
+              await this.employeeProfileService.update(onboarding.employeeId.toString(), {
                 status: EmployeeStatus.ACTIVE,
               });
               console.log(
-                `✅ Employee ${employee.employeeNumber} (${employee._id}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+                `✅ Employee ${employee.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
               );
             }
             // ============= END INTEGRATION =============

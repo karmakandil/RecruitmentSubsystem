@@ -150,31 +150,25 @@ export class AuthService {
   }
 
   async registerCandidate(registerDto: RegisterCandidateDto) {
-    // Check for duplicate national ID in employees FIRST (more helpful error)
-    const existingEmployeeByNationalId = await this.employeeModel
-      .findOne({ nationalId: registerDto.nationalId })
-      .exec();
-
-    if (existingEmployeeByNationalId) {
-      throw new ConflictException(
-        `An account with this National ID already exists. If you are already an employee, please log in using your employee number (${existingEmployeeByNationalId.employeeNumber}) instead of registering.`,
-      );
-    }
-
     // Check for duplicate national ID in candidates
     const existingCandidateByNationalId = await this.candidateModel
       .findOne({ nationalId: registerDto.nationalId })
       .exec();
 
     if (existingCandidateByNationalId) {
-      // Check if candidate is already hired (became employee)
-      if (existingCandidateByNationalId.status === CandidateStatus.HIRED) {
-        throw new ConflictException(
-          'This candidate has already been hired and converted to an employee. Please contact HR if you need to access your account.',
-        );
-      }
       throw new ConflictException(
-        'A candidate account with this National ID already exists. Please log in or contact HR if you need assistance.',
+        'Candidate with this National ID already exists',
+      );
+    }
+
+    // Check for duplicate national ID in employees
+    const existingEmployeeByNationalId = await this.employeeModel
+      .findOne({ nationalId: registerDto.nationalId })
+      .exec();
+
+    if (existingEmployeeByNationalId) {
+      throw new ConflictException(
+        'Employee with this National ID already exists',
       );
     }
 
