@@ -34,6 +34,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SystemRole, CandidateStatus } from './enums/employee-profile.enums';
 import { RegisterCandidateDto } from './dto/register-candidate.dto';
+import { GetChangeRequestsDto } from './dto/get-change-requests.dto';
 
 @Controller('employee-profile')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -62,6 +63,7 @@ export class EmployeeProfileController {
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_ADMIN,
   )
   async findAll(@Query() query: QueryEmployeeDto, @CurrentUser() user: any) {
     const result = await this.employeeProfileService.findAll(
@@ -189,6 +191,7 @@ export class EmployeeProfileController {
     SystemRole.SYSTEM_ADMIN,
     SystemRole.HR_MANAGER,
     SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_ADMIN,
   )
   async findByDepartment(@Param('departmentId') departmentId: string) {
     const employees =
@@ -209,7 +212,12 @@ export class EmployeeProfileController {
   }
 
   @Patch(':id')
-  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+  )
   async update(
     @Param('id') id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
@@ -250,7 +258,12 @@ export class EmployeeProfileController {
   }
 
   @Get('export/excel')
-  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+  )
   async exportToExcel(@Query() query: QueryEmployeeDto) {
     const excelBuffer = await this.employeeProfileService.exportToExcel(query);
     return {
@@ -262,7 +275,7 @@ export class EmployeeProfileController {
   // ==================== SYSTEM ROLE ROUTES ====================
 
   @Post('assign-roles')
-  @Roles(SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   @HttpCode(HttpStatus.OK)
   async assignRoles(@Body() assignRoleDto: AssignSystemRoleDto) {
     const systemRole = await this.employeeProfileService.assignSystemRoles(
@@ -277,7 +290,7 @@ export class EmployeeProfileController {
   }
 
   @Post(':employeeId/roles')
-  @Roles(SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async assignRolesToEmployee(
     @Param('employeeId') employeeId: string,
     @Body() assignRoleDto: Omit<AssignSystemRoleDto, 'employeeProfileId'>,
@@ -294,7 +307,7 @@ export class EmployeeProfileController {
   }
 
   @Get(':employeeId/roles')
-  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_MANAGER)
+  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
   async getEmployeeRoles(@Param('employeeId') employeeId: string) {
     const roles = await this.employeeProfileService.getSystemRoles(employeeId);
     return {
@@ -304,7 +317,7 @@ export class EmployeeProfileController {
   }
 
   @Patch(':employeeId/roles')
-  @Roles(SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async updateEmployeeRoles(
     @Param('employeeId') employeeId: string,
     @Body()
@@ -325,7 +338,7 @@ export class EmployeeProfileController {
   }
 
   @Patch(':employeeId/roles/deactivate')
-  @Roles(SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async deactivateEmployeeRoles(@Param('employeeId') employeeId: string) {
     await this.employeeProfileService.deactivateSystemRoles(employeeId);
     return {
@@ -511,21 +524,202 @@ export class EmployeeProfileController {
     };
   }
 
-  @Get('change-request')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
-  async getAllChangeRequests(@Query() query: any) {
+  // 1. Comment out the original endpoint
+  // @Get('change-request')
+  // async getAllChangeRequests(@Query() query: GetChangeRequestsDto) { ... }
+
+  // 2. Create new identical endpoint with same route
+  @Get('approval-requests')
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
+  async getAllChangeRequestsHR(@Query() query: GetChangeRequestsDto) {
+    console.log('=== NEW ENDPOINT WITH SAME ROUTE ===');
+
     const requests =
       await this.employeeProfileService.getAllProfileChangeRequestsWithFilters(
         query,
       );
+
     return {
       message: 'Change requests retrieved successfully',
       data: requests,
     };
   }
 
+  @Get('change-request/copy')
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
+  async copyOfOriginal(@Query() query: GetChangeRequestsDto) {
+    console.log('=== COPY OF ORIGINAL ENDPOINT ===');
+    console.log('DTO received:', query);
+
+    try {
+      // Call the EXACT SAME service method
+      const requests =
+        await this.employeeProfileService.getAllProfileChangeRequestsWithFilters(
+          query,
+        );
+
+      console.log('Copy successful! Found', requests.length, 'requests');
+      return {
+        message: 'Copy endpoint successful',
+        data: requests,
+      };
+    } catch (error) {
+      console.error('COPY ENDPOINT ERROR:', error);
+      throw error;
+    }
+  }
+
+  @Get('change-request/test-with-dto')
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
+  async testWithDto(@Query() query: GetChangeRequestsDto) {
+    console.log('=== TEST WITH DTO ===');
+    console.log('DTO received:', query);
+    console.log('Type of query:', typeof query);
+    console.log('Is DTO instance?', query instanceof GetChangeRequestsDto);
+
+    // Immediately return what we received
+    return {
+      message: 'DTO test successful',
+      queryReceived: query,
+      hasEmployeeId: 'employeeId' in query,
+      employeeIdValue: query.employeeId,
+      employeeIdType: typeof query.employeeId,
+    };
+  }
+
+  @Get('change-request/test-simple')
+  async testSimple() {
+    console.log('=== SIMPLE TEST ===');
+
+    try {
+      // Call service with hardcoded valid parameters
+      const requests =
+        await this.employeeProfileService.getAllProfileChangeRequestsWithFilters(
+          { status: 'PENDING', employeeId: '000000000000000000000001' }, // Valid ObjectId
+        );
+
+      return {
+        message: 'Simple test successful',
+        count: requests.length,
+      };
+    } catch (error) {
+      console.error('SIMPLE TEST ERROR:', error);
+      return {
+        message: 'Simple test failed',
+        error: (error as Error).message,
+        stack: (error as Error).stack,
+      };
+    }
+  }
+
+  @Get('change-request/debug-minimal')
+  async debugMinimal(@Query() query: any) {
+    console.log('=== DEBUG MINIMAL ===');
+    console.log('Query received:', query);
+
+    // Manually clean the query
+    const cleanedQuery: any = {};
+
+    if (query.status) cleanedQuery.status = query.status;
+
+    // Only add employeeId if it's a valid ObjectId
+    if (query.employeeId && query.employeeId.trim() !== '') {
+      const trimmed = query.employeeId.trim();
+      if (/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+        cleanedQuery.employeeId = trimmed;
+      }
+    }
+
+    console.log('Cleaned query:', cleanedQuery);
+
+    try {
+      const requests =
+        await this.employeeProfileService.getAllProfileChangeRequestsWithFilters(
+          cleanedQuery,
+        );
+
+      return {
+        message: 'Debug successful',
+        count: requests.length,
+        queryReceived: query,
+        queryUsed: cleanedQuery,
+      };
+    } catch (error) {
+      console.error('DEBUG ERROR:', error);
+      return {
+        message: 'Debug failed',
+        error: (error as Error).message,
+        queryReceived: query,
+      };
+    }
+  }
+
+  @Get('change-request/diagnostic')
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
+  async diagnostic(@Query() query: any) {
+    console.log('=== DIAGNOSTIC ENDPOINT ===');
+    console.log('1. Query received in controller:', query);
+    console.log('2. Type of employeeId:', typeof query?.employeeId);
+    console.log('3. employeeId value:', query?.employeeId);
+    console.log(
+      '4. employeeId === undefined:',
+      query?.employeeId === undefined,
+    );
+    console.log('5. employeeId === "":', query?.employeeId === '');
+
+    // Try calling the original endpoint's logic
+    try {
+      const requests =
+        await this.employeeProfileService.getAllProfileChangeRequestsWithFilters(
+          query,
+        );
+
+      return {
+        message: 'Diagnostic successful',
+        data: {
+          queryReceived: query,
+          requestCount: requests.length,
+          hasEmployeeId: 'employeeId' in query,
+          employeeIdValue: query?.employeeId,
+          employeeIdType: typeof query?.employeeId,
+        },
+      };
+    } catch (error) {
+      return {
+        message: 'Diagnostic failed',
+        error: (error as Error).message,
+        queryReceived: query,
+      };
+    }
+  }
+
   @Get('change-request/:id')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
   async getChangeRequestById(@Param('id') id: string) {
     const request =
       await this.employeeProfileService.getProfileChangeRequestById(id);
@@ -536,7 +730,7 @@ export class EmployeeProfileController {
   }
 
   @Patch('change-request/:id/process')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async processChangeRequest(
     @Param('id') id: string,
     @Body() processDto: ProcessProfileChangeRequestDto,
@@ -553,7 +747,7 @@ export class EmployeeProfileController {
   }
 
   @Patch('change-request/:id/approve')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async approveChangeRequest(
     @Param('id') id: string,
     @Body() approveDto: { reason?: string },
@@ -570,7 +764,7 @@ export class EmployeeProfileController {
   }
 
   @Patch('change-request/:id/reject')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async rejectChangeRequest(
     @Param('id') id: string,
     @Body() rejectDto: { reason?: string },
@@ -712,6 +906,7 @@ export class EmployeeProfileController {
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_ADMIN,
   )
   async advancedSearch(@Body() searchCriteria: any) {
     const results =
@@ -728,6 +923,7 @@ export class EmployeeProfileController {
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_ADMIN,
   )
   async findByEmployeeNumber(@Param('employeeNumber') employeeNumber: string) {
     const employee =
@@ -739,7 +935,7 @@ export class EmployeeProfileController {
   }
 
   @Get('search/by-national-id/:nationalId')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN)
   async findByNationalId(@Param('nationalId') nationalId: string) {
     const employee =
       await this.employeeProfileService.findByNationalId(nationalId);
@@ -756,6 +952,7 @@ export class EmployeeProfileController {
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
   )
   async getTeamMembers(@CurrentUser() user: any) {
     const members = await this.employeeProfileService.getTeamMembers(

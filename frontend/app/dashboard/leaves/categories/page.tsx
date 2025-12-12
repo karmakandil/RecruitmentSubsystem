@@ -37,12 +37,17 @@ export default function LeaveCategoriesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      // TODO: Uncomment when backend endpoint is ready
-      // const data = await leavesApi.getLeaveCategories();
-      // setCategories(data);
-      setCategories([]);
+      // ENHANCED: Load leave categories from backend
+      const data = await leavesApi.getLeaveCategories();
+      setCategories(data);
     } catch (error: any) {
-      showToast(error.message || "Failed to load leave categories", "error");
+      // If endpoint doesn't exist or fails, show empty array
+      console.warn("Failed to load leave categories:", error);
+      setCategories([]);
+      // Only show error toast if it's not a 404/not found error
+      if (!error.message?.includes("not available") && !error.message?.includes("404") && !error.message?.includes("not found")) {
+        showToast(error.message || "Failed to load leave categories", "error");
+      }
     } finally {
       setLoading(false);
     }
@@ -147,35 +152,44 @@ export default function LeaveCategoriesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {categories.map((category) => (
-            <Card key={category._id}>
-              <CardHeader>
-                <CardTitle>{category.name}</CardTitle>
-                {category.description && (
-                  <CardDescription>{category.description}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenEdit(category)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenDelete(category)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
+                <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((category) => (
+                <tr key={category._id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 font-medium">{category.name}</td>
+                  <td className="py-3 px-4 text-gray-600">
+                    {category.description || "—"}
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenEdit(category)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenDelete(category)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

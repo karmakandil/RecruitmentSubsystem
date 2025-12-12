@@ -20,6 +20,76 @@ import {
 } from "../../../types/time-management";
 
 export const timeManagementApi = {
+  // ===== Employee Self-Service APIs =====
+
+  // Clock in
+  clockIn: async (employeeId: string): Promise<any> => {
+    return await api.post(`/time-management/clock-in/${employeeId}`);
+  },
+
+  // Clock out
+  clockOut: async (employeeId: string): Promise<any> => {
+    return await api.post(`/time-management/clock-out/${employeeId}`);
+  },
+
+  // Get attendance status for employee
+  getAttendanceStatus: async (employeeId: string): Promise<any> => {
+    return await api.get(`/time-management/attendance/status/${employeeId}`);
+  },
+
+  // Get attendance records for employee
+  getAttendanceRecords: async (employeeId: string, filters?: {
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> => {
+    try {
+      const days = filters?.startDate ? 
+        Math.ceil((new Date(filters.endDate || new Date()).getTime() - new Date(filters.startDate).getTime()) / (1000 * 60 * 60 * 24)) 
+        : 30;
+
+      const response = await api.get(`/time-management/attendance/records/${employeeId}?days=${days}`);
+      
+      console.log('Attendance records response:', response);
+      
+      return response;
+    } catch (error: any) {
+      console.error('Error fetching attendance records:', error);
+      throw error;
+    }
+  },
+
+  // Submit correction request
+  submitCorrectionRequest: async (data: {
+    employeeId: string;
+    attendanceRecord: string;
+    reason: string;
+  }): Promise<any> => {
+    return await api.post('/time-management/correction-request', data);
+  },
+
+  // Get correction requests by employee
+  getCorrectionRequestsByEmployee: async (
+    employeeId: string,
+    filters?: {
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+    }
+  ): Promise<any> => {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+
+    const queryString = params.toString();
+    const url = `/time-management/correction-request/employee/${employeeId}${queryString ? `?${queryString}` : ''}`;
+    return await api.get(url);
+  },
+
+  // ===== Correction Request Management APIs =====
+
   // GET all correction requests
   getAllCorrectionRequests: async (
     filters?: GetAllCorrectionRequestsFilters

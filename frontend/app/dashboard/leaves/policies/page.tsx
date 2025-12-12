@@ -34,6 +34,16 @@ export default function LeavePoliciesPage() {
     roundingRule: "none",
     maxCarryForward: 0,
     minNoticeDays: 0,
+    eligibility: {
+      minTenureMonths: undefined,
+      positionsAllowed: [],
+      contractTypesAllowed: [],
+    },
+  });
+  const [eligibilityData, setEligibilityData] = useState({
+    minTenureMonths: "",
+    positionsAllowed: "",
+    contractTypesAllowed: [] as string[],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -47,10 +57,15 @@ export default function LeavePoliciesPage() {
       const policiesData = await leavesApi.getLeavePolicies();
       setPolicies(policiesData);
       
-      // TODO: Load leave types when endpoint is ready
-      // const types = await leavesApi.getLeaveTypes();
-      // setLeaveTypes(types);
-      setLeaveTypes([]);
+      // Load leave types
+      try {
+        const types = await leavesApi.getLeaveTypes();
+        setLeaveTypes(types);
+      } catch (typeError: any) {
+        // If types endpoint fails, show empty
+        console.warn("Leave types endpoint not available:", typeError);
+        setLeaveTypes([]);
+      }
     } catch (error: any) {
       showToast(error.message || "Failed to load leave policies", "error");
     } finally {
@@ -68,6 +83,16 @@ export default function LeavePoliciesPage() {
       roundingRule: "none",
       maxCarryForward: 0,
       minNoticeDays: 0,
+      eligibility: {
+        minTenureMonths: undefined,
+        positionsAllowed: [],
+        contractTypesAllowed: [],
+      },
+    });
+    setEligibilityData({
+      minTenureMonths: "",
+      positionsAllowed: "",
+      contractTypesAllowed: [],
     });
     setErrors({});
     setIsModalOpen(true);
@@ -84,6 +109,20 @@ export default function LeavePoliciesPage() {
       maxCarryForward: policy.maxCarryForward,
       minNoticeDays: policy.minNoticeDays,
       maxConsecutiveDays: policy.maxConsecutiveDays,
+      eligibility: policy.eligibility || {
+        minTenureMonths: undefined,
+        positionsAllowed: [],
+        contractTypesAllowed: [],
+      },
+    });
+    setEligibilityData({
+      minTenureMonths: policy.eligibility?.minTenureMonths?.toString() || "",
+      positionsAllowed: Array.isArray(policy.eligibility?.positionsAllowed)
+        ? policy.eligibility.positionsAllowed.join(", ")
+        : "",
+      contractTypesAllowed: Array.isArray(policy.eligibility?.contractTypesAllowed)
+        ? policy.eligibility.contractTypesAllowed
+        : [],
     });
     setErrors({});
     setIsModalOpen(true);
@@ -109,11 +148,42 @@ export default function LeavePoliciesPage() {
     if (!validateForm()) return;
 
     try {
+      // Build eligibility object from form data
+      const eligibility: Record<string, any> = {};
+      
+      if (eligibilityData.minTenureMonths && eligibilityData.minTenureMonths.trim() !== "") {
+        const tenureMonths = parseInt(eligibilityData.minTenureMonths);
+        if (!isNaN(tenureMonths) && tenureMonths > 0) {
+          eligibility.minTenureMonths = tenureMonths;
+        }
+      }
+
+      if (eligibilityData.positionsAllowed && eligibilityData.positionsAllowed.trim() !== "") {
+        // Split by comma and clean up
+        const positions = eligibilityData.positionsAllowed
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+        if (positions.length > 0) {
+          eligibility.positionsAllowed = positions;
+        }
+      }
+
+      if (eligibilityData.contractTypesAllowed.length > 0) {
+        eligibility.contractTypesAllowed = eligibilityData.contractTypesAllowed;
+      }
+
+      // Only include eligibility if it has at least one rule
+      const submitData = {
+        ...formData,
+        eligibility: Object.keys(eligibility).length > 0 ? eligibility : undefined,
+      };
+
       if (editingPolicy) {
-        await leavesApi.updateLeavePolicy(editingPolicy._id, formData);
+        await leavesApi.updateLeavePolicy(editingPolicy._id, submitData);
         showToast("Leave policy updated successfully", "success");
       } else {
-        await leavesApi.createLeavePolicy(formData);
+        await leavesApi.createLeavePolicy(submitData);
         showToast("Leave policy created successfully", "success");
       }
       setIsModalOpen(false);
@@ -192,6 +262,7 @@ export default function LeavePoliciesPage() {
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Yearly Rate</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Max Carry Forward</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Min Notice Days</th>
+                <th className="text-left py-3 px-4 font-semibold text-gray-700">Eligibility Rules</th>
                 <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
@@ -206,6 +277,38 @@ export default function LeavePoliciesPage() {
                   <td className="py-3 px-4">{policy.yearlyRate}</td>
                   <td className="py-3 px-4">{policy.maxCarryForward}</td>
                   <td className="py-3 px-4">{policy.minNoticeDays}</td>
+                  <td className="py-3 px-4">
+                    {policy.eligibility ? (
+                      <div className="text-xs space-y-1">
+                        {policy.eligibility.minTenureMonths && (
+                          <div className="text-gray-600">
+                            Min Tenure: {policy.eligibility.minTenureMonths} months
+                          </div>
+                        )}
+                        {Array.isArray(policy.eligibility.positionsAllowed) &&
+                          policy.eligibility.positionsAllowed.length > 0 && (
+                            <div className="text-gray-600">
+                              Positions: {policy.eligibility.positionsAllowed.join(", ")}
+                            </div>
+                          )}
+                        {Array.isArray(policy.eligibility.contractTypesAllowed) &&
+                          policy.eligibility.contractTypesAllowed.length > 0 && (
+                            <div className="text-gray-600">
+                              Contracts: {policy.eligibility.contractTypesAllowed.join(", ")}
+                            </div>
+                          )}
+                        {!policy.eligibility.minTenureMonths &&
+                          (!Array.isArray(policy.eligibility.positionsAllowed) ||
+                            policy.eligibility.positionsAllowed.length === 0) &&
+                          (!Array.isArray(policy.eligibility.contractTypesAllowed) ||
+                            policy.eligibility.contractTypesAllowed.length === 0) && (
+                            <div className="text-gray-400 italic">No restrictions</div>
+                          )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs italic">No restrictions</span>
+                    )}
+                  </td>
                   <td className="py-3 px-4">
                     <div className="flex justify-end gap-2">
                       <Button
@@ -357,6 +460,117 @@ export default function LeavePoliciesPage() {
               }
             />
           </div>
+
+          {/* Eligibility Rules Section */}
+          <div className="border-t pt-4 mt-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Eligibility Rules (REQ-007, BR 7)
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Configure who is eligible for this leave type based on tenure, position, or contract type.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <Input
+                  label="Minimum Tenure (Months)"
+                  type="number"
+                  placeholder="e.g., 6 (for 6 months minimum)"
+                  value={eligibilityData.minTenureMonths}
+                  onChange={(e) =>
+                    setEligibilityData({
+                      ...eligibilityData,
+                      minTenureMonths: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Employees must have worked for at least this many months to be eligible
+                </p>
+              </div>
+
+              <div>
+                <Input
+                  label="Allowed Position Codes"
+                  type="text"
+                  placeholder="e.g., SE-001, HRM-001, HRE-001 (comma-separated)"
+                  value={eligibilityData.positionsAllowed}
+                  onChange={(e) =>
+                    setEligibilityData({
+                      ...eligibilityData,
+                      positionsAllowed: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Comma-separated list of position codes. Leave empty to allow all positions.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Allowed Contract Types
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={eligibilityData.contractTypesAllowed.includes("FULL_TIME_CONTRACT")}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEligibilityData({
+                            ...eligibilityData,
+                            contractTypesAllowed: [
+                              ...eligibilityData.contractTypesAllowed,
+                              "FULL_TIME_CONTRACT",
+                            ],
+                          });
+                        } else {
+                          setEligibilityData({
+                            ...eligibilityData,
+                            contractTypesAllowed: eligibilityData.contractTypesAllowed.filter(
+                              (ct) => ct !== "FULL_TIME_CONTRACT"
+                            ),
+                          });
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">Full Time Contract</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={eligibilityData.contractTypesAllowed.includes("PART_TIME_CONTRACT")}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEligibilityData({
+                            ...eligibilityData,
+                            contractTypesAllowed: [
+                              ...eligibilityData.contractTypesAllowed,
+                              "PART_TIME_CONTRACT",
+                            ],
+                          });
+                        } else {
+                          setEligibilityData({
+                            ...eligibilityData,
+                            contractTypesAllowed: eligibilityData.contractTypesAllowed.filter(
+                              (ct) => ct !== "PART_TIME_CONTRACT"
+                            ),
+                          });
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">Part Time Contract</span>
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select contract types allowed. Leave empty to allow all contract types.
+                </p>
+              </div>
+            </div>
+          </div>
         </form>
       </Modal>
 
@@ -385,4 +599,3 @@ export default function LeavePoliciesPage() {
     </div>
   );
 }
-

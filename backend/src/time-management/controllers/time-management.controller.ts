@@ -202,7 +202,32 @@ export class TimeManagementController {
     return this.timeManagementService.getEmployeeAttendanceStatus(employeeId, user.userId);
   }
 
+  @Get('attendance/records/:employeeId')
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+  )
+  async getEmployeeAttendanceRecords(
+    @Param('employeeId') employeeId: string,
+    @Query('days') days: string = '30',
+    @CurrentUser() user: any,
+  ) {
+    // Self-access check for employees
+    if (
+      user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
+      user.userId !== employeeId
+    ) {
+      throw new Error('Access denied');
+    }
+    return this.timeManagementService.getEmployeeAttendanceRecords(employeeId, parseInt(days), user.userId);
+  }
+
   @Post('attendance')
+
   @Roles(SystemRole.DEPARTMENT_HEAD)
   async createAttendanceRecord(
     @Body() createAttendanceRecordDto: CreateAttendanceRecordDto,
