@@ -9,8 +9,8 @@ import {
  * Used by HR Manager to convert candidate to employee
  */
 export class CreateEmployeeFromContractDto {
-  @IsMongoId()
-  offerId: string;
+  // Note: offerId comes from URL parameter, not body
+  // Removed @IsMongoId() offerId: string; - it's passed as URL param in controller
 
   @IsOptional()
   @IsMongoId()

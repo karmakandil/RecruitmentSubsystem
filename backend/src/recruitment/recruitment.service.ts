@@ -2088,22 +2088,67 @@ Due: ${context.dueDate}`
       if (!Types.ObjectId.isValid(employeeId)) {
         throw new BadRequestException('Invalid employee ID format');
       }
-      const onboarding = await this.onboardingModel
-        .findOne({
-          $or: [
-            { employeeId: employeeId },
-            { employeeId: new Types.ObjectId(employeeId) },
-          ],
-        })
+
+      // Convert to ObjectId for consistent comparison
+      const employeeObjectId = new Types.ObjectId(employeeId);
+      
+      console.log(`🔍 Searching for onboarding with employeeId: ${employeeId} (ObjectId: ${employeeObjectId.toString()})`);
+      
+      // Try multiple query approaches to handle different storage formats
+      let onboarding = await this.onboardingModel
+        .findOne({ employeeId: employeeObjectId })
         .select('-__v')
         .lean()
         .exec();
 
+      // If not found, try with string match (in case it was stored as string)
+      if (!onboarding) {
+        console.log(`⚠️ Not found with ObjectId, trying string match...`);
+        onboarding = await this.onboardingModel
+          .findOne({ employeeId: employeeId })
+          .select('-__v')
+          .lean()
+          .exec();
+      }
+
+      // If still not found, try with $or query
+      if (!onboarding) {
+        console.log(`⚠️ Not found with string, trying $or query...`);
+        onboarding = await this.onboardingModel
+          .findOne({
+            $or: [
+              { employeeId: employeeId },
+              { employeeId: employeeObjectId },
+            ],
+          })
+          .select('-__v')
+          .lean()
+          .exec();
+      }
+
+      // Debug: Check what onboarding records exist for debugging
+      if (!onboarding) {
+        const allOnboardings = await this.onboardingModel
+          .find({})
+          .select('employeeId _id')
+          .lean()
+          .exec();
+        console.log(`📋 Total onboarding records in DB: ${allOnboardings.length}`);
+        console.log(`📋 Sample employeeIds in DB:`, allOnboardings.slice(0, 5).map(o => ({
+          _id: o._id,
+          employeeId: o.employeeId,
+          employeeIdType: typeof o.employeeId,
+          employeeIdString: o.employeeId?.toString(),
+        })));
+      }
+
       if (!onboarding) {
         throw new NotFoundException(
-          'Onboarding checklist not found for this employee',
+          `Onboarding checklist not found for employee ID: ${employeeId}`,
         );
       }
+
+      console.log(`✅ Found onboarding record: ${onboarding._id}`);
 
       // Calculate progress for tracker (ONB-004)
       const totalTasks = onboarding.tasks?.length || 0;
@@ -2267,6 +2312,29 @@ Due: ${context.dueDate}`
       if (allCompleted) {
         onboarding.completed = true;
         onboarding.completedAt = new Date();
+
+        // ============= INTEGRATION: Auto-update employee status =============
+        // When onboarding is completed, automatically change employee status from PROBATION to ACTIVE
+        try {
+          const employee = await this.employeeProfileService.findOne(
+            onboarding.employeeId.toString(),
+          );
+          if (employee && employee.status === EmployeeStatus.PROBATION) {
+            await this.employeeProfileService.update(employee._id.toString(), {
+              status: EmployeeStatus.ACTIVE,
+            });
+            console.log(
+              `✅ Employee ${employee.employeeNumber} (${employee._id}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+            );
+          }
+        } catch (error) {
+          // Non-blocking: log but don't fail if status update fails
+          console.warn(
+            `⚠️ Failed to auto-update employee status to ACTIVE after onboarding completion:`,
+            this.getErrorMessage(error),
+          );
+        }
+        // ============= END INTEGRATION =============
       } else if (onboarding.completed) {
         // If a task is uncompleted, mark onboarding as incomplete
         onboarding.completed = false;
@@ -2563,23 +2631,40 @@ Due: ${context.dueDate}`
         onboarding.completed = true;
         onboarding.completedAt = new Date();
 
-        // ONB-005: Send completion notification
+        // ONB-005: Send completion notification + Auto-update employee status
         try {
           const employee = await this.employeeProfileService.findOne(
             onboarding.employeeId.toString(),
           );
-          if (employee && (employee as any).personalEmail) {
-            await this.sendNotification(
-              'onboarding_completed',
-              (employee as any).personalEmail,
-              {
-                employeeName: (employee as any).firstName || 'New Hire',
-              },
-              { nonBlocking: true },
-            );
+          
+          if (employee) {
+            // ============= INTEGRATION: Auto-update employee status =============
+            // When onboarding is completed, automatically change employee status from PROBATION to ACTIVE
+            // This is a business rule: employees become ACTIVE after completing onboarding
+            if (employee.status === EmployeeStatus.PROBATION) {
+              await this.employeeProfileService.update(employee._id.toString(), {
+                status: EmployeeStatus.ACTIVE,
+              });
+              console.log(
+                `✅ Employee ${employee.employeeNumber} (${employee._id}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+              );
+            }
+            // ============= END INTEGRATION =============
+
+            // Send completion notification
+            if ((employee as any).personalEmail) {
+              await this.sendNotification(
+                'onboarding_completed',
+                (employee as any).personalEmail,
+                {
+                  employeeName: (employee as any).firstName || 'New Hire',
+                },
+                { nonBlocking: true },
+              );
+            }
           }
         } catch (e) {
-          console.warn('Failed to send onboarding completion notification:', e);
+          console.warn('Failed to send onboarding completion notification or update employee status:', e);
         }
       }
 
@@ -3014,7 +3099,13 @@ Due: ${context.dueDate}`
 
         // ONB-013: Schedule access provisioning for start date
         try {
-          await this.scheduleAccessProvisioning(employeeId, startDate);
+          // If start date is in the past, use today's date for access provisioning
+          // (employee is being created now, so they should get access now)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // Reset to start of day
+          const provisioningDate = startDate < today ? today : startDate;
+          
+          await this.scheduleAccessProvisioning(employeeId, provisioningDate);
         } catch (e) {
           console.warn('Failed to schedule access provisioning:', e);
         }
@@ -4077,6 +4168,8 @@ Due: ${context.dueDate}`
 
         if (activeShift && activeShift._id) {
           // Create shift assignment for clock access
+          // CHANGED: Auto-approve shift assignment for automatic provisioning
+          // This enables immediate time clock access as per ONB-009 integration requirements
           const shiftAssignment = new ShiftAssignmentModel({
             employeeId: new Types.ObjectId(employeeId),
             shiftId: new Types.ObjectId(activeShift._id),
@@ -4087,7 +4180,7 @@ Due: ${context.dueDate}`
               ? new Types.ObjectId(employee.primaryPositionId.toString())
               : undefined,
             startDate: employee.dateOfHire || employee.contractStartDate || new Date(),
-            status: ShiftAssignmentStatus.PENDING, // Will be approved by HR/Manager later
+            status: ShiftAssignmentStatus.APPROVED, // Auto-approved for automatic provisioning (ONB-009)
           });
 
           shiftAssignmentResult = await shiftAssignment.save();
@@ -4130,6 +4223,15 @@ Due: ${context.dueDate}`
       return {
         message: 'System access provisioned successfully',
         task: task,
+        shiftAssignment: shiftAssignmentResult
+          ? {
+              id: shiftAssignmentResult._id.toString(),
+              status: shiftAssignmentResult.status,
+              startDate: shiftAssignmentResult.startDate,
+              note: 'Time clock access created via shift assignment',
+            }
+          : null,
+        warnings: shiftAssignmentNote.includes('Warning') ? [shiftAssignmentNote] : [],
       };
     } catch (error) {
       if (
