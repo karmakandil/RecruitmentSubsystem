@@ -173,17 +173,17 @@ export default function AppraisalTemplatesPage() {
                     <span>{template.criteria.length} criteria</span>
                   </div>
 
-                  {(template.applicableDepartmentIds?.length > 0 ||
-                    template.applicablePositionIds?.length > 0) && (
+                  {((template.applicableDepartmentIds?.length ?? 0) > 0 ||
+                    (template.applicablePositionIds?.length ?? 0) > 0) && (
                     <div className="text-xs text-gray-500">
                       Applicable to:{" "}
-                      {template.applicableDepartmentIds?.length > 0 && (
-                        <span>{template.applicableDepartmentIds.length} department(s)</span>
+                      {(template.applicableDepartmentIds?.length ?? 0) > 0 && (
+                        <span>{template.applicableDepartmentIds?.length ?? 0} department(s)</span>
                       )}
-                      {template.applicableDepartmentIds?.length > 0 &&
-                        template.applicablePositionIds?.length > 0 && <span>, </span>}
-                      {template.applicablePositionIds?.length > 0 && (
-                        <span>{template.applicablePositionIds.length} position(s)</span>
+                      {(template.applicableDepartmentIds?.length ?? 0) > 0 &&
+                        (template.applicablePositionIds?.length ?? 0) > 0 && <span>, </span>}
+                      {(template.applicablePositionIds?.length ?? 0) > 0 && (
+                        <span>{template.applicablePositionIds?.length ?? 0} position(s)</span>
                       )}
                     </div>
                   )}

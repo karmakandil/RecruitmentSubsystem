@@ -23,6 +23,10 @@ import {
   TerminateEmployeeDto,
   UpdateClearanceItemStatusDto,
   CreateEmployeeFromContractDto,
+  HiringProcessTemplate,
+  CreateHiringProcessTemplateDto,
+  UpdateHiringProcessTemplateDto,
+  CreateJobRequisitionDto,
 } from "../../../types/recruitment";
 
 export const recruitmentApi = {
@@ -46,8 +50,20 @@ export const recruitmentApi = {
   },
 
   // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
-  createJobRequisition: async (data: any): Promise<JobRequisition> => {
-    return await api.post("/recruitment/job", data);
+  createJobRequisition: async (data: CreateJobRequisitionDto): Promise<JobRequisition> => {
+    console.log('📤 API: Creating job requisition with data:', JSON.stringify(data, null, 2));
+    try {
+      // The interceptor returns response.data, so cast to JobRequisition
+      const response = await api.post("/recruitment/job", data) as unknown as JobRequisition;
+      console.log('✅ API: Job requisition created successfully:', response);
+      return response;
+    } catch (error: any) {
+      console.error('❌ API: Error creating job requisition:', error);
+      console.error('❌ API: Error response:', error?.response);
+      console.error('❌ API: Error response data:', error?.response?.data);
+      console.error('❌ API: Error response status:', error?.response?.status);
+      throw error;
+    }
   },
 
   // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
@@ -541,8 +557,14 @@ export const recruitmentApi = {
   },
 
   // CHANGED - Added: Get all employees for access management
-  getAllEmployees: async (): Promise<any[]> => {
+  // Backend returns { message, data, meta }, so return type is any to handle both object and array
+  getAllEmployees: async (): Promise<any> => {
     return await api.get("/employee-profile");
+  },
+
+  // ✅ Get all HR Managers for dropdown selection
+  getHRManagers: async (): Promise<any[]> => {
+    return await api.get("/recruitment/hr-managers");
   },
 
   // CHANGED - Added: Get employee by ID for access management
@@ -591,6 +613,35 @@ export const recruitmentApi = {
       employeeId,
       terminationId,
     });
+  },
+
+  // ============================================
+  // CHANGED - HIRING PROCESS TEMPLATES (HR Manager)
+  // ============================================
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get all hiring process templates)
+  getAllHiringProcessTemplates: async (): Promise<any[]> => {
+    return await api.get("/recruitment/hiring-process-template");
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get template by ID)
+  getHiringProcessTemplateById: async (id: string): Promise<any> => {
+    return await api.get(`/recruitment/hiring-process-template/${id}`);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Create hiring process template)
+  createHiringProcessTemplate: async (data: any): Promise<any> => {
+    return await api.post("/recruitment/hiring-process-template", data);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Update hiring process template)
+  updateHiringProcessTemplate: async (id: string, data: any): Promise<any> => {
+    return await api.put(`/recruitment/hiring-process-template/${id}`, data);
+  },
+
+  // CHANGED - Added: ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Delete hiring process template)
+  deleteHiringProcessTemplate: async (id: string): Promise<void> => {
+    return await api.delete(`/recruitment/hiring-process-template/${id}`);
   },
 };
 

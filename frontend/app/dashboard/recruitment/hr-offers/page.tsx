@@ -39,6 +39,16 @@ export default function HROffersPage() {
   const [isCreateEmployeeModalOpen, setIsCreateEmployeeModalOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  // CHANGED - Added state for candidate assessments
+  const [candidateAssessments, setCandidateAssessments] = useState<{
+    interviewScores: Record<string, number>; // interviewId -> average score
+    interviewFeedback: Record<string, any[]>; // interviewId -> feedback array
+    rankedData?: any; // Ranked application data if available
+  }>({
+    interviewScores: {},
+    interviewFeedback: {},
+  });
+  const [loadingAssessments, setLoadingAssessments] = useState(false);
   const [employeeForm, setEmployeeForm] = useState<CreateEmployeeFromContractDto>({
     startDate: "",
     workEmail: "",
@@ -219,7 +229,60 @@ export default function HROffersPage() {
     }
     
     setSelectedOffer(offer || null);
+    
+    // CHANGED - Load candidate assessments and results
+    await loadCandidateAssessments(application);
+    
     setIsViewModalOpen(true);
+  };
+
+  // CHANGED - Load candidate assessments, interview scores, and feedback
+  const loadCandidateAssessments = async (application: Application) => {
+    try {
+      setLoadingAssessments(true);
+      
+      // Get ranked applications for this requisition to see ranking and scores
+      let rankedData = null;
+      if (application.requisitionId) {
+        try {
+          const ranked = await recruitmentApi.getRankedApplications(application.requisitionId);
+          rankedData = ranked.find((app: any) => app._id === application._id);
+        } catch (error) {
+          console.log("Could not load ranked applications:", error);
+        }
+      }
+      
+      // Get interviews for this application
+      const interviews = (application as any).interviews || [];
+      const scores: Record<string, number> = {};
+      const feedback: Record<string, any[]> = {};
+      
+      // Load interview scores and feedback
+      for (const interview of interviews) {
+        const interviewId = interview._id;
+        try {
+          // Get average score
+          const avgScore = await recruitmentApi.getInterviewAverageScore(interviewId);
+          scores[interviewId] = avgScore;
+          
+          // Get feedback
+          const interviewFeedback = await recruitmentApi.getInterviewFeedback(interviewId);
+          feedback[interviewId] = Array.isArray(interviewFeedback) ? interviewFeedback : [];
+        } catch (error) {
+          console.log(`Could not load data for interview ${interviewId}:`, error);
+        }
+      }
+      
+      setCandidateAssessments({
+        interviewScores: scores,
+        interviewFeedback: feedback,
+        rankedData: rankedData,
+      });
+    } catch (error: any) {
+      console.error("Error loading candidate assessments:", error);
+    } finally {
+      setLoadingAssessments(false);
+    }
   };
 
   const handleOpenFinalize = async (application: Application) => {
@@ -297,6 +360,9 @@ export default function HROffersPage() {
     }
     
     setSelectedOffer(offer);
+    
+    // CHANGED - Load candidate assessments for decision making
+    await loadCandidateAssessments(application);
     setFinalizeForm({ finalStatus: offer.finalStatus || OfferFinalStatus.APPROVED });
     setIsFinalizeModalOpen(true);
   };
@@ -878,8 +944,12 @@ export default function HROffersPage() {
         {/* View Offer Details Modal */}
         <Modal
           isOpen={isViewModalOpen}
-          onClose={() => setIsViewModalOpen(false)}
-          title="Offer Details"
+          onClose={() => {
+            setIsViewModalOpen(false);
+            setCandidateAssessments({ interviewScores: {}, interviewFeedback: {} });
+          }}
+          title="Offer Details & Candidate Assessment"
+          size="xl"
         >
           {selectedApplication && (
             <div className="space-y-4">
@@ -890,90 +960,231 @@ export default function HROffersPage() {
                   {selectedApplication.requisition?.template?.title || "Position"}
                 </p>
               </div>
-              
-              {selectedOffer ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-500 mb-1">Gross Salary</p>
-                      <p className="font-medium">${selectedOffer.grossSalary?.toLocaleString() || "N/A"}</p>
-                    </div>
-                    {selectedOffer.signingBonus && (
-                      <div>
-                        <p className="text-gray-500 mb-1">Signing Bonus</p>
-                        <p className="font-medium">${selectedOffer.signingBonus.toLocaleString()}</p>
-                      </div>
-                    )}
-                  </div>
+
+              {/* CHANGED - Candidate Assessment Section */}
+              {loadingAssessments ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">Loading candidate assessments...</p>
+                </div>
+              ) : (
+                <div className="space-y-4 border-t pt-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Candidate Assessment & Results</h3>
                   
-                  {selectedOffer.role && (
-                    <div>
-                      <p className="text-gray-500 mb-1 text-sm">Role</p>
-                      <p className="font-medium">{selectedOffer.role}</p>
-                    </div>
-                  )}
-                  
-                  {selectedOffer.benefits && selectedOffer.benefits.length > 0 && (
-                    <div>
-                      <p className="text-gray-500 mb-1 text-sm">Benefits</p>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedOffer.benefits.map((benefit, index) => (
-                          <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                            {benefit}
+                  {/* Ranking Information */}
+                  {candidateAssessments.rankedData && (
+                    <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-500 mb-1">Average Interview Score</p>
+                          <p className="font-semibold text-lg text-blue-700">
+                            {candidateAssessments.rankedData.averageScore?.toFixed(1) || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-1">Ranking Score</p>
+                          <p className="font-semibold text-lg text-blue-700">
+                            {candidateAssessments.rankedData.rankingScore?.toFixed(1) || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-1">Referral Status</p>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            candidateAssessments.rankedData.isReferral
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {candidateAssessments.rankedData.isReferral ? "✓ Referred" : "Not Referred"}
                           </span>
-                        ))}
+                        </div>
                       </div>
                     </div>
                   )}
-                  
-                  {selectedOffer.deadline && (
-                    <div>
-                      <p className="text-gray-500 mb-1 text-sm">Response Deadline</p>
-                      <p className="font-medium">
-                        {new Date(selectedOffer.deadline).toLocaleString()}
+
+                  {/* Interview Scores and Feedback */}
+                  {selectedApplication && (selectedApplication as any).interviews && (selectedApplication as any).interviews.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-md font-semibold text-gray-800">Interview Results</h4>
+                      {(selectedApplication as any).interviews.map((interview: any) => {
+                        const interviewId = interview._id;
+                        const avgScore = candidateAssessments.interviewScores[interviewId];
+                        const feedbacks = candidateAssessments.interviewFeedback[interviewId] || [];
+                        
+                        return (
+                          <div key={interviewId} className="p-3 bg-gray-50 rounded-md border">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {interview.stage === 'screening' ? 'Screening Interview' :
+                                   interview.stage === 'department_interview' ? 'Department Interview' :
+                                   interview.stage === 'hr_interview' ? 'HR Interview' :
+                                   interview.stage || 'Interview'}
+                                </p>
+                                {interview.scheduledDate && (
+                                  <p className="text-xs text-gray-500">
+                                    {new Date(interview.scheduledDate).toLocaleDateString()}
+                                  </p>
+                                )}
+                              </div>
+                              {avgScore !== undefined && (
+                                <div className="text-right">
+                                  <p className="text-xs text-gray-500">Average Score</p>
+                                  <p className="text-lg font-bold text-blue-600">{avgScore.toFixed(1)}</p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Interview Feedback */}
+                            {feedbacks.length > 0 && (
+                              <div className="mt-2 space-y-2">
+                                <p className="text-xs font-semibold text-gray-600">Interview Feedback:</p>
+                                {feedbacks.map((fb: any, idx: number) => (
+                                  <div key={idx} className="p-2 bg-white rounded border-l-2 border-blue-300">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <p className="text-xs font-medium text-gray-700">
+                                        {fb.interviewerId?.fullName || fb.interviewerId || 'Interviewer'}
+                                      </p>
+                                      <span className="text-xs font-semibold text-blue-600">
+                                        Score: {fb.score || 'N/A'}
+                                      </span>
+                                    </div>
+                                    {fb.comments && (
+                                      <p className="text-xs text-gray-600 mt-1">{fb.comments}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {feedbacks.length === 0 && avgScore === undefined && (
+                              <p className="text-xs text-gray-500 italic">No feedback available yet</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(!selectedApplication || !(selectedApplication as any).interviews || (selectedApplication as any).interviews.length === 0) && (
+                    <div className="p-3 bg-yellow-50 rounded-md border border-yellow-200">
+                      <p className="text-sm text-yellow-800">
+                        No interview data available for this candidate.
                       </p>
                     </div>
                   )}
-                  
-                  <div className="grid grid-cols-2 gap-4 text-sm pt-3 border-t">
-                    <div>
-                      <p className="text-gray-500 mb-1">Candidate Response</p>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedOffer.applicantResponse === 'accepted' 
-                          ? 'bg-green-100 text-green-800'
-                          : selectedOffer.applicantResponse === 'rejected'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {selectedOffer.applicantResponse?.toUpperCase() || "PENDING"}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 mb-1">Final Status</p>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedOffer.finalStatus === 'approved' 
-                          ? 'bg-green-100 text-green-800'
-                          : selectedOffer.finalStatus === 'rejected'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {selectedOffer.finalStatus?.toUpperCase() || "PENDING"}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {selectedOffer.content && (
-                    <div>
-                      <p className="text-gray-500 mb-1 text-sm">Offer Details</p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedOffer.content}</p>
-                    </div>
-                  )}
                 </div>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  Offer details not available. The offer may not have been created yet.
-                </p>
               )}
+              
+              {/* Offer Details Section */}
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Offer Details</h3>
+                {selectedOffer ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500 mb-1">Gross Salary</p>
+                        <p className="font-medium">${selectedOffer.grossSalary?.toLocaleString() || "N/A"}</p>
+                      </div>
+                      {selectedOffer.signingBonus && (
+                        <div>
+                          <p className="text-gray-500 mb-1">Signing Bonus</p>
+                          <p className="font-medium">${selectedOffer.signingBonus.toLocaleString()}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {selectedOffer.role && (
+                      <div>
+                        <p className="text-gray-500 mb-1 text-sm">Role</p>
+                        <p className="font-medium">{selectedOffer.role}</p>
+                      </div>
+                    )}
+                    
+                    {selectedOffer.benefits && selectedOffer.benefits.length > 0 && (
+                      <div>
+                        <p className="text-gray-500 mb-1 text-sm">Benefits</p>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedOffer.benefits.map((benefit, index) => (
+                            <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                              {benefit}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {selectedOffer.deadline && (
+                      <div>
+                        <p className="text-gray-500 mb-1 text-sm">Response Deadline</p>
+                        <p className="font-medium">
+                          {new Date(selectedOffer.deadline).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm pt-3 border-t">
+                      <div>
+                        <p className="text-gray-500 mb-1">Candidate Response</p>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedOffer.applicantResponse === 'accepted' 
+                            ? 'bg-green-100 text-green-800'
+                            : selectedOffer.applicantResponse === 'rejected'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {selectedOffer.applicantResponse?.toUpperCase() || "PENDING"}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-gray-500 mb-1">Final Status</p>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedOffer.finalStatus === 'approved' 
+                            ? 'bg-green-100 text-green-800'
+                            : selectedOffer.finalStatus === 'rejected'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {selectedOffer.finalStatus?.toUpperCase() || "PENDING"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CHANGED - Signature Status */}
+                    {(selectedOffer.candidateSignedAt || selectedOffer.hrSignedAt || selectedOffer.managerSignedAt) && (
+                      <div className="pt-3 border-t">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">Electronic Signature Status:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedOffer.candidateSignedAt && (
+                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                              ✓ Candidate Signed: {new Date(selectedOffer.candidateSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {selectedOffer.hrSignedAt && (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                              ✓ HR Signed: {new Date(selectedOffer.hrSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {selectedOffer.managerSignedAt && (
+                            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
+                              ✓ Manager Signed: {new Date(selectedOffer.managerSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {selectedOffer.content && (
+                      <div>
+                        <p className="text-gray-500 mb-1 text-sm">Offer Details</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedOffer.content}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    Offer details not available. The offer may not have been created yet.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </Modal>
@@ -984,8 +1195,10 @@ export default function HROffersPage() {
           onClose={() => {
             setIsFinalizeModalOpen(false);
             setSelectedOffer(null);
+            setCandidateAssessments({ interviewScores: {}, interviewFeedback: {} });
           }}
           title="Approve/Reject Offer"
+          size="xl"
         >
           {selectedApplication && (
             <div className="space-y-4">
@@ -996,6 +1209,73 @@ export default function HROffersPage() {
                   {selectedApplication.requisition?.template?.title || "Position"}
                 </p>
               </div>
+
+              {/* CHANGED - Candidate Assessment Section for Decision Making */}
+              {loadingAssessments ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">Loading candidate assessments...</p>
+                </div>
+              ) : (
+                <div className="space-y-3 border-b pb-4 mb-4">
+                  <h3 className="text-md font-semibold text-gray-900">Candidate Assessment Summary</h3>
+                  
+                  {/* Ranking Information */}
+                  {candidateAssessments.rankedData && (
+                    <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-500 mb-1">Average Interview Score</p>
+                          <p className="font-semibold text-lg text-blue-700">
+                            {candidateAssessments.rankedData.averageScore?.toFixed(1) || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-1">Ranking Score</p>
+                          <p className="font-semibold text-lg text-blue-700">
+                            {candidateAssessments.rankedData.rankingScore?.toFixed(1) || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-1">Referral Status</p>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            candidateAssessments.rankedData.isReferral
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {candidateAssessments.rankedData.isReferral ? "✓ Referred" : "Not Referred"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Interview Scores Summary */}
+                  {selectedApplication && (selectedApplication as any).interviews && (selectedApplication as any).interviews.length > 0 && (
+                    <div className="p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Interview Scores:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedApplication as any).interviews.map((interview: any) => {
+                          const interviewId = interview._id;
+                          const avgScore = candidateAssessments.interviewScores[interviewId];
+                          return (
+                            <div key={interviewId} className="px-2 py-1 bg-white rounded border text-xs">
+                              <span className="font-medium">
+                                {interview.stage === 'screening' ? 'Screening' :
+                                 interview.stage === 'department_interview' ? 'Dept' :
+                                 interview.stage === 'hr_interview' ? 'HR' :
+                                 'Interview'}: 
+                              </span>
+                              <span className="ml-1 font-semibold text-blue-600">
+                                {avgScore !== undefined ? avgScore.toFixed(1) : 'N/A'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               
               {/* Show Offer Details */}
               {selectedOffer ? (

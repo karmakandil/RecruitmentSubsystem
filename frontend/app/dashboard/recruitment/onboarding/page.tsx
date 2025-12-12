@@ -30,11 +30,13 @@ export default function OnboardingPage() {
   const loadOnboarding = async () => {
     try {
       setLoading(true);
-      if (user?.id || user?.userId) {
-        const employeeId = user.id || user.userId;
-        const onboardingData = await recruitmentApi.getOnboardingByEmployeeId(employeeId);
-        setOnboarding(onboardingData);
+      const employeeId = user?.id || user?.userId;
+      if (!employeeId) {
+        showToast("Could not identify your employee ID", "error");
+        return;
       }
+      const onboardingData = await recruitmentApi.getOnboardingByEmployeeId(employeeId);
+      setOnboarding(onboardingData);
     } catch (error: any) {
       if (error.message?.includes("404") || error.message?.includes("not found")) {
         setOnboarding(null);

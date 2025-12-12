@@ -256,11 +256,22 @@ export default function HRInterviewsPage() {
     }
   };
 
-  const handleOpenFeedback = async (application: any) => {
+  const handleOpenFeedback = async (application: any, interview?: any) => {
     setSelectedApplication(application);
-    // Try to get interview feedback to find interview ID
-    // Note: Backend requires interview ID, so we need to get it from the scheduled interview
-    // For now, we'll show a message that interview must be scheduled first
+    // If interview is provided, use it; otherwise try to find the first scheduled interview
+    if (interview) {
+      setSelectedInterview(interview);
+    } else {
+      // Find the first scheduled interview for this application
+      const appInterviews = interviews.filter(
+        (int: any) => int.applicationId === application._id && int.status === 'scheduled'
+      );
+      if (appInterviews.length > 0) {
+        setSelectedInterview(appInterviews[0]);
+      } else {
+        setSelectedInterview(null);
+      }
+    }
     setFeedbackForm({ score: 0, comments: "" });
     setIsFeedbackModalOpen(true);
   };
@@ -443,7 +454,18 @@ export default function HRInterviewsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleOpenFeedback(application)}
+                          onClick={() => {
+                            // Find the first scheduled interview for this application
+                            const appInterviews = interviews.filter(
+                              (int: any) => int.applicationId === application._id && int.status === 'scheduled'
+                            );
+                            if (appInterviews.length > 0) {
+                              handleOpenFeedback(application, appInterviews[0]);
+                            } else {
+                              showToast("Please schedule an interview first before submitting feedback", "error");
+                            }
+                          }}
+                          disabled={interviews.filter((int: any) => int.applicationId === application._id && int.status === 'scheduled').length === 0}
                         >
                           Submit Feedback
                         </Button>

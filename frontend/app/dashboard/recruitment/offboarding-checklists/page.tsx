@@ -45,7 +45,7 @@ export default function OffboardingChecklistsPage() {
   const [updateForm, setUpdateForm] = useState({
     department: "",
     status: "pending",
-    comments: "",
+    notes: "",
   });
 
   // CHANGED - Search state
@@ -144,7 +144,7 @@ export default function OffboardingChecklistsPage() {
     setUpdateForm({
       department: item.department || "",
       status: item.status || "pending",
-      comments: item.comments || item.notes || "",
+      notes: item.notes || "",
     });
     setIsUpdateItemModalOpen(true);
   };
@@ -157,7 +157,7 @@ export default function OffboardingChecklistsPage() {
       const updateData: UpdateClearanceItemStatusDto = {
         itemIndex: selectedItemIndex,
         status: updateForm.status,
-        notes: updateForm.comments || undefined,
+        notes: updateForm.notes || undefined,
       };
 
       await recruitmentApi.updateClearanceItemStatus(selectedChecklist._id, updateData);
@@ -646,9 +646,9 @@ export default function OffboardingChecklistsPage() {
                                 <p className="font-medium text-gray-900">
                                   {item.department}
                                 </p>
-                                {item.comments && (
+                                {item.notes && (
                                   <p className="text-sm text-gray-500">
-                                    {item.comments}
+                                    {item.notes}
                                   </p>
                                 )}
                               </div>
@@ -675,54 +675,6 @@ export default function OffboardingChecklistsPage() {
                         ))}
                       </div>
 
-                      {/* Equipment List */}
-                      {checklist.equipmentList &&
-                        checklist.equipmentList.length > 0 && (
-                          <div className="mt-6">
-                            <h3 className="font-semibold text-gray-900 mb-3">
-                              Equipment to Return
-                            </h3>
-                            <div className="space-y-2">
-                              {checklist.equipmentList.map((equip, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                                >
-                                  <span className="text-gray-900">
-                                    {equip.name || `Equipment ${index + 1}`}
-                                  </span>
-                                  <span
-                                    className={`px-2 py-1 text-xs rounded-full ${
-                                      equip.returned
-                                        ? "bg-green-100 text-green-800"
-                                        : "bg-yellow-100 text-yellow-800"
-                                    }`}
-                                  >
-                                    {equip.returned ? "Returned" : "Pending"}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                      {/* Access Card Status */}
-                      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-900">
-                            🎫 Access Card / ID Badge
-                          </span>
-                          <span
-                            className={`px-3 py-1 text-xs rounded-full ${
-                              checklist.cardReturned
-                                ? "bg-green-100 text-green-800"
-                                : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {checklist.cardReturned ? "Returned" : "Not Returned"}
-                          </span>
-                        </div>
-                      </div>
 
                       {/* Actions */}
                       <div className="mt-6 flex gap-3">
@@ -793,11 +745,11 @@ export default function OffboardingChecklistsPage() {
                 Comments (Optional)
               </label>
               <Textarea
-                value={updateForm.comments}
+                value={updateForm.notes}
                 onChange={(e) =>
-                  setUpdateForm({ ...updateForm, comments: e.target.value })
+                  setUpdateForm({ ...updateForm, notes: e.target.value })
                 }
-                placeholder="Add any comments..."
+                placeholder="Add any notes..."
                 rows={3}
               />
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -34,7 +34,7 @@ const PREBOARDING_TASK_TEMPLATES = [
   { name: "Benefits Enrollment Form", department: "HR", notes: "Review and select benefit options" },
 ];
 
-export default function PreboardingPage() {
+function PreboardingPageContent() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
   const searchParams = useSearchParams();
@@ -625,6 +625,18 @@ export default function PreboardingPage() {
         </Modal>
       </div>
     </ProtectedRoute>
+  );
+}
+
+export default function PreboardingPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <PreboardingPageContent />
+    </Suspense>
   );
 }
 

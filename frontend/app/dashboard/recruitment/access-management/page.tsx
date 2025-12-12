@@ -152,7 +152,7 @@ export default function AccessManagementPage() {
   ) || [];
 
   return (
-    <ProtectedRoute requiredRoles={[SystemRole.SYSTEM_ADMIN]}>
+    <ProtectedRoute allowedRoles={[SystemRole.SYSTEM_ADMIN]}>
       <div className="container mx-auto px-6 py-8">
         <Toast
           message={toast.message}

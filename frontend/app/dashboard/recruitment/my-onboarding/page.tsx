@@ -127,7 +127,7 @@ export default function MyOnboardingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (user?.id || user?.userId || user?._id) {
+    if (user?.id || user?.userId) {
       loadOnboarding();
     }
   }, [user]);
@@ -136,7 +136,7 @@ export default function MyOnboardingPage() {
     try {
       setLoading(true);
       // CHANGED - Get employee ID from user context
-      const employeeId = user?.id || user?.userId || user?._id;
+      const employeeId = user?.id || user?.userId;
       if (!employeeId) {
         showToast("Could not identify your employee ID", "error");
         return;
@@ -171,6 +171,22 @@ export default function MyOnboardingPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to check if onboarding is completed
+  const isOnboardingCompleted = (onboarding: Onboarding | null): boolean => {
+    if (!onboarding) return false;
+    // Check if status is completed or completionDate exists
+    if (onboarding.status === "completed" || onboarding.completionDate) {
+      return true;
+    }
+    // Check if all tasks are completed
+    if (onboarding.tasks && onboarding.tasks.length > 0) {
+      return onboarding.tasks.every(
+        (task) => task.status === OnboardingTaskStatus.COMPLETED
+      );
+    }
+    return false;
   };
 
   // CHANGED - ONB-007: Open upload modal for a task
@@ -346,7 +362,7 @@ export default function MyOnboardingPage() {
         ) : (
           <div className="space-y-8">
             {/* CHANGED - Completion Banner */}
-            {onboarding.completed && (
+            {isOnboardingCompleted(onboarding) && (
               <Card className="bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0 shadow-lg">
                 <CardContent className="py-6">
                   <div className="flex items-center justify-between">
@@ -373,7 +389,7 @@ export default function MyOnboardingPage() {
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="text-center md:text-left">
                     <h2 className="text-2xl font-bold mb-2">
-                      {onboarding.completed
+                      {isOnboardingCompleted(onboarding)
                         ? "🎉 Onboarding Complete!"
                         : progress >= 75
                         ? "Almost There!"
@@ -382,7 +398,7 @@ export default function MyOnboardingPage() {
                         : "Let's Get Started!"}
                     </h2>
                     <p className="text-blue-100">
-                      {onboarding.completed
+                      {isOnboardingCompleted(onboarding)
                         ? "Welcome to the team! You've completed all onboarding tasks."
                         : `${stats.completed} of ${stats.total} tasks completed`}
                     </p>
@@ -447,7 +463,7 @@ export default function MyOnboardingPage() {
             </div>
 
             {/* CHANGED - ONB-007: Document Upload Section */}
-            {documentTasks.length > 0 && !onboarding.completed && (
+            {documentTasks.length > 0 && !isOnboardingCompleted(onboarding) && (
               <Card className="border-2 border-purple-300 bg-purple-50">
                 <CardHeader>
                   <CardTitle className="text-purple-900 flex items-center gap-2">
@@ -479,7 +495,7 @@ export default function MyOnboardingPage() {
                               <h4 className="font-medium text-gray-900">{task.name}</h4>
                               <p className="text-sm text-gray-500 mt-1">
                                 {isCompleted
-                                  ? `Uploaded on ${task.completedAt ? new Date(task.completedAt).toLocaleDateString() : "N/A"}`
+                                  ? task.documentId ? "Document uploaded" : "Completed"
                                   : task.deadline
                                   ? `Due: ${new Date(task.deadline).toLocaleDateString()}`
                                   : "Required for compliance"}
@@ -509,7 +525,7 @@ export default function MyOnboardingPage() {
             )}
 
             {/* CHANGED - Next Task Highlight */}
-            {nextTask && !onboarding.completed && (
+            {nextTask && !isOnboardingCompleted(onboarding) && (
               <Card className="border-2 border-blue-500 bg-blue-50">
                 <CardHeader>
                   <CardTitle className="text-blue-900 flex items-center gap-2">
@@ -604,9 +620,9 @@ export default function MyOnboardingPage() {
                                       {task.notes}
                                     </p>
                                   )}
-                                  {task.completedAt && (
+                                  {task.status === OnboardingTaskStatus.COMPLETED && (
                                     <p className="text-xs text-green-600 mt-1">
-                                      ✓ Completed on {new Date(task.completedAt).toLocaleDateString()}
+                                      ✓ Completed
                                     </p>
                                   )}
                                   {task.documentId && (

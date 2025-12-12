@@ -32,7 +32,7 @@ export default function OffersPage() {
   const loadOffers = async () => {
     try {
       setLoading(true);
-      const candidateId = user?.id || user?.userId || user?._id;
+      const candidateId = user?.id || user?.userId;
       
       if (!candidateId) {
         showToast("Could not identify your candidate ID", "error");
@@ -47,7 +47,6 @@ export default function OffersPage() {
       console.log("User ID fields:", { 
         id: user?.id, 
         userId: user?.userId, 
-        _id: user?._id,
         candidateNumber: user?.candidateNumber,
         fullName: user?.fullName
       });
@@ -261,6 +260,30 @@ export default function OffersPage() {
                       </div>
                     )}
 
+                    {/* CHANGED - Enhanced signature status display */}
+                    {(offer.candidateSignedAt || offer.hrSignedAt || offer.managerSignedAt) && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">Signature Status:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {offer.candidateSignedAt && (
+                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                              ✓ Candidate Signed: {new Date(offer.candidateSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {offer.hrSignedAt && (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                              ✓ HR Signed: {new Date(offer.hrSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                          {offer.managerSignedAt && (
+                            <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
+                              ✓ Manager Signed: {new Date(offer.managerSignedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="pt-4 border-t flex gap-3 flex-wrap">
                       {offer.applicantResponse === OfferResponseStatus.PENDING && (
                         <>
@@ -315,7 +338,7 @@ export default function OffersPage() {
                                 setIsUploadModalOpen(true);
                               }}
                             >
-                              Upload Contract
+                              {offer.candidateSignedAt ? "Re-upload Contract" : "Upload Signed Contract"}
                             </Button>
                             <Button
                               variant="outline"
@@ -330,11 +353,14 @@ export default function OffersPage() {
                           </div>
                           <div className="w-full mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                             <p className="text-sm text-green-800 mb-2">
-                              ✅ <strong>Offer Accepted!</strong> Please upload your signed contract and required forms.
+                              ✅ <strong>Offer Accepted!</strong> {offer.candidateSignedAt 
+                                ? "Your signed contract has been received." 
+                                : "Please upload your electronically signed contract and required forms."}
                             </p>
                             <p className="text-xs text-green-700">
-                              📋 <strong>Next Steps:</strong> After you upload the signed contract, HR will review and create your employee profile. 
-                              Once your employee profile is created, onboarding tasks will automatically begin and you'll be able to track your progress.
+                              📋 <strong>Next Steps:</strong> {offer.candidateSignedAt 
+                                ? "HR is reviewing your signed contract. Once approved, your employee profile will be created and onboarding tasks will begin automatically."
+                                : "After you upload the signed contract, HR will review and create your employee profile. Once your employee profile is created, onboarding tasks will automatically begin and you'll be able to track your progress."}
                             </p>
                           </div>
                         </>
@@ -387,13 +413,25 @@ export default function OffersPage() {
             </>
           }
         >
-          <p className="text-gray-700">
-            Are you sure you want to{" "}
-            {selectedOffer?.applicantResponse === OfferResponseStatus.ACCEPTED
-              ? "accept"
-              : "respond to"}{" "}
-            this offer?
-          </p>
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              Are you sure you want to{" "}
+              {selectedOffer?.applicantResponse === OfferResponseStatus.ACCEPTED
+                ? "accept"
+                : "respond to"}{" "}
+              this offer?
+            </p>
+            {selectedOffer && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 font-semibold mb-1">
+                  📝 Electronic Signature Required
+                </p>
+                <p className="text-xs text-blue-700">
+                  By accepting this offer, you agree to the terms and conditions. You will be required to upload an electronically signed contract document after acceptance.
+                </p>
+              </div>
+            )}
+          </div>
         </Modal>
 
         {/* Upload Modal */}

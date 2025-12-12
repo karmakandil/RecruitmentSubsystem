@@ -57,6 +57,7 @@ api.interceptors.response.use(
         response.status
       } ${response.config.method?.toUpperCase()} ${response.config.url}]`
     );
+    console.log('✅ API Response data:', response.data);
 
     // Return the data property if it exists, otherwise return the full response
     return response.data;

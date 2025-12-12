@@ -125,6 +125,27 @@ export default function HRManagerDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Recruitment Management Section */}
+      <div className="mb-10">
+        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardHeader>
+            <CardTitle className="text-xl">Recruitment Management</CardTitle>
+            <CardDescription>
+              Manage the complete recruitment lifecycle: job templates, hiring processes, candidate tracking, interviews, offers, onboarding, and offboarding
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={() => router.push("/dashboard/recruitment")}
+              variant="primary"
+              className="w-full text-lg py-3"
+            >
+              Open Recruitment Portal
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

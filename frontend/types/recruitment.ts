@@ -113,6 +113,8 @@ export interface Application {
   // CHANGED - Added currentStage field to match backend schema
   currentStage?: ApplicationStage;
   stage?: ApplicationStage;
+  // CHANGED - Added interviews array to support interview data attached to applications
+  interviews?: Interview[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -159,6 +161,10 @@ export interface Offer {
   finalStatus?: OfferFinalStatus;
   contractDocumentId?: string;
   candidateFormDocumentId?: string;
+  // CHANGED - Added signature date fields for electronic signature tracking
+  candidateSignedAt?: string;
+  hrSignedAt?: string;
+  managerSignedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -330,6 +336,38 @@ export interface ClearanceChecklist {
   completedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// CHANGED - Added Hiring Process Template types
+export interface StageDefinition {
+  stage: ApplicationStage;
+  name: string;
+  order: number;
+  progressPercentage: number;
+}
+
+export interface HiringProcessTemplate {
+  _id: string;
+  name: string;
+  description?: string;
+  stages: StageDefinition[];
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateHiringProcessTemplateDto {
+  name: string;
+  description?: string;
+  stages: StageDefinition[];
+  isActive?: boolean;
+}
+
+export interface UpdateHiringProcessTemplateDto {
+  name?: string;
+  description?: string;
+  stages?: StageDefinition[];
+  isActive?: boolean;
 }
 
 export interface ClearanceItem {

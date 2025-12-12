@@ -58,7 +58,9 @@ export default function EquipmentManagementPage() {
       setLoading(true);
       const data = await recruitmentApi.getAllOnboardings();
       // Filter to show only active (non-completed) onboardings
-      const activeOnboardings = data.filter((o: Onboarding) => !o.completed);
+      const activeOnboardings = data.filter((o: Onboarding) => 
+        o.status !== "completed" && !o.completionDate
+      );
       setOnboardings(activeOnboardings);
     } catch (error: any) {
       showToast(error.message || "Failed to load onboardings", "error");
