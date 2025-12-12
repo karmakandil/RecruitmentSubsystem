@@ -133,6 +133,7 @@ export class PayrollExecutionService {
     @InjectModel(paySlip.name) private paySlipModel: Model<PayslipDocument>,
     @InjectModel(employeePenalties.name) private employeePenaltiesModel: Model<employeePenaltiesDocument>,
     @InjectModel(EmployeeSystemRole.name) private employeeSystemRoleModel: Model<EmployeeSystemRoleDocument>,
+    @InjectModel(EmployeeProfile.name) private employeeProfileModel: Model<EmployeeProfile>,
     // PayrollConfigurationService is exported from PayrollConfigurationModule - inject directly
     private readonly payrollConfigurationService: PayrollConfigurationService,
     // PayrollTrackingService uses forwardRef due to potential circular dependency
@@ -563,66 +564,95 @@ export class PayrollExecutionService {
   // Helper: Get pre-initiation validation status (for reporting/UI)
   // Requirement 0: Reviews/approvals before start of payroll initiation
   async getPreInitiationValidationStatus(currentUserId: string): Promise<{
-    canInitiate: boolean;
-    pendingSigningBonuses: number;
-    pendingTerminationBenefits: number;
-    pendingItems: Array<{
-      type: 'signing_bonus' | 'termination_benefit';
-      id: string;
-      employeeId: string;
-      employeeNumber?: string;
-      itemName: string;
-      amount: number;
-      createdAt: Date;
-    }>;
+    signingBonuses: {
+      pending: number;
+      approved: number;
+      rejected: number;
+      total: number;
+    };
+    terminationBenefits: {
+      pending: number;
+      approved: number;
+      rejected: number;
+      total: number;
+    };
+    payrollPeriod: {
+      status: 'pending' | 'approved' | 'rejected';
+      payrollRunId?: string;
+      period?: string;
+    };
+    allReviewsComplete: boolean;
   }> {
-    const validationResult = await this.validatePreInitiationRequirements();
+    // Count signing bonuses by status
+    const [signingBonusesPending, signingBonusesApproved, signingBonusesRejected, signingBonusesTotal] = await Promise.all([
+      this.employeeSigningBonusModel.countDocuments({ status: BonusStatus.PENDING }).exec(),
+      this.employeeSigningBonusModel.countDocuments({ status: BonusStatus.APPROVED }).exec(),
+      this.employeeSigningBonusModel.countDocuments({ status: BonusStatus.REJECTED }).exec(),
+      this.employeeSigningBonusModel.countDocuments().exec(),
+    ]);
 
-    const pendingItems: Array<{
-      type: 'signing_bonus' | 'termination_benefit';
-      id: string;
-      employeeId: string;
-      employeeNumber?: string;
-      itemName: string;
-      amount: number;
-      createdAt: Date;
-    }> = [];
+    // Count termination benefits by status
+    const [terminationBenefitsPending, terminationBenefitsApproved, terminationBenefitsRejected, terminationBenefitsTotal] = await Promise.all([
+      this.employeeTerminationResignationModel.countDocuments({ status: BenefitStatus.PENDING }).exec(),
+      this.employeeTerminationResignationModel.countDocuments({ status: BenefitStatus.APPROVED }).exec(),
+      this.employeeTerminationResignationModel.countDocuments({ status: BenefitStatus.REJECTED }).exec(),
+      this.employeeTerminationResignationModel.countDocuments().exec(),
+    ]);
 
-    if (validationResult.pendingSigningBonuses) {
-      for (const bonus of validationResult.pendingSigningBonuses) {
-        pendingItems.push({
-          type: 'signing_bonus',
-          id: bonus.id,
-          employeeId: bonus.employeeId,
-          employeeNumber: bonus.employeeNumber,
-          itemName: bonus.bonusName || 'Signing Bonus',
-          amount: bonus.givenAmount || 0,
-          createdAt: bonus.createdAt,
-        });
+    // Get the most recent payroll run to check period status
+    const latestPayrollRun = await this.payrollRunModel
+      .findOne()
+      .sort({ createdAt: -1 })
+      .exec();
+
+    let payrollPeriodStatus: 'pending' | 'approved' | 'rejected' = 'pending';
+    let payrollRunId: string | undefined;
+    let period: string | undefined;
+
+    if (latestPayrollRun) {
+      payrollRunId = latestPayrollRun._id.toString();
+      
+      // Convert payrollPeriod Date to string format (YYYY-MM-DD)
+      if (latestPayrollRun.payrollPeriod) {
+        const date = new Date(latestPayrollRun.payrollPeriod);
+        period = date.toISOString().split('T')[0];
+      }
+
+      // Determine status based on payroll run status
+      if (latestPayrollRun.status === PayRollStatus.APPROVED || latestPayrollRun.status === PayRollStatus.LOCKED) {
+        payrollPeriodStatus = 'approved';
+      } else if (latestPayrollRun.status === PayRollStatus.REJECTED) {
+        payrollPeriodStatus = 'rejected';
+      } else {
+        payrollPeriodStatus = 'pending';
       }
     }
 
-    if (validationResult.pendingTerminationBenefits) {
-      for (const benefit of validationResult.pendingTerminationBenefits) {
-        pendingItems.push({
-          type: 'termination_benefit',
-          id: benefit.id,
-          employeeId: benefit.employeeId,
-          employeeNumber: benefit.employeeNumber,
-          itemName: benefit.benefitName || 'Termination Benefit',
-          amount: benefit.givenAmount || 0,
-          createdAt: benefit.createdAt,
-        });
-      }
-    }
+    // Check if all reviews are complete
+    const allReviewsComplete = 
+      signingBonusesPending === 0 && 
+      terminationBenefitsPending === 0 && 
+      payrollPeriodStatus === 'approved';
 
     return {
-      canInitiate: validationResult.isValid,
-      pendingSigningBonuses:
-        validationResult.pendingSigningBonuses?.length || 0,
-      pendingTerminationBenefits:
-        validationResult.pendingTerminationBenefits?.length || 0,
-      pendingItems,
+      signingBonuses: {
+        pending: signingBonusesPending,
+        approved: signingBonusesApproved,
+        rejected: signingBonusesRejected,
+        total: signingBonusesTotal,
+      },
+      terminationBenefits: {
+        pending: terminationBenefitsPending,
+        approved: terminationBenefitsApproved,
+        rejected: terminationBenefitsRejected,
+        total: terminationBenefitsTotal,
+      },
+      payrollPeriod: {
+        status: payrollPeriodStatus,
+        payrollRunId,
+        period,
+      },
+      allReviewsComplete,
     };
   }
 
@@ -1579,6 +1609,118 @@ export class PayrollExecutionService {
     return savedBonus;
   }
 
+  // Get all signing bonuses with optional filtering
+  async getSigningBonuses(
+    status: BonusStatus | undefined,
+    employeeId: string | undefined,
+    page: number,
+    limit: number,
+    currentUserId: string,
+  ): Promise<{ data: employeeSigningBonus[]; total: number; page: number; limit: number }> {
+    const query: any = {};
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (employeeId && employeeId.trim()) {
+      const searchTerm = employeeId.trim();
+      
+      // Try to find employees matching the search term
+      let employeeIds: mongoose.Types.ObjectId[] = [];
+      
+      // First, try as ObjectId
+      if (mongoose.Types.ObjectId.isValid(searchTerm)) {
+        const objectId = new mongoose.Types.ObjectId(searchTerm);
+        const employee = await this.employeeProfileModel.findById(objectId).select('_id').exec();
+        if (employee) {
+          employeeIds.push(objectId);
+        }
+      }
+      
+      // Also search by employeeNumber
+      const employeesByNumber = await this.employeeProfileModel
+        .find({ employeeNumber: { $regex: searchTerm, $options: 'i' } })
+        .select('_id')
+        .exec();
+      employeeIds.push(...employeesByNumber.map(emp => emp._id as mongoose.Types.ObjectId));
+      
+      // Also search by name (firstName or lastName)
+      const nameParts = searchTerm.split(/\s+/);
+      const nameQuery: any = {};
+      if (nameParts.length === 1) {
+        // Single word - search in both firstName and lastName
+        nameQuery.$or = [
+          { firstName: { $regex: nameParts[0], $options: 'i' } },
+          { lastName: { $regex: nameParts[0], $options: 'i' } },
+        ];
+      } else {
+        // Multiple words - assume first is firstName, rest is lastName
+        nameQuery.firstName = { $regex: nameParts[0], $options: 'i' };
+        nameQuery.lastName = { $regex: nameParts.slice(1).join(' '), $options: 'i' };
+      }
+      
+      const employeesByName = await this.employeeProfileModel
+        .find(nameQuery)
+        .select('_id')
+        .exec();
+      employeeIds.push(...employeesByName.map(emp => emp._id as mongoose.Types.ObjectId));
+      
+      // Remove duplicates
+      employeeIds = [...new Set(employeeIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id) as any);
+      
+      if (employeeIds.length > 0) {
+        query.employeeId = { $in: employeeIds };
+      } else {
+        // No matching employees found - return empty result
+        query.employeeId = { $in: [] }; // This will match nothing
+      }
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.employeeSigningBonusModel
+        .find(query)
+        .populate('employeeId', 'firstName lastName employeeNumber _id')
+        .populate('signingBonusId', 'positionName amount')
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.employeeSigningBonusModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  // Get signing bonus by ID
+  async getSigningBonusById(
+    id: string,
+    currentUserId: string,
+  ): Promise<employeeSigningBonus> {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error(`Invalid signing bonus ID format: ${id}`);
+    }
+
+    const signingBonus = await this.employeeSigningBonusModel
+      .findById(id)
+      .populate('employeeId', 'firstName lastName employeeNumber _id')
+      .populate('signingBonusId', 'positionName amount')
+      .exec();
+
+    if (!signingBonus) {
+      throw new Error(`Signing bonus with ID ${id} not found`);
+    }
+
+    return signingBonus;
+  }
+
   // REQ-PY-29: Manually edit signing bonuses when needed
   async editSigningBonus(
     editDto: SigningBonusEditDto,
@@ -1919,6 +2061,11 @@ export class PayrollExecutionService {
       ) as any;
     }
 
+    // Handle status update
+    if (editDto.status) {
+      benefit.status = editDto.status;
+    }
+
     // Handle givenAmount update (manual edit - takes precedence over config amount)
     // This is processed last to ensure manual edits override config-based amounts
     if (editDto.givenAmount !== undefined) {
@@ -1930,6 +2077,139 @@ export class PayrollExecutionService {
 
     (benefit as any).updatedBy = currentUserId;
     return await benefit.save();
+  }
+
+  // Get all termination benefits with optional filtering
+  async getTerminationBenefits(
+    status: BenefitStatus | undefined,
+    employeeId: string | undefined,
+    type: 'TERMINATION' | 'RESIGNATION' | undefined,
+    page: number,
+    limit: number,
+    currentUserId: string,
+  ): Promise<{ data: EmployeeTerminationResignation[]; total: number; page: number; limit: number }> {
+    const query: any = {};
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (employeeId && employeeId.trim()) {
+      const searchTerm = employeeId.trim();
+      
+      // Try to find employees matching the search term
+      let employeeIds: mongoose.Types.ObjectId[] = [];
+      
+      // First, try as ObjectId
+      if (mongoose.Types.ObjectId.isValid(searchTerm)) {
+        const objectId = new mongoose.Types.ObjectId(searchTerm);
+        const employee = await this.employeeProfileModel.findById(objectId).select('_id').exec();
+        if (employee) {
+          employeeIds.push(objectId);
+        }
+      }
+      
+      // Also search by employeeNumber
+      const employeesByNumber = await this.employeeProfileModel
+        .find({ employeeNumber: { $regex: searchTerm, $options: 'i' } })
+        .select('_id')
+        .exec();
+      employeeIds.push(...employeesByNumber.map(emp => emp._id as mongoose.Types.ObjectId));
+      
+      // Also search by name (firstName or lastName)
+      const nameParts = searchTerm.split(/\s+/);
+      const nameQuery: any = {};
+      if (nameParts.length === 1) {
+        // Single word - search in both firstName and lastName
+        nameQuery.$or = [
+          { firstName: { $regex: nameParts[0], $options: 'i' } },
+          { lastName: { $regex: nameParts[0], $options: 'i' } },
+        ];
+      } else {
+        // Multiple words - assume first is firstName, rest is lastName
+        nameQuery.firstName = { $regex: nameParts[0], $options: 'i' };
+        nameQuery.lastName = { $regex: nameParts.slice(1).join(' '), $options: 'i' };
+      }
+      
+      const employeesByName = await this.employeeProfileModel
+        .find(nameQuery)
+        .select('_id')
+        .exec();
+      employeeIds.push(...employeesByName.map(emp => emp._id as mongoose.Types.ObjectId));
+      
+      // Remove duplicates
+      employeeIds = [...new Set(employeeIds.map(id => id.toString()))].map(id => new mongoose.Types.ObjectId(id) as any);
+      
+      if (employeeIds.length > 0) {
+        query.employeeId = { $in: employeeIds };
+      } else {
+        // No matching employees found - return empty result
+        query.employeeId = { $in: [] }; // This will match nothing
+      }
+    }
+
+    // Filter by termination type if specified
+    // We need to find termination requests with the specified type first
+    if (type) {
+      const TerminationRequestModel = this.employeeTerminationResignationModel.db.model('TerminationRequest');
+      const terminations = await TerminationRequestModel.find({ type }).select('_id').exec();
+      const terminationIds = terminations.map((t: any) => t._id);
+      if (terminationIds.length === 0) {
+        // No terminations of this type exist, return empty result
+        return {
+          data: [],
+          total: 0,
+          page,
+          limit,
+        };
+      }
+      query.terminationId = { $in: terminationIds };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.employeeTerminationResignationModel
+        .find(query)
+        .populate('employeeId', 'firstName lastName employeeNumber _id')
+        .populate('benefitId', 'name amount')
+        .populate('terminationId', 'reason type')
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.employeeTerminationResignationModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  // Get termination benefit by ID
+  async getTerminationBenefitById(
+    id: string,
+    currentUserId: string,
+  ): Promise<EmployeeTerminationResignation> {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error(`Invalid termination benefit ID format: ${id}`);
+    }
+
+    const terminationBenefit = await this.employeeTerminationResignationModel
+      .findById(id)
+      .populate('employeeId', 'firstName lastName employeeNumber _id')
+      .populate('benefitId', 'name amount')
+      .populate('terminationId', 'reason type')
+      .exec();
+
+    if (!terminationBenefit) {
+      throw new Error(`Termination benefit with ID ${id} not found`);
+    }
+
+    return terminationBenefit;
   }
 
   // REQ-PY-1: Automatically calculate salaries, allowances, deductions, and contributions

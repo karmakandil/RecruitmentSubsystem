@@ -42,6 +42,7 @@ import { GenerateDraftPayrollRunDto } from './dto/GenerateDraftPayrollRunDto.dto
 import { GenerateAndDistributePayslipsDto, PayslipDistributionMethod } from './dto/GenerateAndDistributePayslipsDto.dto';
 import { SendForApprovalDto } from './dto/SendForApprovalDto.dto';
 import { ResolveIrregularityDto } from './dto/ResolveIrregularityDto.dto';
+import { BonusStatus, BenefitStatus } from './enums/payroll-execution-enum';
 
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -320,7 +321,6 @@ export class PayrollExecutionController {
 
   // REQ-PY-32: Allow PAYROLL_SPECIALIST to manually edit termination benefits
   @Put('edit-termination-benefit')
-  @UsePipes(ValidationPipe)
   @Roles(SystemRole.PAYROLL_SPECIALIST) // Only PAYROLL_SPECIALIST can edit termination benefits
   async editTerminationBenefit(
     @Body() editDto: TerminationBenefitEditDto,
@@ -424,6 +424,66 @@ export class PayrollExecutionController {
   @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
   async getPreInitiationValidationStatus(@CurrentUser() user: any) {
     return this.payrollService.getPreInitiationValidationStatus(user.userId);
+  }
+
+  // Get all signing bonuses with optional filtering
+  @Get('signing-bonuses')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+  async getSigningBonuses(
+    @CurrentUser() user: any,
+    @Query('status') status?: BonusStatus,
+    @Query('employeeId') employeeId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.payrollService.getSigningBonuses(
+      status,
+      employeeId,
+      page || 1,
+      limit || 10,
+      user.userId,
+    );
+  }
+
+  // Get signing bonus by ID
+  @Get('signing-bonuses/:id')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+  async getSigningBonusById(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.payrollService.getSigningBonusById(id, user.userId);
+  }
+
+  // Get all termination benefits with optional filtering
+  @Get('termination-benefits')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+  async getTerminationBenefits(
+    @CurrentUser() user: any,
+    @Query('status') status?: BenefitStatus,
+    @Query('employeeId') employeeId?: string,
+    @Query('type') type?: 'TERMINATION' | 'RESIGNATION',
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.payrollService.getTerminationBenefits(
+      status,
+      employeeId,
+      type,
+      page || 1,
+      limit || 10,
+      user.userId,
+    );
+  }
+
+  // Get termination benefit by ID
+  @Get('termination-benefits/:id')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER)
+  async getTerminationBenefitById(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.payrollService.getTerminationBenefitById(id, user.userId);
   }
 
   // REQ-PY-8: Automatically generate and distribute employee payslips
