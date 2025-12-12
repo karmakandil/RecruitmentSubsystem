@@ -839,6 +839,72 @@ export class LeavesService {
     const doc: any = { ...createLeaveAdjustmentDto };
     if (doc.employeeId) doc.employeeId = this.toObjectId(doc.employeeId);
     if (doc.leaveTypeId) doc.leaveTypeId = this.toObjectId(doc.leaveTypeId);
+    
+    // Get the entitlement to apply the adjustment
+    const entitlement = await this.getLeaveEntitlement(
+      createLeaveAdjustmentDto.employeeId,
+      createLeaveAdjustmentDto.leaveTypeId,
+    );
+    
+    // Apply the adjustment to the entitlement based on adjustment type
+    const adjustmentAmount = createLeaveAdjustmentDto.amount;
+    const adjustmentType = createLeaveAdjustmentDto.adjustmentType;
+    
+    // Get policy for rounding rule (needed if we modify accruedActual)
+    let leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: new Types.ObjectId(createLeaveAdjustmentDto.leaveTypeId) })
+      .exec();
+    
+    // Try string comparison if ObjectId lookup fails
+    if (!leavePolicy) {
+      const allPolicies = await this.leavePolicyModel.find({}).exec();
+      leavePolicy = allPolicies.find(p => 
+        p.leaveTypeId?.toString() === createLeaveAdjustmentDto.leaveTypeId || 
+        p.leaveTypeId?.toString() === new Types.ObjectId(createLeaveAdjustmentDto.leaveTypeId).toString()
+      ) || null;
+    }
+    
+    const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+    
+    switch (adjustmentType) {
+      case 'add':
+        // Add days: Increase accruedActual (which increases accruedRounded after rounding)
+        // This gives the employee extra days beyond normal accrual
+        entitlement.accruedActual += adjustmentAmount;
+        entitlement.accruedRounded = this.applyRoundingRule(
+          entitlement.accruedActual,
+          roundingRule,
+        );
+        // Recalculate remaining (will increase because accruedRounded increased)
+        entitlement.remaining = this.calculateRemaining(entitlement);
+        break;
+      case 'deduct':
+        // Deduct days: Decrease both accruedActual and accruedRounded
+        // This manually removes days from the employee's balance
+        // We must decrease accruedActual too, otherwise getLeaveEntitlement will recalculate accruedRounded from accruedActual and overwrite our deduction
+        entitlement.accruedActual = Math.max(0, entitlement.accruedActual - adjustmentAmount);
+        entitlement.accruedRounded = this.applyRoundingRule(
+          entitlement.accruedActual,
+          roundingRule,
+        );
+        // Recalculate remaining (will decrease because accruedRounded decreased)
+        entitlement.remaining = this.calculateRemaining(entitlement);
+        break;
+      case 'encashment':
+        // Encashment: Employee gets paid for unused leave
+        // Deduct from remaining and count as taken for reporting/audit
+        const currentRemaining = entitlement.remaining;
+        entitlement.remaining = Math.max(0, currentRemaining - adjustmentAmount);
+        entitlement.taken += adjustmentAmount; // Count as taken for reporting
+        break;
+      default:
+        throw new Error(`Invalid adjustment type: ${adjustmentType}`);
+    }
+    
+    // Save the updated entitlement
+    await entitlement.save();
+    
+    // Create the adjustment record for audit trail
     const newLeaveAdjustment = new this.leaveAdjustmentModel(doc);
     return await newLeaveAdjustment.save();
   }
@@ -896,16 +962,52 @@ export class LeavesService {
 
     if (!leaveEntitlement) {
       throw new NotFoundException(
-        'Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found',
+        `Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found`,
       );
     }
 
-  if (!leaveEntitlement) {
-    throw new NotFoundException("Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found" );
-  }
+    // ALWAYS recalculate accruedRounded based on accruedActual and policy rounding rule
+    // This ensures rounding is always applied correctly, even if data was created before the fix
+    // Try multiple lookup strategies in case leaveTypeId is stored differently
+    let leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+      .exec();
+    
+    // If not found, try as string comparison
+    if (!leavePolicy) {
+      leavePolicy = await this.leavePolicyModel
+        .findOne({ leaveTypeId: leaveTypeId })
+        .exec();
+    }
+    
+    // If not found, try to find by string comparison as fallback
+    if (!leavePolicy) {
+      const allPolicies = await this.leavePolicyModel.find({}).exec();
+      const matchingPolicy = allPolicies.find(p => 
+        p.leaveTypeId?.toString() === leaveTypeId || 
+        p.leaveTypeId?.toString() === new Types.ObjectId(leaveTypeId).toString()
+      );
+      if (matchingPolicy) {
+        leavePolicy = matchingPolicy;
+      }
+    }
+    
+    const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+    const expectedRounded = this.applyRoundingRule(
+      leaveEntitlement.accruedActual,
+      roundingRule,
+    );
 
-  return leaveEntitlement;
-}
+    // Always recalculate and save to ensure consistency
+    // Use Math.abs to handle floating point precision issues
+    if (Math.abs(leaveEntitlement.accruedRounded - expectedRounded) > 0.001) {
+      leaveEntitlement.accruedRounded = expectedRounded;
+      leaveEntitlement.remaining = this.calculateRemaining(leaveEntitlement);
+      await leaveEntitlement.save();
+    }
+
+    return leaveEntitlement;
+  }
 
   async updateLeaveEntitlement(
     id: string,
@@ -917,13 +1019,41 @@ export class LeavesService {
       throw new Error(`Leave entitlement with ID ${id} not found`);
     }
 
-    // Here, you can modify `leaveEntitlement` based on the business logic (e.g., accruals)
-    // If needed, modify `leaveEntitlement` before saving the update
+    // ALWAYS recalculate accruedRounded from accruedActual based on rounding rule
+    // This ensures rounding is always correct, even if frontend sends wrong values
+    const accruedActualToUse = updateLeaveEntitlementDto.accruedActual !== undefined 
+      ? updateLeaveEntitlementDto.accruedActual 
+      : leaveEntitlement.accruedActual;
+    
+    // Get policy for rounding rule
+    const leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: leaveEntitlement.leaveTypeId })
+      .exec();
+    
+    const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+    
+    // ALWAYS recalculate accruedRounded from accruedActual (override any frontend value)
+    updateLeaveEntitlementDto.accruedRounded = this.applyRoundingRule(
+      accruedActualToUse,
+      roundingRule,
+    );
+
+    // Apply the update
     leaveEntitlement = await this.leaveEntitlementModel
       .findByIdAndUpdate(id.toString(), updateLeaveEntitlementDto, {
         new: true,
       })
       .exec();
+
+    // Recalculate remaining if accruedActual or accruedRounded was updated
+    if (
+      updateLeaveEntitlementDto.accruedActual !== undefined ||
+      updateLeaveEntitlementDto.accruedRounded !== undefined
+    ) {
+      leaveEntitlement.remaining = this.calculateRemaining(leaveEntitlement);
+      await leaveEntitlement.save();
+    }
+
     return leaveEntitlement as LeaveEntitlementDocument;
   }
 
@@ -986,7 +1116,7 @@ export class LeavesService {
       );
     }
 
-    // Atomically add personalized entitlement: increase both accruedActual and remaining
+    // Add personalized entitlement to accruedActual
     // This gives the employee extra days beyond their normal policy
     const updated = await this.leaveEntitlementModel
       .findByIdAndUpdate(
@@ -994,14 +1124,47 @@ export class LeavesService {
         {
           $inc: {
             accruedActual: personalizedEntitlement,
-            remaining: personalizedEntitlement,
           },
         },
         { new: true },
       )
       .exec();
-    if (!updated)
+    
+    if (!updated) {
       throw new Error(`Leave entitlement with ID ${entitlement._id} not found`);
+    }
+
+    // Recalculate accruedRounded from the new accruedActual (with rounding)
+    const leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+      .exec();
+    
+    // Try string comparison if ObjectId lookup fails
+    if (!leavePolicy) {
+      const allPolicies = await this.leavePolicyModel.find({}).exec();
+      const matchingPolicy = allPolicies.find(p => 
+        p.leaveTypeId?.toString() === leaveTypeId || 
+        p.leaveTypeId?.toString() === new Types.ObjectId(leaveTypeId).toString()
+      );
+      if (matchingPolicy) {
+        const roundingRule = matchingPolicy.roundingRule || RoundingRule.NONE;
+        updated.accruedRounded = this.applyRoundingRule(
+          updated.accruedActual,
+          roundingRule,
+        );
+      }
+    } else {
+      const roundingRule = leavePolicy.roundingRule || RoundingRule.NONE;
+      updated.accruedRounded = this.applyRoundingRule(
+        updated.accruedActual,
+        roundingRule,
+      );
+    }
+
+    // Recalculate remaining using the helper method (not direct increment)
+    updated.remaining = this.calculateRemaining(updated);
+    await updated.save();
+
     return updated as LeaveEntitlementDocument;
   }
 
@@ -2105,16 +2268,15 @@ export class LeavesService {
         .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
         .exec();
       const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
-      const roundedAmount = this.applyRoundingRule(accrualAmount, roundingRule);
 
-      // Atomically increment both accruedActual (pre-rounded) and accruedRounded (rounded)
+      // Business Rule: Rounding should be applied to the TOTAL accruedActual, not the increment
+      // Step 1: Increment accruedActual (pre-rounded cumulative total)
       const updated = await this.leaveEntitlementModel
         .findByIdAndUpdate(
           entitlement._id,
           {
             $inc: {
               accruedActual: accrualAmount,
-              accruedRounded: roundedAmount,
             },
             $set: { lastAccrualDate: new Date() },
           },
@@ -2126,7 +2288,14 @@ export class LeavesService {
         throw new Error('Failed to update entitlement');
       }
 
-      // Recalculate remaining using helper method
+      // Step 2: Round the TOTAL accruedActual (not just the increment)
+      // This ensures accruedRounded = rounded(total accruedActual)
+      updated.accruedRounded = this.applyRoundingRule(
+        updated.accruedActual,
+        roundingRule,
+      );
+
+      // Step 3: Recalculate remaining using helper method
       updated.remaining = this.calculateRemaining(updated);
       await updated.save();
 
@@ -2226,19 +2395,15 @@ export class LeavesService {
             .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
             .exec();
           const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
-          const roundedAmount = this.applyRoundingRule(
-            accrualAmount,
-            roundingRule,
-          );
 
-          // Atomically increment both accruedActual (pre-rounded) and accruedRounded (rounded)
+          // Business Rule: Rounding should be applied to the TOTAL accruedActual, not the increment
+          // Step 1: Increment accruedActual (pre-rounded cumulative total)
           const updated = await this.leaveEntitlementModel
             .findByIdAndUpdate(
               entitlement._id,
               {
                 $inc: {
                   accruedActual: accrualAmount,
-                  accruedRounded: roundedAmount,
                 },
                 $set: {
                   lastAccrualDate: new Date(),
@@ -2251,6 +2416,13 @@ export class LeavesService {
           if (!updated) {
             throw new Error('Failed to update entitlement');
           }
+
+          // Step 2: Round the TOTAL accruedActual (not just the increment)
+          updated.accruedRounded = this.applyRoundingRule(
+            updated.accruedActual,
+            roundingRule,
+          );
+          await updated.save();
 
           // Recalculate remaining using helper method
           updated.remaining = this.calculateRemaining(updated);
