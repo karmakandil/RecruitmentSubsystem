@@ -193,25 +193,17 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
-          {/* ADMIN/SYSTEM TOOLS - Only for HR Admin */}
-          {isHRAdmin && (
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle>Admin</CardTitle>
-                <CardDescription>
-                  System administration and configuration
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Link
-                  href="/dashboard/admin"
-                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-                >
-                  Admin Console
-                </Link>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance</CardTitle>
+              <CardDescription>Latest appraisal cycle and score</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/dashboard/performance" className="text-blue-600 hover:underline">
+                Performance Overview
+              </Link>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Back to Main Dashboard - Only show for non-HR users or as optional link */}
