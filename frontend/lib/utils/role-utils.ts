@@ -264,8 +264,7 @@ export function getPrimaryDashboard(user: User | null): string {
   // Check roles in priority order
   if (roles.includes(SystemRole.SYSTEM_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_ADMIN)) return "/dashboard/admin";
-  if (roles.includes(SystemRole.HR_MANAGER))
-    return "/dashboard/employee-profile";
+  if (roles.includes(SystemRole.HR_MANAGER)) return "/dashboard/hr";
   if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard/payroll";
   if (roles.includes(SystemRole.PAYROLL_SPECIALIST))
     return "/dashboard/payroll";

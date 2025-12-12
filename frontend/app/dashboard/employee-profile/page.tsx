@@ -1,4 +1,4 @@
-// app/dashboard/employee-profile/page.tsx - CORRECTED
+// app/dashboard/employee-profile/page.tsx - Unified HR Workspace
 "use client";
 
 import Link from "next/link";
@@ -9,6 +9,7 @@ import {
   Card,
   CardHeader,
   CardTitle,
+  CardDescription,
   CardContent,
 } from "@/components/shared/ui/Card";
 
@@ -44,6 +45,9 @@ export default function EmployeeProfileDashboardPage() {
   const canManageAll = isHR;
   const canApprove = isHR;
 
+  // For HR users, this is the unified HR Workspace
+  const isHRWorkspace = isHR;
+
   return (
     <ProtectedRoute
       allowedRoles={[
@@ -55,36 +59,106 @@ export default function EmployeeProfileDashboardPage() {
       ]}
     >
       <div className="container mx-auto px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Employee Profile Dashboard
-        </h1>
-        <p className="text-gray-600 mt-1">
-          Welcome, {user?.fullName || "User"}
-          {isHR && (
-            <span className="ml-2 px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full">
-              {isHRAdmin ? "HR Admin" : "HR Manager"}
-            </span>
-          )}
-        </p>
+        {/* Top Context Section - Enhanced for HR Workspace */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isHRWorkspace ? "HR Workspace" : "Employee Profile Dashboard"}
+          </h1>
+          <div className="mt-2 flex items-center gap-3">
+            <p className="text-gray-600">
+              Welcome, {user?.fullName || "User"}
+            </p>
+            {isHR && (
+              <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-full">
+                {isHRAdmin ? "HR Admin" : "HR Manager"}
+              </span>
+            )}
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
-          {/* My Profile Card - Show for all employees */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* PRIMARY WORK AREAS - For HR Users */}
+          {isHRWorkspace && (
+            <>
+              {/* Employees - Primary */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+                <CardHeader>
+                  <CardTitle className="text-xl">Employees</CardTitle>
+                  <CardDescription>
+                    Search and manage employee profiles
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Link
+                    href="/dashboard/employee-profile/admin/search"
+                    className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+                  >
+                    Search Employees
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Approvals - Primary */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+                <CardHeader>
+                  <CardTitle className="text-xl">Approvals</CardTitle>
+                  <CardDescription>
+                    Review and approve employee requests
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+                  >
+                    View Approvals
+                  </Link>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* SECONDARY WORK AREAS */}
+          {/* Team View - Show for managers/HR */}
+          {canViewTeam && (
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>Team</CardTitle>
+                <CardDescription>
+                  View team members and organization structure
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/dashboard/employee-profile/team"
+                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+                >
+                  View Team
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* My Profile - Show for all employees */}
           {isEmployee && (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <CardTitle>My Profile</CardTitle>
+                <CardDescription>
+                  View and manage your personal information
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Link
                   href="/dashboard/employee-profile/my-profile"
-                  className="block w-full text-center bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition"
+                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
                 >
                   View Profile
                 </Link>
                 {canEditOwnProfile && (
                   <Link
                     href="/dashboard/employee-profile/my-profile/edit"
-                    className="block w-full text-center border border-blue-600 text-blue-600 py-2 px-4 rounded hover:bg-blue-50 transition"
+                    className="block w-full text-center border border-gray-600 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 transition"
                   >
                     Edit Profile
                   </Link>
@@ -93,22 +167,25 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
-          {/* Change Requests - Show for department employees */}
-          {canSubmitChangeRequests && (
+          {/* Change Requests - Show for department employees (not primary for HR) */}
+          {canSubmitChangeRequests && !isHRWorkspace && (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <CardTitle>Change Requests</CardTitle>
+                <CardDescription>
+                  Submit and track profile change requests
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Link
                   href="/dashboard/employee-profile/change-requests"
-                  className="block w-full text-center bg-amber-600 text-white py-2 px-4 rounded hover:bg-amber-700 transition"
+                  className="block w-full text-center bg-amber-600 text-white py-3 px-4 rounded-md hover:bg-amber-700 transition font-medium"
                 >
                   My Requests
                 </Link>
                 <Link
                   href="/dashboard/employee-profile/change-requests/new"
-                  className="block w-full text-center border border-amber-600 text-amber-600 py-2 px-4 rounded hover:bg-amber-50 transition"
+                  className="block w-full text-center border border-amber-600 text-amber-600 py-2 px-4 rounded-md hover:bg-amber-50 transition"
                 >
                   New Request
                 </Link>
@@ -116,79 +193,38 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
-          {/* Team View - Show for managers/HR */}
-          {canViewTeam && (
+          {/* ADMIN/SYSTEM TOOLS - Only for HR Admin */}
+          {isHRAdmin && (
             <Card className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <CardTitle>Team View</CardTitle>
+                <CardTitle>Admin</CardTitle>
+                <CardDescription>
+                  System administration and configuration
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Link
-                  href="/dashboard/employee-profile/team"
-                  className="block w-full text-center bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
+                  href="/dashboard/admin"
+                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
                 >
-                  View Team
+                  Admin Console
                 </Link>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* HR Admin/Manager Features */}
-          {canManageAll && (
-            <Card className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle>Employee Management</CardTitle>
-                <p className="text-sm text-gray-500">
-                  {isHRAdmin ? "HR Admin" : "HR Manager"} Access
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Link
-                  href="/dashboard/employee-profile/admin/search"
-                  className="block w-full text-center bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 transition"
-                >
-                  Search Employees
-                </Link>
-                {canApprove && (
-                  <Link
-                    href="/dashboard/employee-profile/admin/approvals"
-                    className="block w-full text-center border border-purple-600 text-purple-600 py-2 px-4 rounded hover:bg-purple-50 transition"
-                  >
-                    Approval Queue ({isHRAdmin ? "Admin" : "Manager"})
-                  </Link>
-                )}
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Quick Stats for HR */}
-        {isHR && (
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-gray-900 mb-2">
-              HR Access Notes:
-            </h3>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li>
-                • HR Admin and HR Manager have identical access to employee
-                profiles
-              </li>
-              <li>• You can search all employees and manage their profiles</li>
-              <li>• You can approve/reject employee change requests</li>
-              <li>• You can view team members across all departments</li>
-            </ul>
+        {/* Back to Main Dashboard - Only show for non-HR users or as optional link */}
+        {!isHRWorkspace && (
+          <div className="mt-8 pt-6 border-t border-gray-200">
+            <Link
+              href="/dashboard"
+              className="text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              ← Back to Main Dashboard
+            </Link>
           </div>
         )}
-
-        {/* Back to Main Dashboard */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <Link
-            href="/dashboard"
-            className="text-blue-600 hover:text-blue-800 hover:underline"
-          >
-            ← Back to Main Dashboard
-          </Link>
-        </div>
       </div>
     </ProtectedRoute>
   );

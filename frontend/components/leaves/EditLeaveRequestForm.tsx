@@ -30,7 +30,9 @@ export const EditLeaveRequestForm: React.FC<EditLeaveRequestFormProps> = ({
   const [formData, setFormData] = useState<UpdateLeaveRequestDto>({
     leaveTypeId: typeof leaveRequest.leaveTypeId === 'string' 
       ? leaveRequest.leaveTypeId 
-      : leaveRequest.leaveTypeId._id,
+      : leaveRequest.leaveTypeId && typeof leaveRequest.leaveTypeId === 'object'
+      ? leaveRequest.leaveTypeId._id
+      : "",
     dates: {
       from: leaveRequest.dates.from,
       to: leaveRequest.dates.to,
@@ -699,5 +701,9 @@ export const EditLeaveRequestForm: React.FC<EditLeaveRequestFormProps> = ({
       </div>
     </form>
   );
+<<<<<<< HEAD
 };
 
+=======
+};
+>>>>>>> 01aa0a1bbfa90e4f02141b2df50719b4bac3866b

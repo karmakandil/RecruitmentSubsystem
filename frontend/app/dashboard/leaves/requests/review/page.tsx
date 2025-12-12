@@ -302,7 +302,7 @@ export default function ManagerLeaveReviewPage() {
         <div className="space-y-4">
           {pendingRequests.map((request) => {
             const leaveTypeName =
-              typeof request.leaveTypeId === "object"
+              typeof request.leaveTypeId === "object" && request.leaveTypeId !== null
                 ? request.leaveTypeId.name
                 : "Unknown Leave Type";
 
