@@ -2196,8 +2196,33 @@ export class LeavesService {
     departmentId?: string,
   ): Promise<any> {
     try {
-      // Get team members under manager - placeholder implementation
-      const teamMembers: any[] = [];
+      // Get manager's position
+      const manager = await this.employeeProfileModel.findById(managerId).exec();
+      if (!manager || !manager.primaryPositionId) {
+        return {
+          managerId,
+          teamMembers: [],
+          totalTeamMembers: 0,
+        };
+      }
+
+      // Get team members where supervisorPositionId matches manager's position
+      const teamMembersQuery: any = {
+        supervisorPositionId: manager.primaryPositionId,
+        status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+      };
+
+      // Filter by department if provided
+      if (departmentId) {
+        teamMembersQuery.primaryDepartmentId = new Types.ObjectId(departmentId);
+      }
+
+      const teamMembers = await this.employeeProfileModel
+        .find(teamMembersQuery)
+        .populate('primaryDepartmentId', 'name code')
+        .populate('primaryPositionId', 'title code')
+        .select('_id name primaryDepartmentId primaryPositionId')
+        .exec();
 
       const balances = await Promise.all(
         teamMembers.map(async (member) => {
@@ -2227,11 +2252,11 @@ export class LeavesService {
 
           return {
             employeeId: member._id,
-            employeeName: member.name,
-            position: member.position,
-            department: member.department,
+            employeeName: (member as any).name || 'N/A',
+            position: (member.primaryPositionId && (member.primaryPositionId as any).title) || 'N/A',
+            department: (member.primaryDepartmentId && (member.primaryDepartmentId as any).name) || 'N/A',
             leaveBalances: entitlements.map((ent) => ({
-              leaveTypeId: ent.leaveTypeId._id,
+              leaveTypeId: (ent.leaveTypeId as any)?._id,
               leaveTypeName: (ent.leaveTypeId as any).name,
               remaining: ent.remaining,
               pending: ent.pending,
@@ -2239,7 +2264,8 @@ export class LeavesService {
             })),
             upcomingLeaves: upcomingLeaves.map((leave) => ({
               _id: leave._id,
-              leaveTypeName: (leave.leaveTypeId as any).name,
+              leaveTypeId: (leave.leaveTypeId as any)?._id || leave.leaveTypeId,
+              leaveTypeName: (leave.leaveTypeId as any)?.name,
               dates: leave.dates,
               durationDays: leave.durationDays,
               status: leave.status,
@@ -2263,9 +2289,42 @@ export class LeavesService {
   // REQ-035: Filter and sort team leave data
   async filterTeamLeaveData(managerId: string, filters: any): Promise<any> {
     try {
-      // Get team members - placeholder
-      const teamMembers: any[] = [];
-      const memberIds = teamMembers.map((m) => new Types.ObjectId(m._id));
+      // Get manager's position
+      const manager = await this.employeeProfileModel.findById(managerId).exec();
+      if (!manager || !manager.primaryPositionId) {
+        return {
+          total: 0,
+          filters: {
+            managerId,
+            departmentId: filters.departmentId,
+            leaveTypeId: filters.leaveTypeId,
+            dateRange:
+              filters.fromDate || filters.toDate
+                ? { from: filters.fromDate, to: filters.toDate }
+                : undefined,
+            status: filters.status,
+          },
+          items: [],
+        };
+      }
+
+      // Get team members where supervisorPositionId matches manager's position
+      const teamMembersQuery: any = {
+        supervisorPositionId: manager.primaryPositionId,
+        status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+      };
+
+      // Filter by department if provided
+      if (filters.departmentId) {
+        teamMembersQuery.primaryDepartmentId = new Types.ObjectId(filters.departmentId);
+      }
+
+      const teamMembers = await this.employeeProfileModel
+        .find(teamMembersQuery)
+        .select('_id')
+        .exec();
+      
+      const memberIds = teamMembers.map((m) => m._id);
 
       const query: any = { employeeId: { $in: memberIds } };
 
@@ -2302,6 +2361,7 @@ export class LeavesService {
       const items = await this.leaveRequestModel
         .find(query)
         .populate('leaveTypeId')
+        .populate('employeeId', 'firstName lastName middleName')
         .sort(sortObj || { 'dates.from': -1 })
         .skip(skip)
         .limit(limit)
@@ -2319,15 +2379,23 @@ export class LeavesService {
               : undefined,
           status: filters.status,
         },
-        items: items.map((req) => ({
-          _id: req._id,
-          employeeId: req.employeeId,
-          leaveTypeName: (req.leaveTypeId as any).name,
-          dates: req.dates,
-          durationDays: req.durationDays,
-          status: req.status,
-          createdAt: (req as any).createdAt,
-        })),
+        items: items.map((req) => {
+          const employee = req.employeeId as any;
+          const employeeName = employee
+            ? `${employee.firstName || ''} ${employee.middleName || ''} ${employee.lastName || ''}`.trim()
+            : undefined;
+          
+          return {
+            _id: req._id,
+            employeeId: req.employeeId,
+            employeeName,
+            leaveTypeName: (req.leaveTypeId as any).name,
+            dates: req.dates,
+            durationDays: req.durationDays,
+            status: req.status,
+            createdAt: (req as any).createdAt,
+          };
+        }),
       };
     } catch (error) {
       throw new Error(

@@ -55,42 +55,68 @@ export default function LeavesPage() {
 
       {/* Department Head Section */}
       {isDepartmentHead && (
-        <Card className="mb-6 border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="text-blue-900">Manager Actions</CardTitle>
-            <CardDescription className="text-blue-700">
-              Review and approve leave requests from your team members
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link 
-              href="/dashboard/leaves/requests/review" 
-              className="text-blue-600 hover:underline font-medium"
-            >
-              Review Pending Leave Requests →
-            </Link>
-          </CardContent>
-        </Card>
+        <div className="mb-6 space-y-4">
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader>
+              <CardTitle className="text-blue-900">Manager Actions</CardTitle>
+              <CardDescription className="text-blue-700">
+                Review and approve leave requests from your team members
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Link 
+                  href="/dashboard/leaves/requests/review" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Review Pending Leave Requests →
+                </Link>
+                <Link 
+                  href="/dashboard/leaves/team-balances" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  View Team Leave Balances →
+                </Link>
+                <Link 
+                  href="/dashboard/leaves/team-management" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Manage Team Leave Data →
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
-      {/* NEW CODE: HR Manager Section - Only for HR_MANAGER (HR_ADMIN excluded) */}
+      {/* HR Manager Section - Only for HR_MANAGER (HR_ADMIN excluded) */}
       {isHRManager && !isHRAdmin && (
-        <Card className="mb-6 border-blue-200 bg-blue-50">
-          <CardHeader>
-            <CardTitle className="text-blue-900">HR Manager Actions</CardTitle>
-            <CardDescription className="text-blue-700">
-              Finalize approved requests, override decisions, and process requests in bulk
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link 
-              href="/dashboard/leaves/hr-manager" 
-              className="text-blue-600 hover:underline font-medium"
-            >
-              Manage Leave Requests →
-            </Link>
-          </CardContent>
-        </Card>
+        <div className="mb-6 space-y-4">
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader>
+              <CardTitle className="text-blue-900">HR Manager Actions</CardTitle>
+              <CardDescription className="text-blue-700">
+                Finalize approved requests, override decisions, and process requests in bulk
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Link 
+                  href="/dashboard/leaves/hr-manager" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Manage Leave Requests →
+                </Link>
+                <Link 
+                  href="/dashboard/leaves/accrual-adjustment" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Accrual Adjustment →
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* HR Admin Section */}
@@ -200,7 +226,80 @@ export default function LeavesPage() {
             </Link>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Auto Accrual Management</CardTitle>
+            <CardDescription>Automatically add leave days to employee balances</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link 
+              href="/dashboard/leaves/accrual" 
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Manage Accruals →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Carry-Forward Management</CardTitle>
+            <CardDescription>Run year-end/period carry-forward automatically</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link 
+              href="/dashboard/leaves/carry-forward" 
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Manage Carry-Forward →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Accrual Adjustment</CardTitle>
+            <CardDescription>Adjust accruals during unpaid leave or long absence</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link 
+              href="/dashboard/leaves/accrual-adjustment" 
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Manage Adjustments →
+            </Link>
+          </CardContent>
+        </Card>
         </div>
+      )}
+
+      {/* Employee Section - Only show for regular employees (not managers/HR) */}
+      {!isHRAdmin && !isHRManager && !isDepartmentHead && (
+        <Card className="mb-6 border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="text-green-900">Employee Actions</CardTitle>
+            <CardDescription className="text-green-700">
+              View your leave balance and manage your leave requests
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <Link 
+                href="/dashboard/leaves/balance" 
+                className="block text-green-600 hover:underline font-medium"
+              >
+                View My Leave Balance →
+              </Link>
+              <Link 
+                href="/dashboard/leaves/requests" 
+                className="block text-green-600 hover:underline font-medium"
+              >
+                My Leave Requests →
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

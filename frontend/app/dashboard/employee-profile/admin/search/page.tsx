@@ -37,6 +37,7 @@ import {
   Building,
   Briefcase,
   DollarSign,
+  Users,
 } from "lucide-react";
 
 export default function EmployeeManagementPage() {
@@ -982,6 +983,30 @@ export default function EmployeeManagementPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Users className="inline h-4 w-4 mr-1" />
+                        Supervisor Position (Manager)
+                      </label>
+                      <select
+                        value={editForm.supervisorPositionId || ""}
+                        onChange={(e) =>
+                          handleEditChange("supervisorPositionId", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">No Supervisor (Top Level)</option>
+                        {positions.map((pos) => (
+                          <option key={pos.id} value={pos.id}>
+                            {pos.title}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Select the manager's position. Employees with this position as their supervisor will appear in team views.
+                      </p>
                     </div>
 
                     <div>

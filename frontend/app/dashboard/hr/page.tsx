@@ -116,11 +116,11 @@ export default function HRManagerDashboardPage() {
           </CardHeader>
           <CardContent>
             <Button
-              onClick={() => router.push("/dashboard/leaves/hr-manager")}
+              onClick={() => router.push("/dashboard/leaves")}
               variant="primary"
               className="w-full text-lg py-3"
             >
-              Manage Leave Requests
+              HR Manager Actions
             </Button>
           </CardContent>
         </Card>
