@@ -623,40 +623,46 @@ export default function EmployeeManagementPage() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="" className="text-gray-600">
+                    <option key="all" value="" className="text-gray-600">
                       All Statuses
                     </option>
                     <option
+                      key={EmployeeStatus.ACTIVE}
                       value={EmployeeStatus.ACTIVE}
                       className="text-gray-900"
                     >
                       Active
                     </option>
                     <option
+                      key={EmployeeStatus.ON_LEAVE}
                       value={EmployeeStatus.ON_LEAVE}
                       className="text-gray-900"
                     >
                       On Leave
                     </option>
                     <option
+                      key={EmployeeStatus.TERMINATED}
                       value={EmployeeStatus.TERMINATED}
                       className="text-gray-900"
                     >
                       Terminated
                     </option>
                     <option
+                      key={EmployeeStatus.SUSPENDED}
                       value={EmployeeStatus.SUSPENDED}
                       className="text-gray-900"
                     >
                       Suspended
                     </option>
                     <option
+                      key={EmployeeStatus.PROBATION}
                       value={EmployeeStatus.PROBATION}
                       className="text-gray-900"
                     >
                       Probation
                     </option>
                     <option
+                      key={EmployeeStatus.RETIRED}
                       value={EmployeeStatus.RETIRED}
                       className="text-gray-900"
                     >

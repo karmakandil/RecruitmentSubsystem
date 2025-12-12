@@ -793,11 +793,16 @@ export class EmployeeProfileController {
       data: updatedRequest,
     };
   }
-
   // ==================== QUALIFICATION ROUTES ====================
 
   @Post('qualification')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async addQualification(
     @CurrentUser() user: any,
     @Body()
@@ -817,7 +822,12 @@ export class EmployeeProfileController {
   }
 
   @Post(':employeeId/qualifications')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async addQualificationForEmployee(
     @Param('employeeId') employeeId: string,
     @Body()
@@ -837,7 +847,13 @@ export class EmployeeProfileController {
   }
 
   @Get('qualification/my-qualifications')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async getMyQualifications(@CurrentUser() user: any) {
     const qualifications =
       await this.employeeProfileService.getQualificationsByEmployee(
@@ -850,7 +866,12 @@ export class EmployeeProfileController {
   }
 
   @Get(':employeeId/qualifications')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async getEmployeeQualifications(@Param('employeeId') employeeId: string) {
     const qualifications =
       await this.employeeProfileService.getQualificationsByEmployee(employeeId);
@@ -861,7 +882,13 @@ export class EmployeeProfileController {
   }
 
   @Patch('qualifications/:qualId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async updateQualification(
     @Param('qualId') qualificationId: string,
     @CurrentUser() user: any,
@@ -883,7 +910,13 @@ export class EmployeeProfileController {
   }
 
   @Delete('qualifications/:qualId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeQualification(
     @Param('qualId') qualificationId: string,
@@ -897,7 +930,6 @@ export class EmployeeProfileController {
       message: 'Qualification removed successfully',
     };
   }
-
   // ==================== SEARCH ROUTES ====================
 
   @Post('search')

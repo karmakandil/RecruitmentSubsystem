@@ -38,6 +38,7 @@ import {
 } from './enums/employee-profile.enums';
 
 import { RegisterCandidateDto } from './dto/register-candidate.dto';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class EmployeeProfileService {
@@ -52,30 +53,70 @@ export class EmployeeProfileService {
     private systemRoleModel: Model<EmployeeSystemRole>,
     @InjectModel(EmployeeQualification.name)
     private qualificationModel: Model<EmployeeQualification>,
-  ) {}
+  ) {
+    // Configure Cloudinary (add to your service constructor)
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+  }
 
   // ==================== EMPLOYEE CRUD ====================
 
+  // employee-profile.service.ts
   async create(createEmployeeDto: CreateEmployeeDto): Promise<EmployeeProfile> {
     // Check for duplicate national ID
-    const existingEmployee = await this.employeeModel
-      .findOne({ nationalId: createEmployeeDto.nationalId })
-      .exec();
+    // Only check for duplicate if NOT creating from candidate
+    if (!createEmployeeDto.candidateId) {
+      const existingEmployee = await this.employeeModel
+        .findOne({ nationalId: createEmployeeDto.nationalId })
+        .exec();
 
-    if (existingEmployee) {
-      throw new ConflictException(
-        'Employee with this National ID already exists',
+      if (existingEmployee) {
+        throw new ConflictException(
+          'Employee with this National ID already exists',
+        );
+      }
+    }
+
+    // Handle candidate password if candidateId is provided
+    let hashedPassword: string | undefined;
+    let candidateToUpdate: CandidateDocument | null = null;
+
+    if (createEmployeeDto.candidateId) {
+      // 1. Find the candidate
+      candidateToUpdate = await this.candidateModel.findById(
+        createEmployeeDto.candidateId,
       );
+
+      if (!candidateToUpdate) {
+        throw new NotFoundException(
+          `Candidate with ID ${createEmployeeDto.candidateId} not found`,
+        );
+      }
+
+      // 2. Validate candidate national ID matches employee national ID
+      if (candidateToUpdate.nationalId !== createEmployeeDto.nationalId) {
+        throw new BadRequestException(
+          'Candidate national ID does not match employee national ID',
+        );
+      }
+
+      // 3. Use candidate's password if exists
+      if (candidateToUpdate.password) {
+        hashedPassword = candidateToUpdate.password; // Already hashed
+      } else if (createEmployeeDto.password) {
+        // If candidate has no password but DTO provides one, hash it
+        hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
+      }
+    } else if (createEmployeeDto.password) {
+      // No candidateId, but password provided in DTO
+      hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
     }
 
     // Generate employee number
     const employeeNumber = await this.generateEmployeeNumber();
-
-    // Hash password if provided
-    let hashedPassword: string | undefined;
-    if (createEmployeeDto.password) {
-      hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
-    }
 
     // Create full name
     const fullName = [
@@ -86,6 +127,7 @@ export class EmployeeProfileService {
       .filter(Boolean)
       .join(' ');
 
+    // Create employee
     const employee = new this.employeeModel({
       ...createEmployeeDto,
       employeeNumber,
@@ -103,6 +145,19 @@ export class EmployeeProfileService {
       roles: [SystemRole.DEPARTMENT_EMPLOYEE],
       isActive: true,
     });
+
+    // Update candidate status if candidateId was provided
+    if (candidateToUpdate) {
+      // Option 1: Update candidate status to "CONVERTED"
+      candidateToUpdate.status = CandidateStatus.HIRED;
+      await candidateToUpdate.save();
+
+      // Option 2: Or you could deactivate candidate login
+      // await this.systemRoleModel.updateOne(
+      //   { employeeProfileId: candidateToUpdate._id },
+      //   { isActive: false }
+      // );
+    }
 
     return savedEmployee;
   }
@@ -314,15 +369,40 @@ export class EmployeeProfileService {
   ): Promise<string> {
     await this.findOne(id);
 
-    // In a real application, you would upload to cloud storage (AWS S3, Cloudinary, etc.)
-    // For now, we'll simulate returning a URL
-    const profilePictureUrl = `https://storage.example.com/profiles/${id}/photo.jpg`;
+    try {
+      // Upload to Cloudinary
+      const uploadResult = await new Promise<any>((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'employee-profiles',
+            public_id: id,
+            overwrite: true,
+            transformation: [
+              { width: 400, height: 400, crop: 'fill' },
+              { quality: 'auto' },
+            ],
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          },
+        );
 
-    await this.employeeModel
-      .findByIdAndUpdate(id, { $set: { profilePictureUrl } }, { new: true })
-      .exec();
+        uploadStream.end(photo.buffer);
+      });
 
-    return profilePictureUrl;
+      const profilePictureUrl = uploadResult.secure_url;
+
+      await this.employeeModel
+        .findByIdAndUpdate(id, { $set: { profilePictureUrl } }, { new: true })
+        .exec();
+
+      return profilePictureUrl;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException('Failed to upload photo: ' + errorMessage);
+    }
   }
 
   async remove(id: string): Promise<void> {
@@ -1150,8 +1230,36 @@ export class EmployeeProfileService {
   }
 
   async exportToExcel(query: QueryEmployeeDto): Promise<Buffer> {
-    const { data: employees } = await this.findAll(query);
+    // Build filter query (same as findAll but without pagination)
+    const filterQuery: any = {};
 
+    // Copy filter logic from your findAll method:
+    if (query.search) {
+      filterQuery.$or = [
+        { employeeNumber: { $regex: query.search, $options: 'i' } },
+        { fullName: { $regex: query.search, $options: 'i' } },
+        { workEmail: { $regex: query.search, $options: 'i' } },
+        { personalEmail: { $regex: query.search, $options: 'i' } },
+      ];
+    }
+
+    if (query.status) {
+      filterQuery.status = query.status;
+    }
+
+    if (query.departmentId) {
+      filterQuery.primaryDepartmentId = query.departmentId;
+    }
+
+    // Get ALL employees matching filters (no limit)
+    const employees = await this.employeeModel
+      .find(filterQuery)
+      .populate('primaryDepartmentId')
+      .populate('primaryPositionId')
+      .lean()
+      .exec();
+
+    // Rest of your existing export code...
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Employees');
 

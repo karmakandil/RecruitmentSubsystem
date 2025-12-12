@@ -16,6 +16,9 @@ import { Toast, useToast } from "@/components/leaves/Toast";
 import { employeeProfileApi } from "@/lib/api/employee-profile/profile";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 
+import RoleAssignmentSection from "@/components/employee-profile/RoleAssignmentSection";
+import EducationSection from "@/components/employee-profile/EducationSection";
+
 export default function ManageProfilePage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -168,7 +171,6 @@ export default function ManageProfilePage() {
               </div>
             </CardContent>
           </Card>
-
           {/* Employment Information */}
           <Card>
             <CardHeader>
@@ -198,7 +200,6 @@ export default function ManageProfilePage() {
               ))}
             </CardContent>
           </Card>
-
           {/* Contact Information */}
           <Card className="lg:col-span-2">
             <CardHeader>
@@ -221,7 +222,6 @@ export default function ManageProfilePage() {
               </div>
             </CardContent>
           </Card>
-
           {/* Organization */}
           <Card>
             <CardHeader>
@@ -241,6 +241,34 @@ export default function ManageProfilePage() {
                   {profile.primaryPosition?.title || "Not assigned"}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Education & Qualifications */}
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Education & Qualifications</CardTitle>
+              <CardDescription>
+                Employee's educational background
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EducationSection employeeId={id} isHR={true} />
+            </CardContent>
+          </Card>
+          {/* Role Management */}
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Role & Access Management</CardTitle>
+              <CardDescription>
+                Assign system roles and permissions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RoleAssignmentSection
+                employeeId={id}
+                currentUserRoles={(user?.roles as SystemRole[]) || []}
+              />
             </CardContent>
           </Card>
         </div>

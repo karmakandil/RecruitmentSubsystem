@@ -13,6 +13,7 @@ type AuthState = {
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
   initialize: () => void;
+  updateUser: (updates: Partial<User>) => void; // ADD THIS
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -79,6 +80,24 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       token: null,
       isAuthenticated: false,
+    });
+  },
+
+  updateUser: (updates) => {
+    set((state) => {
+      if (!state.user) return state;
+
+      const updatedUser = {
+        ...state.user,
+        ...updates,
+      };
+
+      // Also update localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
+
+      return { user: updatedUser };
     });
   },
 }));

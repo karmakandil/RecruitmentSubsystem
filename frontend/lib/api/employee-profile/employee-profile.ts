@@ -5,6 +5,11 @@ import type {
   ProfileChangeRequest,
   TeamMember,
   UpdateProfileDto,
+  EmployeeQualification,
+  CreateQualificationDto,
+  UpdateQualificationDto,
+  GraduationType,
+  SystemRole,
 } from "@/types";
 
 // Helper to extract data from nested responses
@@ -85,16 +90,18 @@ export const employeeProfileApi = {
     api.patch<EmployeeProfile>("/employee-profile/me", data),
 
   // Upload profile picture
-  uploadProfilePicture: (formData: FormData) =>
-    api.post<{ profilePictureUrl: string }>(
-      "/employee-profile/me/photo",
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+  uploadProfilePicture: async (
+    formData: FormData
+  ): Promise<{ profilePictureUrl: string }> => {
+    const response = await api.post("/employee-profile/me/photo", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return (
+      extractData<{ profilePictureUrl: string }>(response) || {
+        profilePictureUrl: "",
       }
-    ),
+    );
+  },
 
   // Get employee by ID (for HR/admin views)
   getEmployeeById: async (id: string) => {
@@ -353,4 +360,94 @@ export const employeeProfileApi = {
       return [];
     }
   },
+
+  // ==================== QUALIFICATION METHODS ====================
+
+  // Get my qualifications
+  getMyQualifications: async (): Promise<EmployeeQualification[]> => {
+    const response = await api.get<EmployeeQualification[]>(
+      "/employee-profile/qualification/my-qualifications"
+    );
+    return extractData<EmployeeQualification[]>(response) || [];
+  },
+
+  // Add qualification for myself
+  addMyQualification: (data: CreateQualificationDto) =>
+    api.post<EmployeeQualification>("/employee-profile/qualification", data),
+
+  // Update my qualification
+  updateMyQualification: (
+    qualificationId: string,
+    data: UpdateQualificationDto
+  ) =>
+    api.patch<EmployeeQualification>(
+      `/employee-profile/qualifications/${qualificationId}`,
+      data
+    ),
+
+  // Delete my qualification
+  deleteMyQualification: (qualificationId: string) =>
+    api.delete(`/employee-profile/qualifications/${qualificationId}`),
+
+  // HR Admin: Get qualifications for employee
+  getEmployeeQualifications: async (
+    employeeId: string
+  ): Promise<EmployeeQualification[]> => {
+    const response = await api.get<EmployeeQualification[]>(
+      `/employee-profile/${employeeId}/qualifications`
+    );
+    return extractData<EmployeeQualification[]>(response) || [];
+  },
+
+  // HR Admin: Add qualification for employee
+  addEmployeeQualification: (
+    employeeId: string,
+    data: CreateQualificationDto
+  ) =>
+    api.post<EmployeeQualification>(
+      `/employee-profile/${employeeId}/qualifications`,
+      data
+    ),
+
+  // ==================== ROLE MANAGEMENT METHODS ====================
+
+  // Get employee roles
+  getEmployeeRoles: async (
+    employeeId: string
+  ): Promise<{
+    roles: SystemRole[];
+    permissions: string[];
+    isActive: boolean;
+  }> => {
+    const response = await api.get(`/employee-profile/${employeeId}/roles`);
+    return (
+      extractData(response) || { roles: [], permissions: [], isActive: true }
+    );
+  },
+
+  // Assign roles to employee
+  assignEmployeeRoles: (
+    employeeId: string,
+    roles: SystemRole[],
+    permissions?: string[]
+  ) =>
+    api.post(`/employee-profile/${employeeId}/roles`, {
+      roles,
+      permissions: permissions || [],
+    }),
+
+  // Update employee roles
+  updateEmployeeRoles: (
+    employeeId: string,
+    roles?: SystemRole[],
+    permissions?: string[]
+  ) =>
+    api.patch(`/employee-profile/${employeeId}/roles`, {
+      roles,
+      permissions,
+    }),
+
+  // Deactivate employee roles
+  deactivateEmployeeRoles: (employeeId: string) =>
+    api.patch(`/employee-profile/${employeeId}/roles/deactivate`),
 };
