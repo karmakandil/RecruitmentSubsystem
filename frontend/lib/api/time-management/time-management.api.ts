@@ -44,19 +44,32 @@ export const timeManagementApi = {
     limit?: number;
     offset?: number;
   }): Promise<any> => {
-    // Calculate date range - default to last 30 days
-    const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
-    const startDate = filters?.startDate 
-      ? new Date(filters.startDate)
-      : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    try {
+      // Calculate date range - default to last 30 days
+      const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
+      const startDate = filters?.startDate 
+        ? new Date(filters.startDate)
+        : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    return await api.post('/time-management/reports/employee-attendance-history', {
-      employeeId,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-      includeExceptions: true,
-      includeOvertime: true,
-    });
+      const payload = {
+        employeeId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        includeExceptions: true,
+        includeOvertime: true,
+      };
+
+      console.log('Fetching attendance records with payload:', payload);
+
+      const response = await api.post('/time-management/reports/employee-attendance-history', payload);
+      
+      console.log('Attendance records response:', response);
+      
+      return response;
+    } catch (error: any) {
+      console.error('Error fetching attendance records:', error);
+      throw error;
+    }
   },
 
   // Submit correction request

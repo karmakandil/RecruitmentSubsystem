@@ -25,14 +25,45 @@ export default function AttendanceRecordsPage() {
       try {
         setLoading(true);
         setError(null);
+        
+        console.log('Fetching records for user:', user?.id);
+        console.log('Filters:', filters);
+        
         const response = await timeManagementApi.getAttendanceRecords(user.id, {
           startDate: filters.startDate || undefined,
           endDate: filters.endDate || undefined,
         });
         
+        console.log('Full API Response:', response);
+        console.log('Response type:', typeof response);
+        console.log('Response keys:', response ? Object.keys(response) : 'null');
+        
         // Handle different response formats
-        const records = response?.records || response?.attendanceRecords || response || [];
-        setRecords(Array.isArray(records) ? records : []);
+        // The backend returns { reportType, records, summary, ... }
+        let records = [];
+        
+        // Check if response has data property (in case of double wrapping)
+        const responseData = response?.data || response;
+        console.log('Response data to extract from:', responseData);
+        
+        if (responseData?.records && Array.isArray(responseData.records)) {
+          records = responseData.records;
+          console.log('Found records in response.records');
+        } else if (responseData?.attendanceRecords && Array.isArray(responseData.attendanceRecords)) {
+          records = responseData.attendanceRecords;
+          console.log('Found records in response.attendanceRecords');
+        } else if (Array.isArray(responseData)) {
+          records = responseData;
+          console.log('Response itself is an array');
+        } else {
+          console.warn('Unexpected response format:', responseData);
+          records = [];
+        }
+        
+        console.log('Extracted records count:', records.length);
+        console.log('Extracted records:', records);
+        
+        setRecords(records);
       } catch (err: any) {
         console.error("Failed to fetch records:", err);
         setError(err?.message || "Failed to load attendance records");
@@ -123,6 +154,15 @@ export default function AttendanceRecordsPage() {
           {loading ? (
             <div className="text-center py-8">
               <p className="text-gray-500">Loading attendance records...</p>
+            </div>
+          ) : records.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No attendance records found</p>
+              <p className="text-gray-400 text-sm mt-2">
+                {filters.startDate || filters.endDate 
+                  ? "Try adjusting your date filters to see records."
+                  : "Clock in to create your first attendance record."}
+              </p>
             </div>
           ) : (
             <AttendanceRecordTable records={records} />

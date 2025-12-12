@@ -25,9 +25,37 @@ export default function AttendancePage() {
         setLoading(true);
         setError(null);
         const response = await timeManagementApi.getAttendanceRecords(user.id);
+        
+        console.log('Full API Response:', response);
+        console.log('Response type:', typeof response);
+        console.log('Response keys:', response ? Object.keys(response) : 'null');
+        
         // Handle different response formats
-        const records = response?.records || response?.attendanceRecords || response || [];
-        setAttendanceRecords(Array.isArray(records) ? records : []);
+        // The backend returns { reportType, records, summary, ... }
+        let records = [];
+        
+        // Check if response has data property (in case of double wrapping)
+        const responseData = response?.data || response;
+        console.log('Response data to extract from:', responseData);
+        
+        if (responseData?.records && Array.isArray(responseData.records)) {
+          records = responseData.records;
+          console.log('Found records in response.records');
+        } else if (responseData?.attendanceRecords && Array.isArray(responseData.attendanceRecords)) {
+          records = responseData.attendanceRecords;
+          console.log('Found records in response.attendanceRecords');
+        } else if (Array.isArray(responseData)) {
+          records = responseData;
+          console.log('Response itself is an array');
+        } else {
+          console.warn('Unexpected response format:', responseData);
+          records = [];
+        }
+        
+        console.log('Extracted records count:', records.length);
+        console.log('Extracted records:', records);
+        
+        setAttendanceRecords(records);
       } catch (err: any) {
         console.error("Failed to fetch attendance records:", err);
         setError(err?.message || "Failed to load attendance records");
