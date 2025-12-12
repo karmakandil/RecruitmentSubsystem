@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/hooks/use-auth";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { timeManagementApi } from "@/lib/api/time-management/time-management.api";
 import {
@@ -16,6 +15,8 @@ import { Input } from "@/components/shared/ui/Input";
 import { Select } from "@/components/leaves/Select";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
+import { CorrectionRequestList } from "@/components/time-management/CorrectionRequestList";
+import Link from "next/link";
 
 export default function AttendanceCorrectionsPage() {
   const { user } = useAuth();
@@ -39,12 +40,11 @@ export default function AttendanceCorrectionsPage() {
 
   // Check if user is admin
   useEffect(() => {
-    if (user?.roles?.includes(SystemRole.HR_ADMIN) || user?.roles?.includes(SystemRole.SYSTEM_ADMIN)) {
+    if (user?.roles?.includes(SystemRole.HR_ADMIN) || user?.roles?.includes(SystemRole.SYSTEM_ADMIN) || user?.roles?.includes(SystemRole.DEPARTMENT_HEAD)) {
       setIsAdmin(true);
     } else {
       setIsAdmin(false);
-      setAccessError("You don't have permission to access this page. Only HR admins can manage correction requests.");
-      setLoading(false);
+      setAccessError(null); // Employees are allowed to view/submit; only admin actions are gated
     }
   }, [user?.roles]);
 
@@ -241,23 +241,25 @@ export default function AttendanceCorrectionsPage() {
         onClose={hideToast}
       />
 
-      {accessError && (
-        <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-700 font-medium">{accessError}</p>
-          <p className="text-red-600 text-sm mt-2">
-            Please contact your HR administrator if you need access to this feature.
-          </p>
+      {!isAdmin ? (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">My Correction Requests</h1>
+              <p className="text-gray-600 mt-1">
+                Submit and track your own attendance correction requests
+              </p>
+            </div>
+            <Link
+              href="/dashboard/employee-profile/time-management"
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Request a Correction →
+            </Link>
+          </div>
+          <CorrectionRequestList />
         </div>
-      )}
-
-      {!isAdmin && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 text-lg">Access Denied</p>
-          <p className="text-gray-400">You don't have permission to view this page.</p>
-        </div>
-      )}
-
-      {isAdmin && (
+      ) : (
         <>
           <div className="mb-8 flex items-center justify-between">
             <div>
@@ -409,6 +411,8 @@ export default function AttendanceCorrectionsPage() {
                               View
                             </Button>
                             {canApproveOrReject(request.status) && (
+                              <>
+                            {isAdmin && (
                               <>
                                 <Button
                                   variant="primary"

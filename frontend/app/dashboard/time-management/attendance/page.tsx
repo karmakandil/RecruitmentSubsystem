@@ -119,12 +119,21 @@ export default function AttendancePage() {
             >
               View Detailed Records
             </Link>
-            <Link
-              href="/dashboard/time-management/attendance/corrections"
-              className="block text-blue-600 hover:underline font-medium"
-            >
-              Correction Requests
-            </Link>
+                {isAdmin ? (
+                  <Link
+                    href="/dashboard/time-management/attendance/corrections"
+                    className="block text-blue-600 hover:underline font-medium"
+                  >
+                    Correction Requests
+                  </Link>
+                ) : (
+                  <Link
+                    href="/dashboard/employee-profile/time-management"
+                    className="block text-blue-600 hover:underline font-medium"
+                  >
+                    Correction Requests
+                  </Link>
+                )}
             <Link
               href="/dashboard/time-management"
               className="block text-blue-600 hover:underline font-medium"
