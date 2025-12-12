@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 import { SystemRole } from "@/types";
 
@@ -125,6 +126,9 @@ export default function Header() {
                 My Profile
               </Link>
             )}
+
+            {/* Notification Bell - Available for All Users */}
+            <NotificationBell />
 
             <span className="text-sm text-gray-600">
               Welcome, {user?.fullName || user?.firstName}
