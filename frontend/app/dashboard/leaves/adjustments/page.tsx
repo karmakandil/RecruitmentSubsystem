@@ -6,6 +6,7 @@ import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { leavesApi } from "@/lib/api/leaves/leaves";
 import { authApi } from "@/lib/api/auth/auth";
+import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
 import { LeaveAdjustment, CreateLeaveAdjustmentDto } from "@/types/leaves";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
@@ -35,13 +36,56 @@ export default function LeaveAdjustmentsPage() {
     hrUserId: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // NEW: State for dropdown options
+  const [employees, setEmployees] = useState<Array<{ _id: string; employeeId: string; firstName: string; lastName: string }>>([]);
+  const [leaveTypes, setLeaveTypes] = useState<Array<{ _id: string; name: string; code?: string }>>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [loadingLeaveTypes, setLoadingLeaveTypes] = useState(false);
 
   useEffect(() => {
     const userId = authApi.getUserId();
     if (userId) {
       setFormData((prev) => ({ ...prev, hrUserId: userId }));
     }
+    // Load dropdown options
+    loadEmployees();
+    loadLeaveTypes();
   }, []);
+
+  // NEW: Load employees for dropdown
+  const loadEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+      const employeesList = Array.isArray(response.data) ? response.data : [];
+      setEmployees(employeesList.map((emp: any) => ({
+        _id: emp._id,
+        employeeId: emp.employeeId || emp._id,
+        firstName: emp.firstName || '',
+        lastName: emp.lastName || '',
+      })));
+    } catch (error: any) {
+      console.error("Failed to load employees:", error);
+      showToast("Failed to load employees list", "error");
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  // NEW: Load leave types for dropdown
+  const loadLeaveTypes = async () => {
+    try {
+      setLoadingLeaveTypes(true);
+      const types = await leavesApi.getLeaveTypes();
+      setLeaveTypes(types);
+    } catch (error: any) {
+      console.error("Failed to load leave types:", error);
+      showToast("Failed to load leave types", "error");
+    } finally {
+      setLoadingLeaveTypes(false);
+    }
+  };
 
   const loadAdjustments = async () => {
     if (!employeeId) {
@@ -151,13 +195,22 @@ export default function LeaveAdjustmentsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-3">
-            <Input
-              label="Employee ID"
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              placeholder="Enter employee ID"
-              className="flex-1"
-            />
+            <div className="flex-1">
+              <Select
+                label="Employee ID"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                options={
+                  employees.length > 0
+                    ? employees.map((emp) => ({
+                        value: emp.employeeId || emp._id,
+                        label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                      }))
+                    : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+                }
+                placeholder="Select employee"
+              />
+            </div>
             <div className="flex items-end">
               <Button onClick={loadAdjustments} disabled={!employeeId}>
                 Load Adjustments
@@ -196,31 +249,44 @@ export default function LeaveAdjustmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {adjustments.map((adjustment) => (
-                <tr key={adjustment._id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-4">{adjustment.employeeId}</td>
-                  <td className="py-3 px-4">{adjustment.leaveTypeId}</td>
-                  <td className="py-3 px-4 capitalize">{adjustment.adjustmentType}</td>
-                  <td className="py-3 px-4">{adjustment.amount}</td>
-                  <td className="py-3 px-4">{adjustment.reason}</td>
-                  <td className="py-3 px-4">
-                    {adjustment.createdAt
-                      ? new Date(adjustment.createdAt).toLocaleDateString()
-                      : "N/A"}
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenDelete(adjustment)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {adjustments.map((adjustment) => {
+                // FIXED: Handle populated objects from backend
+                // employeeId can be a string or populated object with {_id, employeeId, firstName, lastName}
+                const employeeIdDisplay = typeof adjustment.employeeId === 'object' && adjustment.employeeId !== null
+                  ? (adjustment.employeeId as any).employeeId || (adjustment.employeeId as any)._id || 'N/A'
+                  : adjustment.employeeId || 'N/A';
+                
+                // leaveTypeId can be a string or populated object with {_id, name, code}
+                const leaveTypeDisplay = typeof adjustment.leaveTypeId === 'object' && adjustment.leaveTypeId !== null
+                  ? (adjustment.leaveTypeId as any).name || (adjustment.leaveTypeId as any).code || (adjustment.leaveTypeId as any)._id || 'N/A'
+                  : adjustment.leaveTypeId || 'N/A';
+                
+                return (
+                  <tr key={adjustment._id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4">{employeeIdDisplay}</td>
+                    <td className="py-3 px-4">{leaveTypeDisplay}</td>
+                    <td className="py-3 px-4 capitalize">{adjustment.adjustmentType}</td>
+                    <td className="py-3 px-4">{adjustment.amount}</td>
+                    <td className="py-3 px-4">{adjustment.reason}</td>
+                    <td className="py-3 px-4">
+                      {adjustment.createdAt
+                        ? new Date(adjustment.createdAt).toLocaleDateString()
+                        : "N/A"}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenDelete(adjustment)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -241,23 +307,39 @@ export default function LeaveAdjustmentsPage() {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
+          <Select
             label="Employee ID *"
             value={formData.employeeId}
             onChange={(e) =>
               setFormData({ ...formData, employeeId: e.target.value })
             }
             error={errors.employeeId}
-            placeholder="Employee ID"
+            options={
+              employees.length > 0
+                ? employees.map((emp) => ({
+                    value: emp.employeeId || emp._id,
+                    label: `${emp.employeeId || emp._id} - ${emp.firstName} ${emp.lastName}`,
+                  }))
+                : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+            }
+            placeholder="Select employee"
           />
-          <Input
-            label="Leave Type ID *"
+          <Select
+            label="Leave Type *"
             value={formData.leaveTypeId}
             onChange={(e) =>
               setFormData({ ...formData, leaveTypeId: e.target.value })
             }
             error={errors.leaveTypeId}
-            placeholder="Leave Type ID"
+            options={
+              leaveTypes.length > 0
+                ? leaveTypes.map((type) => ({
+                    value: type._id,
+                    label: `${type.name}${type.code ? ` (${type.code})` : ''}`,
+                  }))
+                : [{ value: "", label: loadingLeaveTypes ? "Loading leave types..." : "No leave types available" }]
+            }
+            placeholder="Select leave type"
           />
           <Select
             label="Adjustment Type *"

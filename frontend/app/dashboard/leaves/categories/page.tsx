@@ -37,12 +37,17 @@ export default function LeaveCategoriesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      // TODO: Uncomment when backend endpoint is ready
-      // const data = await leavesApi.getLeaveCategories();
-      // setCategories(data);
-      setCategories([]);
+      // ENHANCED: Load leave categories from backend
+      const data = await leavesApi.getLeaveCategories();
+      setCategories(data);
     } catch (error: any) {
-      showToast(error.message || "Failed to load leave categories", "error");
+      // If endpoint doesn't exist or fails, show empty array
+      console.warn("Failed to load leave categories:", error);
+      setCategories([]);
+      // Only show error toast if it's not a 404/not found error
+      if (!error.message?.includes("not available") && !error.message?.includes("404") && !error.message?.includes("not found")) {
+        showToast(error.message || "Failed to load leave categories", "error");
+      }
     } finally {
       setLoading(false);
     }

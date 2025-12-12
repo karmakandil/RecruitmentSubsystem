@@ -104,19 +104,22 @@ export default function LeavesPage() {
         </Card>
       )}
 
-      {/* HR Manager Section - Empty for now (different requirements) */}
+      {/* NEW CODE: HR Manager Section - Only for HR_MANAGER (HR_ADMIN excluded) */}
       {isHRManager && !isHRAdmin && (
-        <Card>
+        <Card className="mb-6 border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle>Leaves Management</CardTitle>
-            <CardDescription>
-              HR Manager leaves management features are coming soon
+            <CardTitle className="text-blue-900">HR Manager Actions</CardTitle>
+            <CardDescription className="text-blue-700">
+              Finalize approved requests, override decisions, and process requests in bulk
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600 text-center py-8">
-              This section is under development. HR Manager-specific leave management features will be available here.
-            </p>
+            <Link 
+              href="/dashboard/leaves/hr-manager" 
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Manage Leave Requests →
+            </Link>
           </CardContent>
         </Card>
       )}
