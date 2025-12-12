@@ -38,7 +38,7 @@ export default function CreateLeaveRequestPage() {
       handleSuccess();
     } catch (error: any) {
       handleError(error.message || "Failed to create leave request");
-      throw error; // Re-throw to let form handle it
+      throw error; 
     }
   };
 
