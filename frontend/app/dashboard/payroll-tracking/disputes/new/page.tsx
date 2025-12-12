@@ -33,16 +33,24 @@ export default function NewDisputePage() {
 
       try {
         const employeeId = user.id || user.userId;
+        console.log("Fetching payslips for employee:", employeeId);
         const data = await payslipsApi.getPayslipsByEmployeeId(employeeId!);
-        setPayslips(data);
+        console.log("Payslips received:", data);
+        setPayslips(Array.isArray(data) ? data : []);
+        if (Array.isArray(data) && data.length === 0) {
+          setError("No payslips found. You need at least one payslip to create a dispute.");
+        }
       } catch (err: any) {
+        console.error("Error fetching payslips:", err);
         setError(err.message || "Failed to load payslips");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPayslips();
+    if (user) {
+      fetchPayslips();
+    }
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -142,8 +150,13 @@ export default function NewDisputePage() {
                 onChange={(e) => setSelectedPayslipId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={payslips.length === 0}
               >
-                <option value="">-- Select a payslip --</option>
+                <option value="">
+                  {payslips.length === 0 
+                    ? "-- No payslips available --" 
+                    : "-- Select a payslip --"}
+                </option>
                 {payslips.map((payslip) => (
                   <option key={payslip._id} value={payslip._id}>
                     {payslip.payrollRunId?.payrollPeriod
@@ -152,6 +165,12 @@ export default function NewDisputePage() {
                   </option>
                 ))}
               </select>
+              {payslips.length === 0 && !loading && (
+                <p className="mt-2 text-sm text-amber-600">
+                  ⚠️ No payslips found. You need at least one payslip to create a dispute. 
+                  Payslips are generated after payroll runs are processed.
+                </p>
+              )}
               {selectedPayslipId && (
                 <p className="mt-2 text-sm text-gray-500">
                   <Link

@@ -44,11 +44,34 @@ export default function TaxDocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
-  useRequireAuth(SystemRole.DEPARTMENT_EMPLOYEE);
+  // Allow employees, payroll specialists, payroll managers, finance staff, and system admins
+  const allowedRoles = [
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN,
+  ];
+  useRequireAuth(allowedRoles);
 
   useEffect(() => {
     const fetchTaxDocuments = async () => {
+      // For staff roles (Payroll Specialist, Payroll Manager, Finance Staff), they might not have an employee ID
+      const isStaff = user?.roles?.some(
+        (role) =>
+          role === SystemRole.PAYROLL_SPECIALIST ||
+          role === SystemRole.PAYROLL_MANAGER ||
+          role === SystemRole.FINANCE_STAFF ||
+          role === SystemRole.SYSTEM_ADMIN
+      );
+
       if (!user?.id && !user?.userId) {
+        if (isStaff) {
+          // Staff members might not have employee profiles - show empty state
+          setTaxDocumentsData(null);
+          setLoading(false);
+          return;
+        }
         setError("User ID not found");
         setLoading(false);
         return;
@@ -59,13 +82,20 @@ export default function TaxDocumentsPage() {
         const data = await payslipsApi.getTaxDocuments(employeeId!, selectedYear);
         setTaxDocumentsData(data);
       } catch (err: any) {
-        setError(err.message || "Failed to load tax documents");
+        // If error is 403 and user is staff, show empty state instead of error
+        if (isStaff && err.message?.includes('403')) {
+          setTaxDocumentsData(null);
+        } else {
+          setError(err.message || "Failed to load tax documents");
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTaxDocuments();
+    if (user) {
+      fetchTaxDocuments();
+    }
   }, [user, selectedYear]);
 
   const formatCurrency = (amount?: number) => {

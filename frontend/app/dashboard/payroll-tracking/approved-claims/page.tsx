@@ -250,7 +250,7 @@ export default function ApprovedClaimsPage() {
                     )}
                   </div>
                   <div className="ml-4 flex flex-col gap-2">
-                    <Link href={`/dashboard/payroll-tracking/claims/${claim._id}`}>
+                    <Link href={`/dashboard/payroll-tracking/claims/${claim.claimId}`}>
                       <Button variant="outline" size="sm">
                         View Details
                       </Button>

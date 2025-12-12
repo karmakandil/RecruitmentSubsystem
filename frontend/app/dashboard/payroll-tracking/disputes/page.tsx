@@ -41,29 +41,58 @@ export default function DisputesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useRequireAuth(SystemRole.DEPARTMENT_EMPLOYEE);
+  // Allow employees, payroll specialists, payroll managers, finance staff, and system admins
+  const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+  const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER);
+  const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF);
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
+  const isEmployee = user?.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+  
+  const allowedRoles = [
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN,
+  ];
+  
+  useRequireAuth(allowedRoles);
 
   useEffect(() => {
     const fetchDisputes = async () => {
-      if (!user?.id && !user?.userId) {
-        setError("User ID not found");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const employeeId = user.id || user.userId;
-        const data = await payslipsApi.getDisputesByEmployeeId(employeeId!);
-        setDisputes(data);
+        let data;
+        
+        // If user is an employee, fetch only their disputes
+        if (isEmployee && (user?.id || user?.userId)) {
+          const employeeId = user.id || user.userId;
+          data = await payslipsApi.getDisputesByEmployeeId(employeeId!);
+        } else if (isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) {
+          // For payroll staff, fetch all disputes (regardless of status)
+          data = await payslipsApi.getAllDisputes();
+        } else {
+          setError("User ID not found");
+          setLoading(false);
+          return;
+        }
+        
+        setDisputes(Array.isArray(data) ? data : []);
       } catch (err: any) {
-        setError(err.message || "Failed to load disputes");
+        // If error is 403 and user is payroll staff, show empty state instead of error
+        if ((isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) && err.message?.includes('403')) {
+          setDisputes([]);
+        } else {
+          setError(err.message || "Failed to load disputes");
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDisputes();
-  }, [user]);
+    if (user) {
+      fetchDisputes();
+    }
+  }, [user, isEmployee, isPayrollSpecialist, isPayrollManager, isFinanceStaff, isSystemAdmin]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
@@ -147,17 +176,34 @@ export default function DisputesPage() {
     <div className="container mx-auto px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Payroll Disputes</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isEmployee ? "My Payroll Disputes" : "All Payroll Disputes"}
+          </h1>
           <p className="text-gray-600 mt-1">
-            Track and manage your payroll disputes
+            {isEmployee 
+              ? "Track and manage your payroll disputes"
+              : "View and manage all payroll disputes"}
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/dashboard/payroll-tracking/disputes/new">
-            <Button>Create New Dispute</Button>
-          </Link>
-          <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
-            Back to Payroll
+          {isEmployee && (
+            <Link href="/dashboard/payroll-tracking/disputes/new">
+              <Button>Create New Dispute</Button>
+            </Link>
+          )}
+          <Button variant="outline" onClick={() => {
+            // Redirect based on user role
+            if (isPayrollManager) {
+              router.push("/dashboard/payroll-manager");
+            } else if (isPayrollSpecialist) {
+              router.push("/dashboard/payroll-specialist");
+            } else if (isFinanceStaff) {
+              router.push("/dashboard/finance");
+            } else {
+              router.push("/dashboard/payroll-tracking");
+            }
+          }}>
+            Back
           </Button>
         </div>
       </div>
@@ -211,7 +257,7 @@ export default function DisputesPage() {
                     )}
                   </div>
                   <div className="ml-4">
-                    <Link href={`/dashboard/payroll-tracking/disputes/${dispute._id}`}>
+                    <Link href={`/dashboard/payroll-tracking/disputes/${dispute.disputeId}`}>
                       <Button variant="outline" size="sm">
                         View Details
                       </Button>

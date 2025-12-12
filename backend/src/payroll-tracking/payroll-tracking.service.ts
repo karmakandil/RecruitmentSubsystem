@@ -517,13 +517,28 @@ export class PayrollTrackingService {
         throw new BadRequestException('Claim ID is required');
       }
 
-      const claim = await this.claimModel
-        .findOne({ claimId })
-        .populate('employeeId', 'firstName lastName employeeNumber')
-        .populate('payrollSpecialistId', 'firstName lastName')
-        .populate('payrollManagerId', 'firstName lastName')
-        .populate('financeStaffId', 'firstName lastName')
-        .exec();
+      // Try to find by MongoDB _id first (if it's a valid ObjectId)
+      let claim = null;
+      if (Types.ObjectId.isValid(claimId)) {
+        claim = await this.claimModel
+          .findById(claimId)
+          .populate('employeeId', 'firstName lastName employeeNumber')
+          .populate('payrollSpecialistId', 'firstName lastName')
+          .populate('payrollManagerId', 'firstName lastName')
+          .populate('financeStaffId', 'firstName lastName')
+          .exec();
+      }
+      
+      // If not found by _id, try by claimId string
+      if (!claim) {
+        claim = await this.claimModel
+          .findOne({ claimId })
+          .populate('employeeId', 'firstName lastName employeeNumber')
+          .populate('payrollSpecialistId', 'firstName lastName')
+          .populate('payrollManagerId', 'firstName lastName')
+          .populate('financeStaffId', 'firstName lastName')
+          .exec();
+      }
 
     if (!claim) {
       throw new NotFoundException(`Claim with ID ${claimId} not found`);
@@ -644,14 +659,35 @@ export class PayrollTrackingService {
         employeeId,
         false,
       );
-      return await this.claimModel
-        .find({ employeeId: validEmployeeId })
-      .populate('employeeId', 'firstName lastName employeeNumber')
+
+      console.log(`[getClaimsByEmployeeId] Querying claims for employeeId: ${employeeId}, validEmployeeId: ${validEmployeeId}`);
+
+      // Build query with multiple formats
+      const queryConditions: any[] = [
+        { employeeId: validEmployeeId }
+      ];
+      
+      // Try with original employeeId as ObjectId if valid
+      if (Types.ObjectId.isValid(employeeId)) {
+        queryConditions.push({ employeeId: new Types.ObjectId(employeeId) });
+      }
+      
+      // Try with original employeeId as string
+      queryConditions.push({ employeeId: employeeId });
+
+      // Try multiple query formats to handle different storage formats
+      let claims = await this.claimModel
+        .find({ $or: queryConditions })
+        .populate('employeeId', 'firstName lastName employeeNumber')
         .populate('payrollSpecialistId', 'firstName lastName')
         .populate('payrollManagerId', 'firstName lastName')
-      .populate('financeStaffId', 'firstName lastName')
-      .sort({ createdAt: -1 })
-      .exec();
+        .populate('financeStaffId', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .exec();
+
+      console.log(`[getClaimsByEmployeeId] Found ${claims.length} claims for employeeId: ${employeeId}`);
+
+      return claims;
     } catch (error: any) {
       if (
         error instanceof BadRequestException ||
@@ -683,6 +719,24 @@ export class PayrollTrackingService {
     } catch (error: any) {
       throw new BadRequestException(
         `Failed to retrieve pending claims: ${error?.message || 'Unknown error'}`,
+      );
+    }
+  }
+
+  // Get all claims (for payroll staff to view all claims regardless of status)
+  async getAllClaims() {
+    try {
+      return await this.claimModel
+        .find({})
+        .populate('employeeId', 'firstName lastName employeeNumber')
+        .populate('payrollSpecialistId', 'firstName lastName')
+        .populate('payrollManagerId', 'firstName lastName')
+        .populate('financeStaffId', 'firstName lastName')
+        .sort({ createdAt: -1 })
+        .exec();
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Failed to retrieve all claims: ${error?.message || 'Unknown error'}`,
       );
     }
   }
@@ -1086,15 +1140,36 @@ export class PayrollTrackingService {
         employeeId,
         false,
       );
-      return await this.disputeModel
-        .find({ employeeId: validEmployeeId })
-      .populate('employeeId', 'firstName lastName employeeNumber')
+
+      console.log(`[getDisputesByEmployeeId] Querying disputes for employeeId: ${employeeId}, validEmployeeId: ${validEmployeeId}`);
+
+      // Build query with multiple formats
+      const queryConditions: any[] = [
+        { employeeId: validEmployeeId }
+      ];
+      
+      // Try with original employeeId as ObjectId if valid
+      if (Types.ObjectId.isValid(employeeId)) {
+        queryConditions.push({ employeeId: new Types.ObjectId(employeeId) });
+      }
+      
+      // Try with original employeeId as string
+      queryConditions.push({ employeeId: employeeId });
+
+      // Try multiple query formats to handle different storage formats
+      let disputes = await this.disputeModel
+        .find({ $or: queryConditions })
+        .populate('employeeId', 'firstName lastName employeeNumber')
         .populate('payrollSpecialistId', 'firstName lastName')
         .populate('payrollManagerId', 'firstName lastName')
-      .populate('financeStaffId', 'firstName lastName')
-      .populate('payslipId')
-      .sort({ createdAt: -1 })
-      .exec();
+        .populate('financeStaffId', 'firstName lastName')
+        .populate('payslipId')
+        .sort({ createdAt: -1 })
+        .exec();
+
+      console.log(`[getDisputesByEmployeeId] Found ${disputes.length} disputes for employeeId: ${employeeId}`);
+
+      return disputes;
     } catch (error: any) {
       if (
         error instanceof BadRequestException ||
@@ -1127,6 +1202,25 @@ export class PayrollTrackingService {
     } catch (error: any) {
       throw new BadRequestException(
         `Failed to retrieve pending disputes: ${error?.message || 'Unknown error'}`,
+      );
+    }
+  }
+
+  // Get all disputes (for payroll staff to view all disputes regardless of status)
+  async getAllDisputes() {
+    try {
+      return await this.disputeModel
+        .find({})
+        .populate('employeeId', 'firstName lastName employeeNumber')
+        .populate('payrollSpecialistId', 'firstName lastName')
+        .populate('payrollManagerId', 'firstName lastName')
+        .populate('financeStaffId', 'firstName lastName')
+        .populate('payslipId')
+        .sort({ createdAt: -1 })
+        .exec();
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Failed to retrieve all disputes: ${error?.message || 'Unknown error'}`,
       );
     }
   }
@@ -1414,6 +1508,12 @@ export class PayrollTrackingService {
    */
   async getRefundById(refundId: string) {
     try {
+      // Reject reserved route keywords that should not be treated as refund IDs
+      const reservedKeywords = ['all', 'pending', 'employee'];
+      if (reservedKeywords.includes(refundId?.toLowerCase())) {
+        throw new BadRequestException(`'${refundId}' is a reserved keyword and cannot be used as a refund ID`);
+      }
+      
       if (!refundId || !Types.ObjectId.isValid(refundId)) {
         throw new BadRequestException('Valid refund ID is required');
       }
@@ -1584,15 +1684,112 @@ export class PayrollTrackingService {
         false,
       );
 
-      return await this.refundModel
-        .find({ employeeId: validEmployeeId })
-      .populate('employeeId', 'firstName lastName employeeNumber')
-      .populate('financeStaffId', 'firstName lastName')
-      .populate('claimId')
-      .populate('disputeId')
-      .populate('paidInPayrollRunId')
-      .sort({ createdAt: -1 })
-      .exec();
+      console.log(`[getRefundsByEmployeeId] Querying refunds for employeeId: ${employeeId}, validEmployeeId: ${validEmployeeId}`);
+
+      // Build query with multiple formats
+      const queryConditions: any[] = [
+        { employeeId: validEmployeeId }
+      ];
+      
+      // Try with original employeeId as ObjectId if valid
+      if (Types.ObjectId.isValid(employeeId)) {
+        queryConditions.push({ employeeId: new Types.ObjectId(employeeId) });
+      }
+      
+      // Try with original employeeId as string
+      queryConditions.push({ employeeId: employeeId });
+
+      // Query refunds using the validated employeeId (which is an ObjectId)
+      // Try multiple query formats to handle different storage formats
+      let refunds = await this.refundModel
+        .find({ $or: queryConditions })
+        .populate('employeeId', 'firstName lastName employeeNumber')
+        .populate('financeStaffId', 'firstName lastName')
+        .populate('claimId')
+        .populate('disputeId')
+        .populate('paidInPayrollRunId')
+        .sort({ createdAt: -1 })
+        .exec();
+
+      console.log(`[getRefundsByEmployeeId] Found ${refunds.length} refunds by direct employeeId query`);
+
+      // If no refunds found directly, also check refunds associated with employee's claims/disputes
+      // This handles cases where refunds might be linked via claimId/disputeId
+      if (refunds.length === 0) {
+        // Get all claims and disputes for this employee
+        const employeeClaims = await this.claimModel.find({ 
+          $or: [
+            { employeeId: validEmployeeId },
+            { employeeId: new Types.ObjectId(employeeId) }
+          ]
+        }).select('_id').exec();
+        
+        const employeeDisputes = await this.disputeModel.find({ 
+          $or: [
+            { employeeId: validEmployeeId },
+            { employeeId: new Types.ObjectId(employeeId) }
+          ]
+        }).select('_id').exec();
+        
+        console.log(`[getRefundsByEmployeeId] Found ${employeeClaims.length} claims and ${employeeDisputes.length} disputes for employee`);
+        
+        const claimIds = employeeClaims.map(c => c._id);
+        const disputeIds = employeeDisputes.map(d => d._id);
+        
+        if (claimIds.length > 0 || disputeIds.length > 0) {
+          const query: any = {
+            $or: []
+          };
+          
+          if (claimIds.length > 0) {
+            query.$or.push({ claimId: { $in: claimIds } });
+          }
+          if (disputeIds.length > 0) {
+            query.$or.push({ disputeId: { $in: disputeIds } });
+          }
+          
+          if (query.$or.length > 0) {
+            console.log(`[getRefundsByEmployeeId] Querying refunds by claimIds (${claimIds.length}) and disputeIds (${disputeIds.length})`);
+            refunds = await this.refundModel
+              .find(query)
+              .populate('employeeId', 'firstName lastName employeeNumber')
+              .populate('financeStaffId', 'firstName lastName')
+              .populate('claimId')
+              .populate('disputeId')
+              .populate('paidInPayrollRunId')
+              .sort({ createdAt: -1 })
+              .exec();
+            console.log(`[getRefundsByEmployeeId] Found ${refunds.length} refunds via claims/disputes query`);
+          }
+        }
+      }
+
+      // Also try to find ALL refunds and filter by employeeId from populated data (last resort)
+      if (refunds.length === 0) {
+        console.log(`[getRefundsByEmployeeId] Trying to find all refunds and filter by employee...`);
+        const allRefunds = await this.refundModel
+          .find({})
+          .populate('employeeId', 'firstName lastName employeeNumber')
+          .populate('claimId')
+          .populate('disputeId')
+          .exec();
+        
+        console.log(`[getRefundsByEmployeeId] Total refunds in database: ${allRefunds.length}`);
+        
+        // Filter refunds where employeeId matches (handling both ObjectId and populated objects)
+        refunds = allRefunds.filter((refund: any) => {
+          const refundEmployeeId = refund.employeeId?._id?.toString() || refund.employeeId?.toString() || String(refund.employeeId);
+          const targetEmployeeId = validEmployeeId.toString();
+          const targetEmployeeIdString = employeeId;
+          return refundEmployeeId === targetEmployeeId || refundEmployeeId === targetEmployeeIdString;
+        });
+        
+        console.log(`[getRefundsByEmployeeId] Filtered to ${refunds.length} refunds matching employee`);
+      }
+
+      console.log(`[getRefundsByEmployeeId] Final result: ${refunds.length} refunds for employeeId: ${employeeId}`);
+      
+      return refunds;
     } catch (error: any) {
       if (
         error instanceof BadRequestException ||
@@ -1633,6 +1830,25 @@ export class PayrollTrackingService {
     } catch (error: any) {
       throw new BadRequestException(
         `Failed to retrieve pending refunds: ${error?.message || 'Unknown error'}`,
+      );
+    }
+  }
+
+  // Get all refunds (for finance staff to view all refunds regardless of status)
+  async getAllRefunds() {
+    try {
+      return await this.refundModel
+        .find({})
+        .populate('employeeId', 'firstName lastName employeeNumber')
+        .populate('financeStaffId', 'firstName lastName')
+        .populate('claimId')
+        .populate('disputeId')
+        .populate('paidInPayrollRunId')
+        .sort({ createdAt: -1 })
+        .exec();
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Failed to retrieve all refunds: ${error?.message || 'Unknown error'}`,
       );
     }
   }
@@ -4600,5 +4816,363 @@ export class PayrollTrackingService {
         `Failed to generate payroll summary by departments: ${error?.message || 'Unknown error'}`,
       );
     }
+  }
+
+  // ==================== EXPORT METHODS ====================
+
+  /**
+   * Export tax/insurance/benefits report as CSV
+   */
+  async exportTaxInsuranceBenefitsReportAsCSV(
+    period: 'month' | 'year',
+    date?: Date,
+    departmentId?: string,
+  ): Promise<string> {
+    const reportData = await this.getTaxInsuranceBenefitsReport(period, date, departmentId);
+    return this.formatReportAsCSV(reportData, 'Tax, Insurance & Benefits Report');
+  }
+
+  /**
+   * Export tax/insurance/benefits report as PDF
+   */
+  async exportTaxInsuranceBenefitsReportAsPDF(
+    period: 'month' | 'year',
+    date?: Date,
+    departmentId?: string,
+  ): Promise<Buffer> {
+    const reportData = await this.getTaxInsuranceBenefitsReport(period, date, departmentId);
+    return this.formatReportAsPDF(reportData, 'Tax, Insurance & Benefits Report');
+  }
+
+  /**
+   * Export payroll summary as CSV
+   */
+  async exportPayrollSummaryAsCSV(
+    period: 'month' | 'year',
+    date?: Date,
+    departmentId?: string,
+  ): Promise<string> {
+    const summaryData = await this.getPayrollSummary(period, date, departmentId);
+    return this.formatSummaryAsCSV(summaryData, period === 'month' ? 'Month-End Payroll Summary' : 'Year-End Payroll Summary');
+  }
+
+  /**
+   * Export payroll summary as PDF
+   */
+  async exportPayrollSummaryAsPDF(
+    period: 'month' | 'year',
+    date?: Date,
+    departmentId?: string,
+  ): Promise<Buffer> {
+    const summaryData = await this.getPayrollSummary(period, date, departmentId);
+    return this.formatSummaryAsPDF(summaryData, period === 'month' ? 'Month-End Payroll Summary' : 'Year-End Payroll Summary');
+  }
+
+  /**
+   * Format report data as CSV
+   */
+  private formatReportAsCSV(data: any, reportTitle: string): string {
+    const lines: string[] = [];
+    
+    // Header
+    lines.push(reportTitle);
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    if (data.period) lines.push(`Period: ${data.period}`);
+    if (data.startDate) lines.push(`Start Date: ${data.startDate}`);
+    if (data.endDate) lines.push(`End Date: ${data.endDate}`);
+    if (data.department) lines.push(`Department: ${data.department.name}`);
+    lines.push('');
+
+    // Summary
+    if (data.summary) {
+      lines.push('Summary');
+      lines.push('Field,Value');
+      Object.entries(data.summary).forEach(([key, value]) => {
+        lines.push(`${key},${value}`);
+      });
+      lines.push('');
+    }
+
+    // Taxes
+    if (data.taxes && data.taxes.breakdown) {
+      lines.push('Tax Breakdown');
+      lines.push('Tax Name,Amount');
+      Object.entries(data.taxes.breakdown).forEach(([taxName, amount]) => {
+        lines.push(`${taxName},${amount}`);
+      });
+      lines.push(`Total Taxes,${data.taxes.total || 0}`);
+      lines.push('');
+    }
+
+    // Insurance
+    if (data.insurance && data.insurance.breakdown) {
+      lines.push('Insurance Breakdown');
+      lines.push('Insurance Type,Employee Contribution,Employer Contribution,Total');
+      Object.entries(data.insurance.breakdown).forEach(([insuranceName, details]: [string, any]) => {
+        const employee = details.employee || 0;
+        const employer = details.employer || 0;
+        const total = employee + employer;
+        lines.push(`${insuranceName},${employee},${employer},${total}`);
+      });
+      lines.push(`Total Employee Contributions,${data.insurance.totalEmployeeContributions || 0}`);
+      lines.push(`Total Employer Contributions,${data.insurance.totalEmployerContributions || 0}`);
+      lines.push(`Total Insurance,${data.insurance.total || 0}`);
+      lines.push('');
+    }
+
+    // Benefits
+    if (data.benefits) {
+      lines.push('Benefits');
+      lines.push('Total Benefits');
+      lines.push(`${data.benefits.total || 0}`);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Format summary data as CSV
+   */
+  private formatSummaryAsCSV(data: any, summaryTitle: string): string {
+    const lines: string[] = [];
+    
+    // Header
+    lines.push(summaryTitle);
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    if (data.period) lines.push(`Period: ${data.period}`);
+    if (data.startDate) lines.push(`Start Date: ${data.startDate}`);
+    if (data.endDate) lines.push(`End Date: ${data.endDate}`);
+    lines.push('');
+
+    // Summary
+    if (data.summary) {
+      lines.push('Summary');
+      lines.push('Field,Value');
+      Object.entries(data.summary).forEach(([key, value]) => {
+        lines.push(`${key},${value}`);
+      });
+      lines.push('');
+    }
+
+    // Employee breakdown
+    if (data.employees && data.employees.length > 0) {
+      lines.push('Employee Breakdown');
+      lines.push('Employee Number,Employee Name,Department,Gross Salary,Deductions,Net Pay');
+      data.employees.forEach((emp: any) => {
+        const employeeNumber = emp.employee?.employeeNumber || 'N/A';
+        const employeeName = emp.employee ? `${emp.employee.firstName} ${emp.employee.lastName}` : 'N/A';
+        const department = emp.department?.name || 'N/A';
+        const grossSalary = emp.grossSalary || 0;
+        const deductions = emp.deductions || 0;
+        const netPay = emp.netPay || 0;
+        lines.push(`${employeeNumber},${employeeName},${department},${grossSalary},${deductions},${netPay}`);
+      });
+      lines.push('');
+    }
+
+    // Department breakdown
+    if (data.departments && data.departments.length > 0) {
+      lines.push('Department Breakdown');
+      lines.push('Department Name,Employee Count,Total Gross Salary,Total Deductions,Total Net Pay');
+      data.departments.forEach((dept: any) => {
+        const deptName = dept.department?.name || 'N/A';
+        const empCount = dept.employeeCount || 0;
+        const totalGross = dept.totalGrossSalary || 0;
+        const totalDeductions = dept.totalDeductions || 0;
+        const totalNetPay = dept.totalNetPay || 0;
+        lines.push(`${deptName},${empCount},${totalGross},${totalDeductions},${totalNetPay}`);
+      });
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Format report data as PDF
+   */
+  private async formatReportAsPDF(data: any, reportTitle: string): Promise<Buffer> {
+    let PDFDocument: any;
+    try {
+      PDFDocument = require('pdfkit');
+    } catch (e) {
+      throw new BadRequestException(
+        'PDF generation is not available. Please contact system administrator.',
+      );
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: Buffer[] = [];
+
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    // Header
+    doc.fontSize(20).text(reportTitle, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(10).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    if (data.period) doc.text(`Period: ${data.period}`, { align: 'center' });
+    if (data.startDate) doc.text(`Start Date: ${new Date(data.startDate).toLocaleDateString()}`, { align: 'center' });
+    if (data.endDate) doc.text(`End Date: ${new Date(data.endDate).toLocaleDateString()}`, { align: 'center' });
+    if (data.department) doc.text(`Department: ${data.department.name}`, { align: 'center' });
+    doc.moveDown(1);
+
+    // Summary
+    if (data.summary) {
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      Object.entries(data.summary).forEach(([key, value]) => {
+        doc.text(`${key}: ${value}`, { indent: 20 });
+      });
+      doc.moveDown(1);
+    }
+
+    // Taxes
+    if (data.taxes && data.taxes.breakdown) {
+      doc.fontSize(14).text('Tax Breakdown', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      Object.entries(data.taxes.breakdown).forEach(([taxName, amount]: [string, any]) => {
+        doc.text(`${taxName}: ${amount}`, { indent: 20 });
+      });
+      doc.text(`Total Taxes: ${data.taxes.total || 0}`, { indent: 20, bold: true });
+      doc.moveDown(1);
+    }
+
+    // Insurance
+    if (data.insurance && data.insurance.breakdown) {
+      doc.fontSize(14).text('Insurance Breakdown', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      Object.entries(data.insurance.breakdown).forEach(([insuranceName, details]: [string, any]) => {
+        const employee = details.employee || 0;
+        const employer = details.employer || 0;
+        const total = employee + employer;
+        doc.text(`${insuranceName}:`, { indent: 20 });
+        doc.text(`  Employee: ${employee}`, { indent: 40 });
+        doc.text(`  Employer: ${employer}`, { indent: 40 });
+        doc.text(`  Total: ${total}`, { indent: 40 });
+      });
+      doc.text(`Total Employee Contributions: ${data.insurance.totalEmployeeContributions || 0}`, { indent: 20, bold: true });
+      doc.text(`Total Employer Contributions: ${data.insurance.totalEmployerContributions || 0}`, { indent: 20, bold: true });
+      doc.text(`Total Insurance: ${data.insurance.total || 0}`, { indent: 20, bold: true });
+      doc.moveDown(1);
+    }
+
+    // Benefits
+    if (data.benefits) {
+      doc.fontSize(14).text('Benefits', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      doc.text(`Total Benefits: ${data.benefits.total || 0}`, { indent: 20, bold: true });
+    }
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        resolve(pdfBuffer);
+      });
+      doc.on('error', (error: any) => {
+        reject(new BadRequestException(`Failed to generate PDF: ${error?.message || 'Unknown error'}`));
+      });
+    });
+  }
+
+  /**
+   * Format summary data as PDF
+   */
+  private async formatSummaryAsPDF(data: any, summaryTitle: string): Promise<Buffer> {
+    let PDFDocument: any;
+    try {
+      PDFDocument = require('pdfkit');
+    } catch (e) {
+      throw new BadRequestException(
+        'PDF generation is not available. Please contact system administrator.',
+      );
+    }
+
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: Buffer[] = [];
+
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    // Header
+    doc.fontSize(20).text(summaryTitle, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(10).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+    if (data.period) doc.text(`Period: ${data.period}`, { align: 'center' });
+    if (data.startDate) doc.text(`Start Date: ${new Date(data.startDate).toLocaleDateString()}`, { align: 'center' });
+    if (data.endDate) doc.text(`End Date: ${new Date(data.endDate).toLocaleDateString()}`, { align: 'center' });
+    doc.moveDown(1);
+
+    // Summary
+    if (data.summary) {
+      doc.fontSize(14).text('Summary', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      Object.entries(data.summary).forEach(([key, value]) => {
+        doc.text(`${key}: ${value}`, { indent: 20 });
+      });
+      doc.moveDown(1);
+    }
+
+    // Employee breakdown (first 50 to avoid PDF being too large)
+    if (data.employees && data.employees.length > 0) {
+      doc.fontSize(14).text('Employee Breakdown', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(9);
+      const employeesToShow = data.employees.slice(0, 50);
+      employeesToShow.forEach((emp: any, index: number) => {
+        const employeeNumber = emp.employee?.employeeNumber || 'N/A';
+        const employeeName = emp.employee ? `${emp.employee.firstName} ${emp.employee.lastName}` : 'N/A';
+        const department = emp.department?.name || 'N/A';
+        const grossSalary = emp.grossSalary || 0;
+        const deductions = emp.deductions || 0;
+        const netPay = emp.netPay || 0;
+        
+        doc.text(`${index + 1}. ${employeeNumber} - ${employeeName} (${department})`, { indent: 20 });
+        doc.text(`   Gross: ${grossSalary} | Deductions: ${deductions} | Net Pay: ${netPay}`, { indent: 40 });
+        doc.moveDown(0.2);
+      });
+      if (data.employees.length > 50) {
+        doc.text(`... and ${data.employees.length - 50} more employees`, { indent: 20, italic: true });
+      }
+      doc.moveDown(1);
+    }
+
+    // Department breakdown
+    if (data.departments && data.departments.length > 0) {
+      doc.fontSize(14).text('Department Breakdown', { underline: true });
+      doc.moveDown(0.3);
+      doc.fontSize(10);
+      data.departments.forEach((dept: any) => {
+        const deptName = dept.department?.name || 'N/A';
+        const empCount = dept.employeeCount || 0;
+        const totalGross = dept.totalGrossSalary || 0;
+        const totalDeductions = dept.totalDeductions || 0;
+        const totalNetPay = dept.totalNetPay || 0;
+        
+        doc.text(`${deptName}:`, { indent: 20, bold: true });
+        doc.text(`  Employees: ${empCount}`, { indent: 40 });
+        doc.text(`  Total Gross Salary: ${totalGross}`, { indent: 40 });
+        doc.text(`  Total Deductions: ${totalDeductions}`, { indent: 40 });
+        doc.text(`  Total Net Pay: ${totalNetPay}`, { indent: 40 });
+        doc.moveDown(0.3);
+      });
+    }
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        resolve(pdfBuffer);
+      });
+      doc.on('error', (error: any) => {
+        reject(new BadRequestException(`Failed to generate PDF: ${error?.message || 'Unknown error'}`));
+      });
+    });
   }
 }

@@ -1,3 +1,4 @@
+// lib/api/client.ts - UPDATED WITH BETTER LOGGING
 import axios, {
   AxiosInstance,
   AxiosResponse,
@@ -5,17 +6,16 @@ import axios, {
 } from "axios";
 
 
-//HENAAA ZBATYHA ABL MA T3MELY PUSH L
-//process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
+// Backend API runs on port 6000 by default (can be overridden with PORT env var)
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000,
+  timeout: 15000, // Increased timeout
 });
 
 // Request interceptor
@@ -26,11 +26,23 @@ api.interceptors.request.use(
       const token = localStorage.getItem("auth_token");
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+        console.log(
+          `🔑 API Request [${config.method?.toUpperCase()} ${
+            config.url
+          }]: Token attached`
+        );
+      } else {
+        console.warn(
+          `⚠️ API Request [${config.method?.toUpperCase()} ${
+            config.url
+          }]: No auth token`
+        );
       }
     }
     return config;
   },
   (error) => {
+    console.error("❌ Request interceptor error:", error);
     return Promise.reject(error);
   }
 );
@@ -38,12 +50,32 @@ api.interceptors.request.use(
 // Response interceptor - returns data directly
 api.interceptors.response.use(
   (response: AxiosResponse) => {
+    console.log(
+      `✅ API Success [${
+        response.status
+      } ${response.config.method?.toUpperCase()} ${response.config.url}]`
+    );
+
     // Return the data property if it exists, otherwise return the full response
     return response.data;
   },
   (error) => {
+    console.error(
+      `❌ API Error [${error.config?.method?.toUpperCase()} ${
+        error.config?.url
+      }]:`,
+      {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        responseData: error.response?.data,
+        headers: error.response?.headers,
+      }
+    );
+
     // Handle errors
     if (error.response?.status === 401) {
+      console.log("🔒 401 Unauthorized - Clearing auth tokens");
       // Clear token and redirect to login (client side only)
       if (typeof window !== "undefined") {
         localStorage.removeItem("auth_token");
@@ -52,12 +84,28 @@ api.interceptors.response.use(
       }
     }
 
+    if (error.response?.status === 403) {
+      console.log("🚫 403 Forbidden - Insufficient permissions");
+      console.log("Endpoint:", error.config?.url);
+      console.log("User role may not have access to this endpoint");
+      // Redirect to forbidden page instead of login
+      // But only if we're not on a dashboard page (to avoid breaking dashboard functionality)
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname;
+        // Only redirect if we're not already on the forbidden page or a dashboard page
+        // Dashboard pages should handle 403 errors gracefully without redirecting
+        if (!currentPath.includes("/forbidden") && !currentPath.includes("/dashboard")) {
+          window.location.href = "/forbidden";
+        }
+      }
+    }
+
     // Extract error message
     const errorMessage =
       error.response?.data?.message ||
       error.response?.data?.error ||
       error.message ||
-      "An error occurred";
+      `HTTP ${error.response?.status || "Unknown"} error`;
 
     return Promise.reject(new Error(errorMessage));
   }

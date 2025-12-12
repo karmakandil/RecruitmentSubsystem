@@ -35,7 +35,7 @@ export default function FinanceDashboardPage() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => router.push("/dashboard/finance/approved-claims")}
+              onClick={() => router.push("/dashboard/payroll-tracking/approved-claims")}
             >
               Open Claims
             </Button>
@@ -54,7 +54,7 @@ export default function FinanceDashboardPage() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => router.push("/dashboard/finance/approved-disputes")}
+              onClick={() => router.push("/dashboard/payroll-tracking/approved-disputes")}
             >
               Open Disputes
             </Button>
@@ -107,7 +107,7 @@ export default function FinanceDashboardPage() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => router.push("/dashboard/finance/reports")}
+              onClick={() => router.push("/dashboard/payroll-tracking/reports")}
             >
               Open Reports
             </Button>

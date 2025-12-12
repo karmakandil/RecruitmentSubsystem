@@ -4,7 +4,7 @@ import { Payslip } from "../../../types/payslip";
 import { authApi } from "../auth/auth";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6000/api/v1";
 
 export const payslipsApi = {
   // Get all payslips for an employee
@@ -185,6 +185,48 @@ export const payslipsApi = {
     return await api.get("/payroll-tracking/claims/approved");
   },
 
+  // Payroll Specialist: get pending claims awaiting review
+  getPendingClaims: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/claims/pending");
+  },
+
+  // Get all claims (for payroll staff to view all claims regardless of status)
+  getAllClaims: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/claims/all");
+  },
+
+  // Payroll Specialist: get pending disputes awaiting review
+  getPendingDisputes: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/disputes/pending");
+  },
+
+  // Get all disputes (for payroll staff to view all disputes regardless of status)
+  getAllDisputes: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/disputes/all");
+  },
+
+  // Payroll Specialist: approve a dispute (escalates to manager)
+  approveDisputeBySpecialist: async (
+    disputeId: string,
+    approveData: {
+      payrollSpecialistId: string;
+      resolutionComment?: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/disputes/${disputeId}/approve-by-specialist`, approveData);
+  },
+
+  // Payroll Specialist: reject a dispute
+  rejectDisputeBySpecialist: async (
+    disputeId: string,
+    rejectData: {
+      payrollSpecialistId: string;
+      rejectionReason: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/disputes/${disputeId}/reject-by-specialist`, rejectData);
+  },
+
   // ==================== CLAIMS ====================
   
   // Get all claims for an employee
@@ -227,6 +269,11 @@ export const payslipsApi = {
     return await api.get(`/payroll-tracking/refunds/employee/${employeeId}`);
   },
 
+  // Get all refunds (for finance staff)
+  getAllRefunds: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/refunds/all");
+  },
+
   // Get a specific refund by ID
   getRefundById: async (refundId: string): Promise<any> => {
     return await api.get(`/payroll-tracking/refunds/${refundId}`);
@@ -258,6 +305,189 @@ export const payslipsApi = {
     }
   ): Promise<any> => {
     return await api.post(`/payroll-tracking/refunds/claim/${claimId}`, refundData);
+  },
+
+  // Payroll Specialist: get all active departments for reporting
+  getActiveDepartments: async (): Promise<any> => {
+    return await api.get("/payroll-tracking/departments");
+  },
+
+  // Payroll Specialist: generate payroll report by department
+  getPayrollReportByDepartment: async (
+    departmentId: string,
+    payrollRunId?: string
+  ): Promise<any> => {
+    const params = payrollRunId ? `?payrollRunId=${payrollRunId}` : "";
+    return await api.get(`/payroll-tracking/reports/department/${departmentId}${params}`);
+  },
+
+  // Payroll Specialist: approve an expense claim (escalates to manager)
+  approveClaimBySpecialist: async (
+    claimId: string,
+    approveData: {
+      payrollSpecialistId: string;
+      approvedAmount?: number;
+      resolutionComment?: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/claims/${claimId}/approve-by-specialist`, approveData);
+  },
+
+  // Payroll Specialist: reject an expense claim
+  rejectClaimBySpecialist: async (
+    claimId: string,
+    rejectData: {
+      payrollSpecialistId: string;
+      rejectionReason: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/claims/${claimId}/reject-by-specialist`, rejectData);
+  },
+
+  // Payroll Manager: confirm claim approval (final approval before finance)
+  confirmClaimApproval: async (
+    claimId: string,
+    confirmData: {
+      payrollManagerId: string;
+      resolutionComment?: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/claims/${claimId}/confirm-approval`, confirmData);
+  },
+
+  // Payroll Manager: confirm dispute approval (final approval before finance)
+  confirmDisputeApproval: async (
+    disputeId: string,
+    confirmData: {
+      payrollManagerId: string;
+      resolutionComment?: string;
+    }
+  ): Promise<any> => {
+    return await api.put(`/payroll-tracking/disputes/${disputeId}/confirm-approval`, confirmData);
+  },
+
+  // ==================== FINANCE REPORTS ====================
+
+  // Finance Staff: generate tax, insurance, and benefits reports
+  getTaxInsuranceBenefitsReport: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<any> => {
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    return await api.get(`/payroll-tracking/reports/tax-insurance-benefits?${params.toString()}`);
+  },
+
+  // Finance Staff: generate month-end and year-end payroll summaries
+  getPayrollSummary: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<any> => {
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    return await api.get(`/payroll-tracking/reports/payroll-summary?${params.toString()}`);
+  },
+
+  // Finance Staff: export tax/insurance/benefits report as CSV
+  exportTaxInsuranceBenefitsReportAsCSV: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<Blob> => {
+    const token = authApi.getToken();
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    
+    const response = await axios.get(
+      `${API_BASE_URL}/payroll-tracking/reports/tax-insurance-benefits/export/csv?${params.toString()}`,
+      {
+        responseType: "blob",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
+  },
+
+  // Finance Staff: export tax/insurance/benefits report as PDF
+  exportTaxInsuranceBenefitsReportAsPDF: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<Blob> => {
+    const token = authApi.getToken();
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    
+    const response = await axios.get(
+      `${API_BASE_URL}/payroll-tracking/reports/tax-insurance-benefits/export/pdf?${params.toString()}`,
+      {
+        responseType: "blob",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
+  },
+
+  // Finance Staff: export payroll summary as CSV
+  exportPayrollSummaryAsCSV: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<Blob> => {
+    const token = authApi.getToken();
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    
+    const response = await axios.get(
+      `${API_BASE_URL}/payroll-tracking/reports/payroll-summary/export/csv?${params.toString()}`,
+      {
+        responseType: "blob",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
+  },
+
+  // Finance Staff: export payroll summary as PDF
+  exportPayrollSummaryAsPDF: async (
+    period: "month" | "year",
+    date?: string,
+    departmentId?: string
+  ): Promise<Blob> => {
+    const token = authApi.getToken();
+    const params = new URLSearchParams();
+    params.append("period", period);
+    if (date) params.append("date", date);
+    if (departmentId) params.append("departmentId", departmentId);
+    
+    const response = await axios.get(
+      `${API_BASE_URL}/payroll-tracking/reports/payroll-summary/export/pdf?${params.toString()}`,
+      {
+        responseType: "blob",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return response.data;
   },
 };
 

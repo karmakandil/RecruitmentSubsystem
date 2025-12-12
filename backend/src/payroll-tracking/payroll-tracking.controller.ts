@@ -56,9 +56,17 @@ export class PayrollTrackingController {
 
   // REQ-PY-42: Payroll specialists review claims that are still under review.
   @Get('claims/pending')
-  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.SYSTEM_ADMIN)
   async getPendingClaims(@CurrentUser() user: any) {
     return await this.payrollTrackingService.getPendingClaims();
+  }
+
+  // Get all claims (for payroll staff to view all claims regardless of status)
+  // IMPORTANT: This route must come BEFORE 'claims/:claimId' to avoid route conflicts
+  @Get('claims/all')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getAllClaims(@CurrentUser() user: any) {
+    return await this.payrollTrackingService.getAllClaims();
   }
 
   // REQ-PY-44: Finance staff view claim approvals ready for refund processing.
@@ -70,7 +78,7 @@ export class PayrollTrackingController {
 
   // REQ-PY-18: Employees track every claim they have submitted.
   @Get('claims/employee/:employeeId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getClaimsByEmployeeId(
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
@@ -79,8 +87,9 @@ export class PayrollTrackingController {
   }
 
   // REQ-PY-18: Drill into the detailed status of a specific claim.
+  // IMPORTANT: This route must come AFTER all specific routes like 'claims/all', 'claims/pending', etc.
   @Get('claims/:claimId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getClaimById(
     @Param('claimId') claimId: string,
     @CurrentUser() user: any,
@@ -140,7 +149,7 @@ export class PayrollTrackingController {
   // REQ-PY-43: Payroll managers confirm approved claims before finance sees them.
   @Put('claims/:claimId/confirm-approval')
   @HttpCode(HttpStatus.OK)
-  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.SYSTEM_ADMIN) // Payroll Manager is often a senior Payroll Specialist
+  @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.SYSTEM_ADMIN)
   async confirmClaimApproval(
     @Param('claimId') claimId: string,
     @Body() confirmClaimApprovalDTO: ConfirmClaimApprovalDTO,
@@ -168,9 +177,17 @@ export class PayrollTrackingController {
 
   // REQ-PY-39: Payroll specialists review disputes awaiting investigation.
   @Get('disputes/pending')
-  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.SYSTEM_ADMIN)
   async getPendingDisputes(@CurrentUser() user: any) {
     return await this.payrollTrackingService.getPendingDisputes();
+  }
+
+  // Get all disputes (for payroll staff to view all disputes regardless of status)
+  // IMPORTANT: This route must come BEFORE 'disputes/:disputeId' to avoid route conflicts
+  @Get('disputes/all')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getAllDisputes(@CurrentUser() user: any) {
+    return await this.payrollTrackingService.getAllDisputes();
   }
 
   // REQ-PY-41: Finance staff view all disputes that were approved.
@@ -182,7 +199,7 @@ export class PayrollTrackingController {
 
   // REQ-PY-18: Employees track every dispute they opened.
   @Get('disputes/employee/:employeeId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getDisputesByEmployeeId(
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
@@ -193,8 +210,9 @@ export class PayrollTrackingController {
   }
 
   // REQ-PY-18: Drill into the workflow state of a single dispute.
+  // IMPORTANT: This route must come AFTER all specific routes like 'disputes/all', 'disputes/pending', etc.
   @Get('disputes/:disputeId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getDisputeById(
     @Param('disputeId') disputeId: string,
     @CurrentUser() user: any,
@@ -252,7 +270,7 @@ export class PayrollTrackingController {
   // REQ-PY-40: Payroll managers confirm specialist approvals on disputes.
   @Put('disputes/:disputeId/confirm-approval')
   @HttpCode(HttpStatus.OK)
-  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.SYSTEM_ADMIN) // Payroll Manager is often a senior Payroll Specialist
+  @Roles(SystemRole.PAYROLL_MANAGER, SystemRole.SYSTEM_ADMIN)
   async confirmDisputeApproval(
     @Param('disputeId') disputeId: string,
     @Body() confirmDisputeApprovalDTO: ConfirmDisputeApprovalDTO,
@@ -278,14 +296,8 @@ export class PayrollTrackingController {
     return await this.payrollTrackingService.createRefund(createRefundDTO, user.userId);
   }
 
-  // REQ-PY-45 & REQ-PY-46: Finance monitors refunds waiting to be paid.
-  @Get('refunds/pending')
-  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
-  async getPendingRefunds(@CurrentUser() user: any) {
-    return await this.payrollTrackingService.getPendingRefunds();
-  }
-
   // REQ-PY-18: Employees view refunds generated for their claims/disputes.
+  // IMPORTANT: This route must come BEFORE 'refunds/:refundId' to avoid route conflicts
   @Get('refunds/employee/:employeeId')
   @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getRefundsByEmployeeId(
@@ -295,7 +307,24 @@ export class PayrollTrackingController {
     return await this.payrollTrackingService.getRefundsByEmployeeId(employeeId);
   }
 
+  // REQ-PY-45 & REQ-PY-46: Finance monitors refunds waiting to be paid.
+  // IMPORTANT: Specific routes must come BEFORE parameterized routes like 'refunds/:refundId'
+  @Get('refunds/pending')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getPendingRefunds(@CurrentUser() user: any) {
+    return await this.payrollTrackingService.getPendingRefunds();
+  }
+
+  // Get all refunds (for finance staff to view all refunds regardless of status)
+  // IMPORTANT: This route must come BEFORE 'refunds/:refundId' to avoid route conflicts
+  @Get('refunds/all')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getAllRefunds(@CurrentUser() user: any) {
+    return await this.payrollTrackingService.getAllRefunds();
+  }
+
   // REQ-PY-18: Drill into the lifecycle of a specific refund.
+  // IMPORTANT: This parameterized route must come AFTER all specific routes
   @Get('refunds/:refundId')
   @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getRefundById(
@@ -372,7 +401,13 @@ export class PayrollTrackingController {
 
   // REQ-PY-1: Employees view and download their payslips online
   @Get('employee/:employeeId/payslips')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN
+  )
   async getPayslipsByEmployeeId(
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
@@ -534,7 +569,7 @@ export class PayrollTrackingController {
 
   // REQ-PY-15: Employees download tax documents (annual tax statement)
   @Get('employee/:employeeId/tax-documents')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
   async getTaxDocuments(
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
@@ -578,6 +613,50 @@ export class PayrollTrackingController {
     );
   }
 
+  // Export payroll summary as CSV
+  @Get('reports/payroll-summary/export/csv')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async exportPayrollSummaryAsCSV(
+    @Query('period') period: 'month' | 'year',
+    @CurrentUser() user: any,
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    const csvData = await this.payrollTrackingService.exportPayrollSummaryAsCSV(
+      period,
+      date ? new Date(date) : undefined,
+      departmentId,
+    );
+    
+    const filename = `payroll-summary-${period}-${date || new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvData);
+  }
+
+  // Export payroll summary as PDF
+  @Get('reports/payroll-summary/export/pdf')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async exportPayrollSummaryAsPDF(
+    @Query('period') period: 'month' | 'year',
+    @CurrentUser() user: any,
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    const pdfBuffer = await this.payrollTrackingService.exportPayrollSummaryAsPDF(
+      period,
+      date ? new Date(date) : undefined,
+      departmentId,
+    );
+    
+    const filename = `payroll-summary-${period}-${date || new Date().toISOString().split('T')[0]}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  }
+
   // REQ-PY-25: Finance staff generate reports about taxes, insurance contributions, and benefits
   @Get('reports/tax-insurance-benefits')
   @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
@@ -592,6 +671,50 @@ export class PayrollTrackingController {
       date ? new Date(date) : undefined,
       departmentId,
     );
+  }
+
+  // Export tax/insurance/benefits report as CSV
+  @Get('reports/tax-insurance-benefits/export/csv')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async exportTaxInsuranceBenefitsReportAsCSV(
+    @Query('period') period: 'month' | 'year',
+    @CurrentUser() user: any,
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    const csvData = await this.payrollTrackingService.exportTaxInsuranceBenefitsReportAsCSV(
+      period,
+      date ? new Date(date) : undefined,
+      departmentId,
+    );
+    
+    const filename = `tax-insurance-benefits-report-${period}-${date || new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvData);
+  }
+
+  // Export tax/insurance/benefits report as PDF
+  @Get('reports/tax-insurance-benefits/export/pdf')
+  @Roles(SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async exportTaxInsuranceBenefitsReportAsPDF(
+    @Query('period') period: 'month' | 'year',
+    @CurrentUser() user: any,
+    @Res() res: Response,
+    @Query('date') date?: string,
+    @Query('departmentId') departmentId?: string,
+  ) {
+    const pdfBuffer = await this.payrollTrackingService.exportTaxInsuranceBenefitsReportAsPDF(
+      period,
+      date ? new Date(date) : undefined,
+      departmentId,
+    );
+    
+    const filename = `tax-insurance-benefits-report-${period}-${date || new Date().toISOString().split('T')[0]}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
   }
 
   // ==================== ORGANIZATION STRUCTURE INTEGRATION ENDPOINTS ====================

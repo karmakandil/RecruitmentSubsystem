@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { payslipsApi } from "@/lib/api/payroll-tracking/payroll-tracking";
@@ -8,7 +9,6 @@ import { Payslip } from "@/types/payslip";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 export default function PayrollPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
@@ -16,17 +16,37 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Allow both employees and finance staff to access this page
+  // Allow employees, finance staff, and payroll specialists to access this page
   const hasAccess = user?.roles?.some(
-    (role) => role === SystemRole.DEPARTMENT_EMPLOYEE || role === SystemRole.FINANCE_STAFF || role === SystemRole.SYSTEM_ADMIN
+    (role) => 
+      role === SystemRole.DEPARTMENT_EMPLOYEE || 
+      role === SystemRole.FINANCE_STAFF || 
+      role === SystemRole.PAYROLL_SPECIALIST ||
+      role === SystemRole.PAYROLL_MANAGER ||
+      role === SystemRole.SYSTEM_ADMIN
   );
 
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
-    if (!authLoading && (!isAuthenticated || !hasAccess)) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Wait for mount and auth initialization before redirecting
+    if (!mounted || authLoading) return;
+    
+    if (!isAuthenticated) {
       router.replace("/auth/login");
+      return;
     }
-  }, [hasAccess, isAuthenticated, authLoading, router]);
+    
+    if (!hasAccess) {
+      router.replace("/dashboard");
+      return;
+    }
+  }, [mounted, hasAccess, isAuthenticated, authLoading, router]);
 
   useEffect(() => {
     const fetchPayslips = async () => {
@@ -35,11 +55,15 @@ export default function PayrollPage() {
         return;
       }
 
-      // For Finance staff, they might not have an employee ID, so show empty state
-      // TODO: In the future, Finance staff could see all payslips or a different view
+      // For Finance staff and Payroll Specialists, they might not have an employee ID, so show empty state
+      // TODO: In the future, Finance staff and Payroll Specialists could see all payslips or a different view
       if (!user?.id && !user?.userId) {
-        // Finance staff might not have employee profile - show empty state
-        if (user?.roles?.includes(SystemRole.FINANCE_STAFF)) {
+        // Finance staff and Payroll Specialists might not have employee profile - show empty state
+        if (
+          user?.roles?.includes(SystemRole.FINANCE_STAFF) ||
+          user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) ||
+          user?.roles?.includes(SystemRole.PAYROLL_MANAGER)
+        ) {
           setPayslips([]);
           setLoading(false);
           return;
@@ -161,18 +185,24 @@ export default function PayrollPage() {
             <CardDescription>View your salary details and history</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/dashboard/payroll-tracking/base-salary" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">💰</span>
-                Base Salary
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/salary-history" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">📊</span>
-                Salary History
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/base-salary")}
+            >
+              <span className="mr-2">💰</span>
+              Base Salary
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/salary-history")}
+            >
+              <span className="mr-2">📊</span>
+              Salary History
+            </Button>
           </CardContent>
         </Card>
 
@@ -183,24 +213,33 @@ export default function PayrollPage() {
             <CardDescription>View your additional earnings and benefits</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/dashboard/payroll-tracking/leave-encashment" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">🏖️</span>
-                Leave Encashment
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/transportation" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">🚗</span>
-                Transportation Allowance
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/employer-contributions" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">💼</span>
-                Employer Contributions
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/leave-encashment")}
+            >
+              <span className="mr-2">🏖️</span>
+              Leave Encashment
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/transportation")}
+            >
+              <span className="mr-2">🚗</span>
+              Transportation Allowance
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/employer-contributions")}
+            >
+              <span className="mr-2">💼</span>
+              Employer Contributions
+            </Button>
           </CardContent>
         </Card>
 
@@ -211,30 +250,42 @@ export default function PayrollPage() {
             <CardDescription>View detailed breakdown of deductions</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/dashboard/payroll-tracking/tax-deductions" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">📋</span>
-                Tax Deductions
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/insurance-deductions" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">🛡️</span>
-                Insurance Deductions
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/misconduct-deductions" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">⚠️</span>
-                Misconduct Deductions
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/unpaid-leave-deductions" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">📅</span>
-                Unpaid Leave Deductions
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/tax-deductions")}
+            >
+              <span className="mr-2">📋</span>
+              Tax Deductions
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/insurance-deductions")}
+            >
+              <span className="mr-2">🛡️</span>
+              Insurance Deductions
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/misconduct-deductions")}
+            >
+              <span className="mr-2">⚠️</span>
+              Misconduct Deductions
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/unpaid-leave-deductions")}
+            >
+              <span className="mr-2">📅</span>
+              Unpaid Leave Deductions
+            </Button>
           </CardContent>
         </Card>
 
@@ -245,12 +296,15 @@ export default function PayrollPage() {
             <CardDescription>Access official documents and reports</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/dashboard/payroll-tracking/tax-documents" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">📄</span>
-                Tax Documents
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/tax-documents")}
+            >
+              <span className="mr-2">📄</span>
+              Tax Documents
+            </Button>
           </CardContent>
         </Card>
 
@@ -261,24 +315,49 @@ export default function PayrollPage() {
             <CardDescription>Manage your expense claims and disputes</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Link href="/dashboard/payroll-tracking/claims" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">💵</span>
-                Expense Claims
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/disputes" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">⚖️</span>
-                Payroll Disputes
-              </Button>
-            </Link>
-            <Link href="/dashboard/payroll-tracking/tracking" className="block">
-              <Button variant="outline" className="w-full justify-start" size="sm">
-                <span className="mr-2">📈</span>
-                Track Status
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => {
+                // Route Payroll Specialists to pending claims, employees to their claims
+                const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+                if (isPayrollSpecialist) {
+                  router.push("/dashboard/payroll-tracking/pending-claims");
+                } else {
+                  router.push("/dashboard/payroll-tracking/claims");
+                }
+              }}
+            >
+              <span className="mr-2">💵</span>
+              Expense Claims
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => {
+                // Route Payroll Specialists to pending disputes, employees to their disputes
+                const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+                if (isPayrollSpecialist) {
+                  router.push("/dashboard/payroll-tracking/pending-disputes");
+                } else {
+                  router.push("/dashboard/payroll-tracking/disputes");
+                }
+              }}
+            >
+              <span className="mr-2">⚖️</span>
+              Payroll Disputes
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start" 
+              size="sm"
+              onClick={() => router.push("/dashboard/payroll-tracking/tracking")}
+            >
+              <span className="mr-2">📈</span>
+              Track Status
+            </Button>
           </CardContent>
         </Card>
       </div>

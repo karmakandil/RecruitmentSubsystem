@@ -88,29 +88,49 @@ export default function TrackingPage() {
         return;
       }
 
-      // For Finance staff, they might not have an employee ID, so show empty data
-      // TODO: In the future, Finance staff could see all refunds/claims/disputes
-      if (!user?.id && !user?.userId) {
-        // Finance staff might not have employee profile - show empty state
-        if (user?.roles?.includes(SystemRole.FINANCE_STAFF)) {
-          setData({ claims: [], disputes: [], refunds: [] });
-          setLoading(false);
-          return;
-        }
-        setError("User ID not found");
-        setLoading(false);
-        return;
-      }
+      const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF);
 
       try {
-        const employeeId = user.id || user.userId;
-        const [claims, disputes, refunds] = await Promise.all([
-          payslipsApi.getClaimsByEmployeeId(employeeId!),
-          payslipsApi.getDisputesByEmployeeId(employeeId!),
-          payslipsApi.getRefundsByEmployeeId(employeeId!),
-        ]);
-        setData({ claims, disputes, refunds });
+        let claims, disputes, refunds;
+
+        if (isFinanceStaff) {
+          // Finance staff should see ALL claims, disputes, and refunds
+          console.log("Fetching ALL tracking data for Finance Staff");
+          const [allClaims, allDisputes, allRefunds] = await Promise.all([
+            payslipsApi.getAllClaims(),
+            payslipsApi.getAllDisputes(),
+            payslipsApi.getAllRefunds(),
+          ]);
+          
+          claims = allClaims || [];
+          disputes = allDisputes || [];
+          refunds = allRefunds || [];
+        } else {
+          // Regular employees see only their own data
+          if (!user?.id && !user?.userId) {
+            setError("User ID not found");
+            setLoading(false);
+            return;
+          }
+          
+          const employeeId = user.id || user.userId;
+          console.log("Fetching tracking data for employeeId:", employeeId);
+          [claims, disputes, refunds] = await Promise.all([
+            payslipsApi.getClaimsByEmployeeId(employeeId!),
+            payslipsApi.getDisputesByEmployeeId(employeeId!),
+            payslipsApi.getRefundsByEmployeeId(employeeId!),
+          ]);
+        }
+
+        console.log("Tracking data fetched:", { 
+          claimsCount: claims?.length || 0, 
+          disputesCount: disputes?.length || 0, 
+          refundsCount: refunds?.length || 0,
+          refunds: refunds 
+        });
+        setData({ claims: claims || [], disputes: disputes || [], refunds: refunds || [] });
       } catch (err: any) {
+        console.error("Error fetching tracking data:", err);
         setError(err.message || "Failed to load tracking data");
       } finally {
         setLoading(false);

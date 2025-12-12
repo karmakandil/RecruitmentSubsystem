@@ -37,29 +37,58 @@ export default function ClaimsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useRequireAuth(SystemRole.DEPARTMENT_EMPLOYEE);
+  // Allow employees, payroll specialists, payroll managers, finance staff, and system admins
+  const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+  const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER);
+  const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF);
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
+  const isEmployee = user?.roles?.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+  
+  const allowedRoles = [
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN,
+  ];
+  
+  useRequireAuth(allowedRoles);
 
   useEffect(() => {
     const fetchClaims = async () => {
-      if (!user?.id && !user?.userId) {
-        setError("User ID not found");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const employeeId = user.id || user.userId;
-        const data = await payslipsApi.getClaimsByEmployeeId(employeeId!);
-        setClaims(data);
+        let data;
+        
+        // If user is an employee, fetch only their claims
+        if (isEmployee && (user?.id || user?.userId)) {
+          const employeeId = user.id || user.userId;
+          data = await payslipsApi.getClaimsByEmployeeId(employeeId!);
+        } else if (isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) {
+          // For payroll staff, fetch all claims (regardless of status)
+          data = await payslipsApi.getAllClaims();
+        } else {
+          setError("User ID not found");
+          setLoading(false);
+          return;
+        }
+        
+        setClaims(Array.isArray(data) ? data : []);
       } catch (err: any) {
-        setError(err.message || "Failed to load claims");
+        // If error is 403 and user is payroll staff, show empty state instead of error
+        if ((isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) && err.message?.includes('403')) {
+          setClaims([]);
+        } else {
+          setError(err.message || "Failed to load claims");
+        }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchClaims();
-  }, [user]);
+    if (user) {
+      fetchClaims();
+    }
+  }, [user, isEmployee, isPayrollSpecialist, isPayrollManager, isFinanceStaff, isSystemAdmin]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -150,9 +179,13 @@ export default function ClaimsPage() {
     <div className="container mx-auto px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Expense Claims</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isEmployee ? "My Expense Claims" : "All Expense Claims"}
+          </h1>
           <p className="text-gray-600 mt-1">
-            Track and manage your expense reimbursement claims
+            {isEmployee 
+              ? "Track and manage your expense reimbursement claims"
+              : "View and manage all expense reimbursement claims"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -216,7 +249,7 @@ export default function ClaimsPage() {
                     )}
                   </div>
                   <div className="ml-4">
-                    <Link href={`/dashboard/payroll-tracking/claims/${claim._id}`}>
+                    <Link href={`/dashboard/payroll-tracking/claims/${claim.claimId}`}>
                       <Button variant="outline" size="sm">
                         View Details
                       </Button>
