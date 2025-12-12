@@ -37,6 +37,28 @@ export const timeManagementApi = {
     return await api.get(`/time-management/attendance/status/${employeeId}`);
   },
 
+  // Get attendance records for employee
+  getAttendanceRecords: async (employeeId: string, filters?: {
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> => {
+    // Calculate date range - default to last 30 days
+    const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
+    const startDate = filters?.startDate 
+      ? new Date(filters.startDate)
+      : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    return await api.post('/time-management/reports/employee-attendance-history', {
+      employeeId,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      includeExceptions: true,
+      includeOvertime: true,
+    });
+  },
+
   // Submit correction request
   submitCorrectionRequest: async (data: {
     employeeId: string;

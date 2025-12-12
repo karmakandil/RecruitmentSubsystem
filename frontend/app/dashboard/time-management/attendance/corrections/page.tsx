@@ -19,7 +19,6 @@ import { Toast, useToast } from "@/components/leaves/Toast";
 
 export default function AttendanceCorrectionsPage() {
   const { user } = useAuth();
-  useRequireAuth(SystemRole.HR_ADMIN);
   const { toast, showToast, hideToast } = useToast();
 
   const [requests, setRequests] = useState<AttendanceCorrectionRequest[]>([]);
@@ -35,14 +34,29 @@ export default function AttendanceCorrectionsPage() {
   const [processing, setProcessing] = useState(false);
   const [filters, setFilters] = useState<GetAllCorrectionRequestsFilters>({});
   const [viewMode, setViewMode] = useState<"all" | "pending">("all");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (user?.roles?.includes(SystemRole.HR_ADMIN) || user?.roles?.includes(SystemRole.SYSTEM_ADMIN)) {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+      setAccessError("You don't have permission to access this page. Only HR admins can manage correction requests.");
+      setLoading(false);
+    }
+  }, [user?.roles]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    
     if (viewMode === "all") {
       loadAllRequests();
     } else {
       loadPendingRequests();
     }
-  }, [filters, viewMode]);
+  }, [filters, viewMode, isAdmin]);
 
   const loadAllRequests = async () => {
     try {
@@ -227,23 +241,41 @@ export default function AttendanceCorrectionsPage() {
         onClose={hideToast}
       />
 
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Attendance Correction Requests</h1>
-          <p className="text-gray-600 mt-1">
-            Review, approve, or reject attendance correction requests
+      {accessError && (
+        <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700 font-medium">{accessError}</p>
+          <p className="text-red-600 text-sm mt-2">
+            Please contact your HR administrator if you need access to this feature.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant={viewMode === "all" ? "primary" : "outline"}
-            onClick={() => setViewMode("all")}
-          >
-            All Requests
-          </Button>
-          <Button
-            variant={viewMode === "pending" ? "primary" : "outline"}
-            onClick={() => setViewMode("pending")}
+      )}
+
+      {!isAdmin && (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">Access Denied</p>
+          <p className="text-gray-400">You don't have permission to view this page.</p>
+        </div>
+      )}
+
+      {isAdmin && (
+        <>
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Attendance Correction Requests</h1>
+              <p className="text-gray-600 mt-1">
+                Review, approve, or reject attendance correction requests
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === "all" ? "primary" : "outline"}
+                onClick={() => setViewMode("all")}
+              >
+                All Requests
+              </Button>
+              <Button
+                variant={viewMode === "pending" ? "primary" : "outline"}
+                onClick={() => setViewMode("pending")}
           >
             Pending Requests
           </Button>
@@ -581,6 +613,8 @@ export default function AttendanceCorrectionsPage() {
           </div>
         )}
       </Modal>
+        </>
+      )}
     </div>
   );
 }

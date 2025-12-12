@@ -12,12 +12,36 @@ export function ClockInOutButton() {
     const [error, setError] = useState<string | null>(null);
     const [clockInTime, setClockInTime] = useState<Date | null>(null);
     const [elapsedTime, setElapsedTime] = useState(0);
+    const [isHydrated, setIsHydrated] = useState(false);
 
     // Fetch current attendance status
     useEffect(() => {
         if (!user?.id) return;
 
-        const fetchStatus = async () => {
+        // First, restore from localStorage if available
+        const savedState = localStorage.getItem(`clockInState_${user.id}`);
+        if (savedState) {
+            try {
+                const { isClockedIn: savedClockedIn, clockInTime: savedClockInTime } = JSON.parse(savedState);
+                setIsClockedIn(savedClockedIn);
+                if (savedClockInTime) {
+                    setClockInTime(new Date(savedClockInTime));
+                }
+                setIsHydrated(true);
+                setLoading(false);
+                // Still fetch from backend in background to sync
+                fetchStatusFromBackend();
+                return;
+            } catch (e) {
+                // Parsing failed, continue with fetch
+            }
+        }
+
+        // If no saved state, fetch from backend
+        fetchStatusFromBackend();
+
+        async function fetchStatusFromBackend() {
+            if (!user?.id) return;
             try {
                 setLoading(true);
                 const status = await timeManagementApi.getAttendanceStatus(user.id);
@@ -25,15 +49,35 @@ export function ClockInOutButton() {
                 if (status.clockInTime) {
                     setClockInTime(new Date(status.clockInTime));
                 }
+                // Save to localStorage
+                localStorage.setItem(
+                    `clockInState_${user.id}`,
+                    JSON.stringify({
+                        isClockedIn: status.isClockedIn || false,
+                        clockInTime: status.clockInTime,
+                    })
+                );
             } catch (err: any) {
                 console.error("Failed to fetch attendance status:", err);
                 setError(err.message || "Failed to load status");
             } finally {
                 setLoading(false);
+                setIsHydrated(true);
+            }
+        }
+
+        // Listen for visibility changes and refetch when page becomes visible
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchStatusFromBackend();
             }
         };
 
-        fetchStatus();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, [user?.id]);
 
     // Update elapsed time every second when clocked in
@@ -58,6 +102,16 @@ export function ClockInOutButton() {
             await timeManagementApi.clockIn(user.id);
             setIsClockedIn(true);
             setClockInTime(new Date());
+            // Save to localStorage immediately
+            localStorage.setItem(
+                `clockInState_${user.id}`,
+                JSON.stringify({
+                    isClockedIn: true,
+                    clockInTime: new Date().toISOString(),
+                })
+            );
+            // Dispatch custom event to notify other components
+            window.dispatchEvent(new CustomEvent('attendanceUpdated', { detail: { clockedIn: true } }));
         } catch (err: any) {
             setError(err.message || "Failed to clock in");
         } finally {
@@ -75,6 +129,16 @@ export function ClockInOutButton() {
             setIsClockedIn(false);
             setClockInTime(null);
             setElapsedTime(0);
+            // Save to localStorage immediately
+            localStorage.setItem(
+                `clockInState_${user.id}`,
+                JSON.stringify({
+                    isClockedIn: false,
+                    clockInTime: null,
+                })
+            );
+            // Dispatch custom event to notify other components
+            window.dispatchEvent(new CustomEvent('attendanceUpdated', { detail: { clockedIn: false } }));
         } catch (err: any) {
             setError(err.message || "Failed to clock out");
         } finally {
