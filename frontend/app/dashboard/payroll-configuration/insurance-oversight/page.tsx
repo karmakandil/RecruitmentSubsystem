@@ -9,7 +9,8 @@ import { Button } from '@/components/shared/ui/Button';
 import { ConfigurationTable, ConfigurationItem } from '@/components/payroll-configuration/ConfigurationTable';
 import { ApprovalModal } from '@/components/payroll-configuration/ApprovalModal';
 import { RejectionModal } from '@/components/payroll-configuration/RejectionModal';
-import { insuranceBracketsApi, InsuranceBracket, ConfigStatus } from '@/lib/api/payroll-configuration';
+import { ViewDetailsModal } from '@/components/payroll-configuration/ViewDetailsModal';
+import { insuranceBracketsApi, configDetailsApi, InsuranceBracket, ConfigStatus } from '@/lib/api/payroll-configuration';
 
 export default function InsuranceOversightPage() {
   const { user } = useAuth();
@@ -30,11 +31,27 @@ export default function InsuranceOversightPage() {
     isOpen: boolean;
     item: InsuranceBracket | null;
   }>({ isOpen: false, item: null });
+  const [viewModal, setViewModal] = useState<{
+    isOpen: boolean;
+    item: InsuranceBracket | null;
+    details: any;
+  }>({ isOpen: false, item: null, details: null });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   useEffect(() => {
     loadInsuranceBrackets();
   }, [statusFilter]);
+
+  // Auto-dismiss success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadInsuranceBrackets = async () => {
     try {
@@ -116,9 +133,25 @@ export default function InsuranceOversightPage() {
     }
   };
 
-  const handleView = (item: InsuranceBracket) => {
-    // TODO: Implement view details modal
-    alert(`View details for insurance bracket:\nSalary Range: ${item.minSalary} - ${item.maxSalary}\nEmployee: ${item.employeeContribution}%\nEmployer: ${item.employerContribution}%`);
+  const handleView = async (item: InsuranceBracket) => {
+    try {
+      setIsLoadingDetails(true);
+      const details = await insuranceBracketsApi.getById(item._id);
+      setViewModal({
+        isOpen: true,
+        item,
+        details,
+      });
+    } catch (err: any) {
+      // Fallback: use the item data itself
+      setViewModal({
+        isOpen: true,
+        item,
+        details: item,
+      });
+    } finally {
+      setIsLoadingDetails(false);
+    }
   };
 
   // Filter brackets by status
@@ -226,7 +259,10 @@ export default function InsuranceOversightPage() {
             data={tableData}
             columns={columns}
             isLoading={isLoading}
-            onView={handleView}
+            onView={(item) => {
+              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
+              if (found) handleView(found);
+            }}
             onApprove={(item) =>
               setApprovalModal({
                 isOpen: true,
@@ -264,6 +300,14 @@ export default function InsuranceOversightPage() {
         onReject={handleReject}
         title="Reject Insurance Bracket"
         isLoading={isProcessing}
+      />
+
+      <ViewDetailsModal
+        isOpen={viewModal.isOpen}
+        onClose={() => setViewModal({ isOpen: false, item: null, details: null })}
+        title="Insurance Bracket Details"
+        data={viewModal.details}
+        type="insurance-brackets"
       />
     </div>
   );

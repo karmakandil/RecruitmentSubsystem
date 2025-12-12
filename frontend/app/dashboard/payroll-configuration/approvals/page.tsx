@@ -9,7 +9,8 @@ import { Button } from '@/components/shared/ui/Button';
 import { ConfigurationTable, ConfigurationItem } from '@/components/payroll-configuration/ConfigurationTable';
 import { ApprovalModal } from '@/components/payroll-configuration/ApprovalModal';
 import { RejectionModal } from '@/components/payroll-configuration/RejectionModal';
-import { approvalsApi, PendingApproval } from '@/lib/api/payroll-configuration';
+import { ViewDetailsModal } from '@/components/payroll-configuration/ViewDetailsModal';
+import { approvalsApi, configDetailsApi, PendingApproval } from '@/lib/api/payroll-configuration';
 
 export default function ApprovalsPage() {
   const { user } = useAuth();
@@ -30,11 +31,27 @@ export default function ApprovalsPage() {
     isOpen: boolean;
     item: PendingApproval | null;
   }>({ isOpen: false, item: null });
+  const [viewModal, setViewModal] = useState<{
+    isOpen: boolean;
+    item: PendingApproval | null;
+    details: any;
+  }>({ isOpen: false, item: null, details: null });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   useEffect(() => {
     loadPendingApprovals();
   }, []);
+
+  // Auto-dismiss success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadPendingApprovals = async () => {
     try {
@@ -120,9 +137,26 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleView = (item: PendingApproval) => {
-    // TODO: Implement view details modal or navigate to detail page
-    alert(`View details for ${item.type} - ID: ${item._id}`);
+  const handleView = async (item: PendingApproval) => {
+    try {
+      setIsLoadingDetails(true);
+      const details = await configDetailsApi.getById(item.type, item._id);
+      setViewModal({
+        isOpen: true,
+        item,
+        details,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Failed to load configuration details');
+      // Fallback: show data from the item itself
+      setViewModal({
+        isOpen: true,
+        item,
+        details: item.data || item,
+      });
+    } finally {
+      setIsLoadingDetails(false);
+    }
   };
 
   // Filter approvals by type
@@ -161,9 +195,42 @@ export default function ApprovalsPage() {
       key: 'name',
       label: 'Name/Title',
       render: (item: ConfigurationItem) => {
-        // Try to find a name/title field in the data
-        const nameField = item.name || item.title || item.grade || item.type || 'N/A';
-        return <span>{nameField}</span>;
+        // Try to find a name/title field in the data based on type
+        let nameField = 'N/A';
+        if (item.grade) nameField = item.grade;
+        else if (item.name) nameField = item.name;
+        else if (item.policyName) nameField = item.policyName;
+        else if (item.type) nameField = item.type;
+        return <span className="font-medium">{nameField}</span>;
+      },
+    },
+    {
+      key: 'details',
+      label: 'Details',
+      render: (item: ConfigurationItem) => {
+        // Show relevant details based on type
+        const details: string[] = [];
+        if (item.baseSalary) details.push(`Base: ${item.baseSalary.toLocaleString()} EGP`);
+        if (item.grossSalary) details.push(`Gross: ${item.grossSalary.toLocaleString()} EGP`);
+        if (item.amount && !item.baseSalary) details.push(`${item.amount.toLocaleString()} EGP`);
+        if (item.policyType) details.push(`Type: ${item.policyType}`);
+        if (item.minSalary && item.maxSalary) {
+          details.push(`${item.minSalary.toLocaleString()}-${item.maxSalary.toLocaleString()} EGP`);
+        }
+        return <span className="text-sm text-gray-600">{details.join(' • ') || '—'}</span>;
+      },
+    },
+    {
+      key: 'createdBy',
+      label: 'Created By',
+      render: (item: ConfigurationItem) => {
+        const createdBy = item.createdBy || item.data?.createdBy;
+        if (!createdBy) return <span className="text-gray-400">N/A</span>;
+        if (typeof createdBy === 'object') {
+          const name = `${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim();
+          return <span className="text-sm">{name || createdBy.email || 'Unknown'}</span>;
+        }
+        return <span className="text-sm">{createdBy}</span>;
       },
     },
     {
@@ -171,7 +238,11 @@ export default function ApprovalsPage() {
       label: 'Created',
       render: (item: ConfigurationItem) => {
         const date = item.createdAt || item.data?.createdAt;
-        return date ? new Date(date).toLocaleDateString() : 'N/A';
+        return date ? (
+          <span className="text-sm">{new Date(date).toLocaleDateString()}</span>
+        ) : (
+          <span className="text-sm text-gray-400">N/A</span>
+        );
       },
     },
   ];
@@ -235,7 +306,10 @@ export default function ApprovalsPage() {
             data={tableData}
             columns={columns}
             isLoading={isLoading}
-            onView={handleView}
+            onView={(item) => {
+              const found = Array.isArray(pendingApprovals) ? pendingApprovals.find((p) => p._id === item._id) : null;
+              if (found) handleView(found);
+            }}
             onApprove={(item) =>
               setApprovalModal({
                 isOpen: true,
@@ -273,6 +347,14 @@ export default function ApprovalsPage() {
         onReject={handleReject}
         title={`Reject ${rejectionModal.item?.type?.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Configuration'}`}
         isLoading={isProcessing}
+      />
+
+      <ViewDetailsModal
+        isOpen={viewModal.isOpen}
+        onClose={() => setViewModal({ isOpen: false, item: null, details: null })}
+        title={`${viewModal.item?.type?.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) || 'Configuration'} Details`}
+        data={viewModal.details}
+        type={viewModal.item?.type || ''}
       />
     </div>
   );

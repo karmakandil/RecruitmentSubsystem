@@ -31,6 +31,16 @@ export default function CompanySettingsPage() {
     loadSettings();
   }, []);
 
+  // Auto-dismiss success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   const loadSettings = async () => {
     try {
       setIsLoading(true);

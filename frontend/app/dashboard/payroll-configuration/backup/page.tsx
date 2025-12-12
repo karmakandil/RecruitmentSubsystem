@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
@@ -23,23 +23,29 @@ export default function BackupPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Mock data - will be replaced with real API calls when backend is ready
-  const [backupHistory] = useState<BackupRecord[]>([
-    {
-      id: '1',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-      size: '2.5 MB',
-      status: 'completed',
-      type: 'manual',
-    },
-    {
-      id: '2',
-      createdAt: new Date(Date.now() - 172800000).toISOString(),
-      size: '2.4 MB',
-      status: 'completed',
-      type: 'scheduled',
-    },
-  ]);
+  const [backupHistory, setBackupHistory] = useState<BackupRecord[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    // Note: Backend API for backup management needs to be implemented
+    // For now, this will show empty state
+    loadBackupHistory();
+  }, []);
+
+  const loadBackupHistory = async () => {
+    try {
+      setIsLoadingHistory(true);
+      // TODO: Replace with actual API call when backend is ready
+      // const data = await backupApi.getHistory();
+      // setBackupHistory(data);
+      setBackupHistory([]);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load backup history');
+      setBackupHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   const handleCreateBackup = async () => {
     setError(null);
@@ -107,7 +113,7 @@ export default function BackupPage() {
             </Button>
             <p className="mt-4 text-xs text-gray-500">
               Note: Backend API for backup management needs to be implemented.
-              This is a UI placeholder.
+              The backup functionality will be available once the backend API is ready.
             </p>
           </CardContent>
         </Card>
@@ -139,7 +145,7 @@ export default function BackupPage() {
                 Save Schedule
               </Button>
               <p className="text-xs text-gray-500">
-                Backup schedule configuration will be available once backend API is implemented.
+                Backup schedule configuration will be available once the backend API is implemented.
               </p>
             </div>
           </CardContent>
@@ -155,10 +161,17 @@ export default function BackupPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {backupHistory.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">
-              No backups found
-            </p>
+          {isLoadingHistory ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+            </div>
+          ) : backupHistory.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-2">No backups found</p>
+              <p className="text-xs text-gray-400">
+                Backup history will appear here once backups are created.
+              </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">

@@ -26,10 +26,8 @@ export default function StatsPage() {
       setIsLoading(true);
       setError(null);
       const data = await statsApi.getStats();
-      console.log('📊 Stats received:', data);
       setStats(data);
     } catch (err: any) {
-      console.error('❌ Stats error:', err);
       setError(err.message || 'Failed to load statistics');
       // Use empty stats when backend is not ready
       setStats({
