@@ -27,33 +27,20 @@ export default function AttendancePage() {
         const response = await timeManagementApi.getAttendanceRecords(user.id);
         
         console.log('Full API Response:', response);
-        console.log('Response type:', typeof response);
-        console.log('Response keys:', response ? Object.keys(response) : 'null');
         
-        // Handle different response formats
-        // The backend returns { reportType, records, summary, ... }
         let records = [];
         
-        // Check if response has data property (in case of double wrapping)
-        const responseData = response?.data || response;
-        console.log('Response data to extract from:', responseData);
-        
-        if (responseData?.records && Array.isArray(responseData.records)) {
-          records = responseData.records;
-          console.log('Found records in response.records');
-        } else if (responseData?.attendanceRecords && Array.isArray(responseData.attendanceRecords)) {
-          records = responseData.attendanceRecords;
-          console.log('Found records in response.attendanceRecords');
-        } else if (Array.isArray(responseData)) {
-          records = responseData;
-          console.log('Response itself is an array');
+        // Handle the simple response format
+        if (response?.records && Array.isArray(response.records)) {
+          records = response.records;
+          console.log('Found records:', records.length);
+        } else if (Array.isArray(response)) {
+          records = response;
+          console.log('Response is an array:', records.length);
         } else {
-          console.warn('Unexpected response format:', responseData);
+          console.warn('Unexpected response format:', response);
           records = [];
         }
-        
-        console.log('Extracted records count:', records.length);
-        console.log('Extracted records:', records);
         
         setAttendanceRecords(records);
       } catch (err: any) {
@@ -70,6 +57,7 @@ export default function AttendancePage() {
   // Listen for attendance updates from ClockInOutButton
   useEffect(() => {
     const handleAttendanceUpdate = () => {
+      console.log('Attendance updated event received, refetching records...');
       // Wait a moment for the backend to process, then refetch
       setTimeout(() => {
         setRefetchKey(prev => prev + 1);

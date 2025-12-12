@@ -45,23 +45,11 @@ export const timeManagementApi = {
     offset?: number;
   }): Promise<any> => {
     try {
-      // Calculate date range - default to last 30 days
-      const endDate = filters?.endDate ? new Date(filters.endDate) : new Date();
-      const startDate = filters?.startDate 
-        ? new Date(filters.startDate)
-        : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const days = filters?.startDate ? 
+        Math.ceil((new Date(filters.endDate || new Date()).getTime() - new Date(filters.startDate).getTime()) / (1000 * 60 * 60 * 24)) 
+        : 30;
 
-      const payload = {
-        employeeId,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        includeExceptions: true,
-        includeOvertime: true,
-      };
-
-      console.log('Fetching attendance records with payload:', payload);
-
-      const response = await api.post('/time-management/reports/employee-attendance-history', payload);
+      const response = await api.get(`/time-management/attendance/records/${employeeId}?days=${days}`);
       
       console.log('Attendance records response:', response);
       

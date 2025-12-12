@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { timeManagementApi } from "@/lib/api/time-management/time-management.api";
 
@@ -13,10 +13,14 @@ export function ClockInOutButton() {
     const [clockInTime, setClockInTime] = useState<Date | null>(null);
     const [elapsedTime, setElapsedTime] = useState(0);
     const [isHydrated, setIsHydrated] = useState(false);
+    const fetchStatusRef = useRef(false); // Prevent double fetching
+    const clockInTimeRef = useRef<Date | null>(null); // Store original clock in time to prevent reference changes
 
-    // Fetch current attendance status
+    // Fetch current attendance status - Only run once when component mounts
     useEffect(() => {
-        if (!user?.id) return;
+        if (!user?.id || fetchStatusRef.current) return;
+        
+        fetchStatusRef.current = true;
 
         // First, restore from localStorage if available
         const savedState = localStorage.getItem(`clockInState_${user.id}`);
@@ -25,7 +29,9 @@ export function ClockInOutButton() {
                 const { isClockedIn: savedClockedIn, clockInTime: savedClockInTime } = JSON.parse(savedState);
                 setIsClockedIn(savedClockedIn);
                 if (savedClockInTime) {
-                    setClockInTime(new Date(savedClockInTime));
+                    const clockIn = new Date(savedClockInTime);
+                    setClockInTime(clockIn);
+                    clockInTimeRef.current = clockIn;
                 }
                 setIsHydrated(true);
                 setLoading(false);
@@ -45,16 +51,21 @@ export function ClockInOutButton() {
             try {
                 setLoading(true);
                 const status = await timeManagementApi.getAttendanceStatus(user.id);
-                setIsClockedIn(status.isClockedIn || false);
-                if (status.clockInTime) {
-                    setClockInTime(new Date(status.clockInTime));
+                const isClockedInNow = status.isClockedIn || false;
+                setIsClockedIn(isClockedInNow);
+                
+                if (status.lastPunchTime && isClockedInNow) {
+                    const clockIn = new Date(status.lastPunchTime);
+                    setClockInTime(clockIn);
+                    clockInTimeRef.current = clockIn;
                 }
+                
                 // Save to localStorage
                 localStorage.setItem(
                     `clockInState_${user.id}`,
                     JSON.stringify({
-                        isClockedIn: status.isClockedIn || false,
-                        clockInTime: status.clockInTime,
+                        isClockedIn: isClockedInNow,
+                        clockInTime: isClockedInNow ? status.lastPunchTime : null,
                     })
                 );
             } catch (err: any) {
@@ -82,16 +93,16 @@ export function ClockInOutButton() {
 
     // Update elapsed time every second when clocked in
     useEffect(() => {
-        if (!isClockedIn || !clockInTime) return;
+        if (!isClockedIn || !clockInTimeRef.current) return;
 
         const interval = setInterval(() => {
             const now = new Date();
-            const elapsed = Math.floor((now.getTime() - clockInTime.getTime()) / 1000);
+            const elapsed = Math.floor((now.getTime() - clockInTimeRef.current!.getTime()) / 1000);
             setElapsedTime(elapsed);
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isClockedIn, clockInTime]);
+    }, [isClockedIn]);
 
     const handleClockIn = async () => {
         if (!user?.id) return;
@@ -100,14 +111,17 @@ export function ClockInOutButton() {
             setActionLoading(true);
             setError(null);
             await timeManagementApi.clockIn(user.id);
+            const clockInDateTime = new Date();
             setIsClockedIn(true);
-            setClockInTime(new Date());
+            setClockInTime(clockInDateTime);
+            clockInTimeRef.current = clockInDateTime;
+            setElapsedTime(0);
             // Save to localStorage immediately
             localStorage.setItem(
                 `clockInState_${user.id}`,
                 JSON.stringify({
                     isClockedIn: true,
-                    clockInTime: new Date().toISOString(),
+                    clockInTime: clockInDateTime.toISOString(),
                 })
             );
             // Dispatch custom event to notify other components
@@ -128,6 +142,7 @@ export function ClockInOutButton() {
             await timeManagementApi.clockOut(user.id);
             setIsClockedIn(false);
             setClockInTime(null);
+            clockInTimeRef.current = null;
             setElapsedTime(0);
             // Save to localStorage immediately
             localStorage.setItem(

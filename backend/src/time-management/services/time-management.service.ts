@@ -65,10 +65,13 @@ export class TimeManagementService {
    */
   async clockInWithID(employeeId: string, currentUserId: string) {
     const now = new Date();
+    const { Types } = require('mongoose');
+
+    console.log('⏰ CLOCK IN called for employee:', employeeId);
 
     // Create new attendance record with clock-in punch
     const attendanceRecord = new this.attendanceRecordModel({
-      employeeId,
+      employeeId: new Types.ObjectId(employeeId), // Convert to ObjectId
       punches: [
         {
           type: PunchType.IN,
@@ -82,7 +85,9 @@ export class TimeManagementService {
       updatedBy: currentUserId,
     });
 
+    console.log('💾 Saving attendance record...');
     const saved = await attendanceRecord.save();
+    console.log('✅ Record saved with ID:', saved._id);
     
     // BR-TM-06: Log audit trail
     await this.logAttendanceChange(
@@ -106,12 +111,13 @@ export class TimeManagementService {
    */
   async clockOutWithID(employeeId: string, currentUserId: string) {
     const now = new Date();
+    const { Types } = require('mongoose');
 
     // Find the most recent attendance record for this employee
     // Query all records and find the one with an IN punch that hasn't been clocked out
     const attendanceRecords = await this.attendanceRecordModel
       .find({
-        employeeId,
+        employeeId: new Types.ObjectId(employeeId), // Convert to ObjectId
       })
       .sort({ createdAt: -1 })
       .exec();
@@ -458,11 +464,12 @@ export class TimeManagementService {
     const now = new Date();
     const todayStart = this.convertDateToUTCStart(now);
     const todayEnd = this.convertDateToUTCEnd(now);
+    const { Types } = require('mongoose');
 
     // Find today's attendance records
     const todayRecords = await this.attendanceRecordModel
       .find({
-        employeeId,
+        employeeId: new Types.ObjectId(employeeId), // Convert to ObjectId
         createdAt: { $gte: todayStart, $lte: todayEnd },
       })
       .sort({ createdAt: -1 })
@@ -494,6 +501,7 @@ export class TimeManagementService {
 
     return {
       status: isClockedIn ? 'CLOCKED_IN' : 'CLOCKED_OUT',
+      isClockedIn: isClockedIn,
       lastPunchTime: lastPunch?.time,
       lastPunchType: lastPunch?.type,
       totalMinutesToday: Math.round(totalMinutesToday),
@@ -506,6 +514,71 @@ export class TimeManagementService {
         totalWorkMinutes: r.totalWorkMinutes,
         hasMissedPunch: r.hasMissedPunch,
       })),
+    };
+  }
+
+  /**
+   * Get employee's attendance records for last N days (simple version)
+   */
+  async getEmployeeAttendanceRecords(employeeId: string, days: number = 30, currentUserId: string) {
+    const now = new Date();
+    const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const { Types } = require('mongoose');
+
+    console.log('🔍 Getting attendance records for:', { employeeId, days, startDate, now });
+
+    // First, get records for THIS employee (no date filter)
+    const recordsForEmployee = await this.attendanceRecordModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+      })
+      .exec();
+    console.log('📍 Total records for THIS employee:', recordsForEmployee.length);
+    if (recordsForEmployee.length > 0) {
+      console.log('📍 Sample record for THIS employee:', JSON.stringify(recordsForEmployee[0], null, 2));
+    }
+
+    // Get all records for this employee - use ObjectId
+    // MongoDB ObjectId has a built-in timestamp, extract it
+    const startObjectId = new Types.ObjectId(Math.floor(startDate.getTime() / 1000).toString(16) + '0000000000000000');
+    const endObjectId = new Types.ObjectId(Math.floor(now.getTime() / 1000).toString(16) + 'ffffffffffffffff');
+    
+    let records = await this.attendanceRecordModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId), // Always use ObjectId
+        _id: { $gte: startObjectId, $lte: endObjectId }, // Filter by _id timestamp
+      })
+      .sort({ _id: -1 })
+      .exec();
+
+    console.log('📊 Records found with date filter:', records.length);
+    console.log('📋 Sample records:', JSON.stringify(records.slice(0, 1), null, 2));
+
+    // Map to simple format
+    const mappedRecords = records.map((record: any) => {
+      const clockInPunch = record.punches?.find((p: any) => p.type === PunchType.IN);
+      const clockOutPunch = [...(record.punches || [])].reverse().find((p: any) => p.type === PunchType.OUT);
+      
+      // Extract date from _id ObjectId timestamp
+      const recordDate = record._id.getTimestamp();
+
+      return {
+        id: record._id,
+        date: recordDate,
+        clockIn: clockInPunch?.time,
+        clockOut: clockOutPunch?.time,
+        punches: record.punches || [],
+        totalWorkMinutes: record.totalWorkMinutes || 0,
+        totalWorkHours: Math.round((record.totalWorkMinutes || 0) / 60 * 100) / 100,
+        status: clockInPunch ? 'PRESENT' : 'ABSENT',
+      };
+    });
+
+    console.log('✅ Mapped records:', mappedRecords.length);
+
+    return {
+      records: mappedRecords,
+      totalRecords: mappedRecords.length,
     };
   }
 
@@ -4973,15 +5046,27 @@ export class TimeManagementService {
       includeOvertime = true,
     } = params;
 
-    // Get attendance records with employee details populated
-    const attendanceRecords = await this.attendanceRecordModel
+    // Ensure dates are proper Date objects
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Set end date to end of day
+    end.setHours(23, 59, 59, 999);
+
+    // Get all attendance records for the employee and filter in code
+    const allRecords = await this.attendanceRecordModel
       .find({
         employeeId,
-        date: { $gte: startDate, $lte: endDate },
       })
       .populate('employeeId', 'firstName lastName email employeeNumber departmentId')
-      .sort({ date: 1 })
+      .sort({ createdAt: 1 })
       .exec();
+
+    // Filter by date range
+    const attendanceRecords = allRecords.filter((record: any) => {
+      const recordDate = new Date(record.createdAt);
+      return recordDate >= start && recordDate <= end;
+    });
 
     // Get exceptions if requested
     let exceptions: any[] = [];
@@ -5000,9 +5085,13 @@ export class TimeManagementService {
 
     // Process daily records
     const dailyRecords = attendanceRecords.map((record: any) => {
+      // Get clock in and clock out times from punches array
+      const clockInPunch = record.punches?.find((p: any) => p.type === PunchType.IN);
+      const clockOutPunch = [...(record.punches || [])].reverse().find((p: any) => p.type === PunchType.OUT);
+      
       const dayExceptions = exceptions.filter((exc: any) => {
         const excDate = new Date(exc.createdAt);
-        const recDate = new Date(record.date);
+        const recDate = new Date(record.createdAt);
         return excDate.toDateString() === recDate.toDateString();
       });
 
@@ -5011,9 +5100,10 @@ export class TimeManagementService {
         : 0;
 
       return {
-        date: record.date,
-        clockIn: record.clockIn,
-        clockOut: record.clockOut,
+        date: record.createdAt,
+        punches: record.punches || [],
+        clockIn: clockInPunch?.time,
+        clockOut: clockOutPunch?.time,
         totalWorkMinutes: record.totalWorkMinutes || 0,
         totalWorkHours: Math.round((record.totalWorkMinutes || 0) / 60 * 100) / 100,
         regularHours: Math.min((record.totalWorkMinutes || 0), 480) / 60,
@@ -5023,7 +5113,7 @@ export class TimeManagementService {
           hours: Math.round((overtimeMinutes / 60) * 100) / 100,
         },
         status: {
-          isPresent: !!record.clockIn,
+          isPresent: !!clockInPunch,
           isLate: record.isLate || false,
           lateMinutes: record.lateMinutes || 0,
           earlyLeave: record.earlyLeave || false,
