@@ -4,59 +4,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
-
-// Mock data
-const mockPayTypes = [
-  {
-    id: '1',
-    name: 'Monthly Salary',
-    description: 'Fixed monthly salary',
-    status: 'approved' as const,
-    type: 'salary',
-    calculationMethod: 'fixed',
-    isTaxable: true,
-    isOvertimeEligible: false,
-    createdBy: 'payroll.specialist@company.com',
-    createdAt: '2024-01-01T08:00:00Z',
-    updatedAt: '2024-01-01T08:00:00Z',
-    version: 1
-  },
-  {
-    id: '2',
-    name: 'Hourly Contract',
-    description: 'Hourly rate for contractors',
-    status: 'draft' as const,
-    type: 'hourly',
-    calculationMethod: 'hourly_rate * hours_worked',
-    isTaxable: true,
-    isOvertimeEligible: true,
-    overtimeRate: 1.5,
-    minHours: 40,
-    maxHours: 60,
-    createdBy: 'payroll.specialist@company.com',
-    createdAt: '2024-01-10T11:00:00Z',
-    updatedAt: '2024-01-10T11:00:00Z',
-    version: 1
-  },
-  {
-    id: '3',
-    name: 'Commission Based',
-    description: 'Sales commission',
-    status: 'draft' as const,
-    type: 'commission',
-    calculationMethod: 'sales * commission_rate',
-    isTaxable: true,
-    isOvertimeEligible: false,
-    createdBy: 'sales.admin@company.com',
-    createdAt: '2024-01-15T14:00:00Z',
-    updatedAt: '2024-01-15T14:00:00Z',
-    version: 1
-  }
-];
+import { payTypesApi } from '@/lib/api/payroll-configuration/payTypes';
 
 export default function PayTypesPage() {
   const router = useRouter();
-  const [payTypes, setPayTypes] = useState<any[]>(mockPayTypes);
+  const [payTypes, setPayTypes] = useState<any[]>([]);
+  const [allPayTypes, setAllPayTypes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -66,14 +19,18 @@ export default function PayTypesPage() {
 
   const loadPayTypes = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      let filtered = mockPayTypes;
-      if (statusFilter !== 'all') {
-        filtered = mockPayTypes.filter(g => g.status === statusFilter);
-      }
-      setPayTypes(filtered);
+    try {
+      const status = statusFilter !== 'all' ? statusFilter as 'draft' | 'approved' | 'rejected' : undefined;
+      const data = await payTypesApi.getAll(status);
+      setAllPayTypes(data);
+      setPayTypes(data);
+    } catch (error) {
+      console.error('Error loading pay types:', error);
+      setPayTypes([]);
+      setAllPayTypes([]);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const columns = [
@@ -152,12 +109,20 @@ export default function PayTypesPage() {
       return;
     }
 
-    console.log('Delete pay type:', item.id);
-    loadPayTypes();
+    try {
+      await payTypesApi.delete(item.id);
+      loadPayTypes(); // Refresh
+    } catch (error) {
+      console.error('Error deleting pay type:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete pay type');
+    }
   };
 
   const getStatusCount = (status: 'draft' | 'approved' | 'rejected') => {
-    return mockPayTypes.filter(g => g.status === status).length;
+    return allPayTypes.filter(g => {
+      const normalizedStatus = String(g.status || '').toLowerCase();
+      return normalizedStatus === status;
+    }).length;
   };
 
   return (

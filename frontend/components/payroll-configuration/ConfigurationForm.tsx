@@ -102,7 +102,7 @@ export default function ConfigurationForm({
                       defaultValue={initialValues[field.name] || ''}
                       required={field.required}
                       placeholder={field.placeholder}
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                   ) : field.type === 'checkbox' ? (
                     <div className="mt-2">
@@ -122,7 +122,7 @@ export default function ConfigurationForm({
                       defaultValue={initialValues[field.name] || ''}
                       required={field.required}
                       placeholder={field.placeholder}
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     />
                   )}
                 </div>

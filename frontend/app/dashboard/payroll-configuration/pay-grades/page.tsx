@@ -4,84 +4,33 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
-
-// Mock data - you'll replace this with real API
-const mockPayGrades = [
-  {
-    id: '1',
-    name: 'Junior Developer',
-    description: 'Entry-level software development position',
-    status: 'approved' as const,
-    minSalary: 8000,
-    maxSalary: 12000,
-    currency: 'EGP',
-    jobGrade: 'JG-5',
-    jobBand: 'Individual Contributor',
-    benefits: ['Health Insurance', 'Annual Bonus'],
-    isActive: true,
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-01T09:00:00Z',
-    updatedAt: '2024-01-01T09:00:00Z',
-    version: 1
-  },
-  {
-    id: '2',
-    name: 'Senior Developer',
-    description: 'Experienced software development position',
-    status: 'draft' as const,
-    minSalary: 15000,
-    maxSalary: 25000,
-    currency: 'EGP',
-    jobGrade: 'JG-7',
-    jobBand: 'Senior Individual Contributor',
-    benefits: ['Health Insurance', 'Annual Bonus', 'Stock Options'],
-    isActive: true,
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-15T14:00:00Z',
-    updatedAt: '2024-01-15T14:00:00Z',
-    version: 1
-  },
-  {
-    id: '3',
-    name: 'Team Lead',
-    description: 'Team leadership position',
-    status: 'draft' as const,
-    minSalary: 20000,
-    maxSalary: 35000,
-    currency: 'EGP',
-    jobGrade: 'JG-8',
-    jobBand: 'Leadership',
-    benefits: ['Health Insurance', 'Annual Bonus', 'Stock Options', 'Car Allowance'],
-    isActive: true,
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-20T10:00:00Z',
-    updatedAt: '2024-01-20T10:00:00Z',
-    version: 1
-  }
-];
+import { payGradesApi } from '@/lib/api/payroll-configuration/payGrades';
 
 export default function PayGradesPage() {
   const router = useRouter();
-  const [payGrades, setPayGrades] = useState<any[]>(mockPayGrades);
+  const [payGrades, setPayGrades] = useState<any[]>([]);
+  const [allPayGrades, setAllPayGrades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
-    // In real app: fetch data from API
     loadPayGrades();
   }, [statusFilter]);
 
   const loadPayGrades = async () => {
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      let filtered = mockPayGrades;
-      if (statusFilter !== 'all') {
-        filtered = mockPayGrades.filter(g => g.status === statusFilter);
-      }
-      setPayGrades(filtered);
+    try {
+      const status = statusFilter !== 'all' ? statusFilter as 'draft' | 'approved' | 'rejected' : undefined;
+      const data = await payGradesApi.getAll(status);
+      setAllPayGrades(data);
+      setPayGrades(data);
+    } catch (error) {
+      console.error('Error loading pay grades:', error);
+      setPayGrades([]);
+      setAllPayGrades([]);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const columns = [
@@ -158,13 +107,20 @@ export default function PayGradesPage() {
       return;
     }
 
-    // In real app: API call to delete
-    console.log('Delete pay grade:', item.id);
-    loadPayGrades(); // Refresh
+    try {
+      await payGradesApi.delete(item.id);
+      loadPayGrades(); // Refresh
+    } catch (error) {
+      console.error('Error deleting pay grade:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete pay grade');
+    }
   };
 
   const getStatusCount = (status: 'draft' | 'approved' | 'rejected') => {
-    return mockPayGrades.filter(g => g.status === status).length;
+    return allPayGrades.filter(g => {
+      const normalizedStatus = String(g.status || '').toLowerCase();
+      return normalizedStatus === status;
+    }).length;
   };
 
   return (

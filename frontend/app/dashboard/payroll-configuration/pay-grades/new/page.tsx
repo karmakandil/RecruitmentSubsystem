@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { payGradesApi } from '@/lib/api/payroll-configuration/payGrades';
 
 export default function NewPayGradePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [benefits, setBenefits] = useState(['Health Insurance', 'Annual Bonus']);
+  const [error, setError] = useState<string | null>(null);
+  const [benefits, setBenefits] = useState<string[]>([]);
   const [newBenefit, setNewBenefit] = useState('');
 
   const [formData, setFormData] = useState({
@@ -21,12 +23,49 @@ export default function NewPayGradePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    router.push('/dashboard/payroll-configuration/pay-grades');
-    router.refresh();
+    try {
+      // Validate form data
+      if (!formData.name.trim()) {
+        throw new Error('Pay grade name is required');
+      }
+      if (!formData.jobGrade.trim()) {
+        throw new Error('Job grade is required');
+      }
+      if (!formData.minSalary || parseFloat(formData.minSalary) < 6000) {
+        throw new Error('Minimum salary must be at least 6000');
+      }
+      if (!formData.maxSalary || parseFloat(formData.maxSalary) < 6000) {
+        throw new Error('Maximum salary must be at least 6000');
+      }
+      if (parseFloat(formData.maxSalary) < parseFloat(formData.minSalary)) {
+        throw new Error('Maximum salary must be greater than or equal to minimum salary');
+      }
+      
+      // Prepare data for API
+      const payGradeData = {
+        name: formData.name,
+        description: formData.description || '',
+        minSalary: parseFloat(formData.minSalary),
+        maxSalary: parseFloat(formData.maxSalary),
+        currency: formData.currency,
+        jobGrade: formData.jobGrade,
+        jobBand: formData.jobBand,
+        benefits: benefits,
+        isActive: true,
+      };
+      
+      await payGradesApi.create(payGradeData);
+      
+      // Redirect to pay grades list
+      router.push('/dashboard/payroll-configuration/pay-grades');
+    } catch (err) {
+      console.error('Error creating pay grade:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create pay grade');
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -68,6 +107,11 @@ export default function NewPayGradePage() {
       </div>
 
       <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
+        {error && (
+          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
@@ -82,7 +126,7 @@ export default function NewPayGradePage() {
                   value={formData.name}
                   onChange={handleChange}
                   required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="e.g., Senior Developer"
                 />
               </div>
@@ -97,7 +141,7 @@ export default function NewPayGradePage() {
                   value={formData.jobGrade}
                   onChange={handleChange}
                   required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="e.g., JG-7"
                 />
               </div>
@@ -111,7 +155,7 @@ export default function NewPayGradePage() {
                   value={formData.description}
                   onChange={handleChange}
                   rows={3}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="Describe this pay grade..."
                 />
               </div>
@@ -124,7 +168,7 @@ export default function NewPayGradePage() {
                   name="jobBand"
                   value={formData.jobBand}
                   onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="">Select job band</option>
                   <option value="Entry Level">Entry Level</option>
@@ -144,7 +188,7 @@ export default function NewPayGradePage() {
                   value={formData.currency}
                   onChange={handleChange}
                   required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="EGP">EGP - Egyptian Pound</option>
                   <option value="USD">USD - US Dollar</option>
@@ -169,7 +213,7 @@ export default function NewPayGradePage() {
                     onChange={handleChange}
                     required
                     min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="0"
                   />
                   <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
@@ -190,7 +234,7 @@ export default function NewPayGradePage() {
                     onChange={handleChange}
                     required
                     min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="0"
                   />
                   <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
@@ -213,7 +257,7 @@ export default function NewPayGradePage() {
                   value={newBenefit}
                   onChange={(e) => setNewBenefit(e.target.value)}
                   placeholder="Add a benefit (e.g., Stock Options)"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addBenefit())}
                 />
                 <button
@@ -255,7 +299,7 @@ export default function NewPayGradePage() {
             </button>
             <button
               type="submit"
-              disabled={isSubmitDisabled}
+              disabled={isSubmitDisabled || isLoading}
               className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
             >
               {isLoading ? 'Creating...' : 'Create Pay Grade'}

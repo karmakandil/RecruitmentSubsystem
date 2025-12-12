@@ -1,20 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function EditAllowancePage() {
   const params = useParams();
   const router = useRouter();
   const allowanceId = params.id as string;
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data
   const [formData, setFormData] = useState({
-    name: 'Transportation Allowance',
-    description: 'Monthly transportation support for employees',
+    name: '',
+    description: '',
     allowanceType: 'transportation',
-    amount: 500,
+    amount: '',
     currency: 'EGP',
     isRecurring: true,
     frequency: 'monthly',
@@ -22,16 +24,69 @@ export default function EditAllowancePage() {
     effectiveDate: '',
   });
 
+  useEffect(() => {
+    loadAllowance();
+  }, [allowanceId]);
+
+  const loadAllowance = async () => {
+    setIsLoadingData(true);
+    try {
+      const allowance = await allowancesApi.getById(allowanceId);
+      setFormData({
+        name: allowance.name || '',
+        description: allowance.description || '',
+        allowanceType: allowance.allowanceType || 'transportation',
+        amount: String(allowance.amount || ''),
+        currency: allowance.currency || 'EGP',
+        isRecurring: allowance.isRecurring !== false,
+        frequency: allowance.frequency || 'monthly',
+        taxable: allowance.taxable || false,
+        effectiveDate: allowance.effectiveDate || '',
+      });
+    } catch (err) {
+      console.error('Error loading allowance:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load allowance');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Redirect back to details
-    router.push(`/dashboard/payroll-configuration/allowances/${allowanceId}`);
-    router.refresh();
+    try {
+      // Validate form data
+      if (!formData.name.trim()) {
+        throw new Error('Allowance name is required');
+      }
+      if (!formData.amount || parseFloat(formData.amount) < 0) {
+        throw new Error('Allowance amount must be non-negative');
+      }
+      
+      // Prepare data for API
+      const allowanceData = {
+        name: formData.name,
+        description: formData.description || '',
+        allowanceType: formData.allowanceType,
+        amount: parseFloat(formData.amount),
+        currency: formData.currency,
+        isRecurring: formData.isRecurring,
+        frequency: formData.frequency,
+        taxable: formData.taxable,
+        effectiveDate: formData.effectiveDate || undefined,
+      };
+      
+      await allowancesApi.update(allowanceId, allowanceData);
+      
+      // Redirect to allowances list
+      router.push('/dashboard/payroll-configuration/allowances');
+    } catch (err) {
+      console.error('Error updating allowance:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update allowance');
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -39,15 +94,25 @@ export default function EditAllowancePage() {
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
-               type === 'number' ? parseFloat(value) : value
+               type === 'number' ? value : value
     }));
   };
+
+  if (isLoadingData) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading allowance...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
       <div className="flex items-center mb-6">
         <button
-          onClick={() => router.push(`/dashboard/payroll-configuration/allowances/${allowanceId}`)}
+          onClick={() => router.push('/dashboard/payroll-configuration/allowances')}
           className="mr-4 p-2 rounded-md hover:bg-gray-100"
         >
           ← Back
@@ -56,6 +121,11 @@ export default function EditAllowancePage() {
       </div>
 
       <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
+        {error && (
+          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
@@ -68,7 +138,7 @@ export default function EditAllowancePage() {
                 value={formData.name}
                 onChange={handleChange}
                 required
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
 
@@ -80,7 +150,7 @@ export default function EditAllowancePage() {
                 name="allowanceType"
                 value={formData.allowanceType}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="transportation">Transportation</option>
                 <option value="housing">Housing</option>
@@ -100,7 +170,7 @@ export default function EditAllowancePage() {
                 value={formData.description}
                 onChange={handleChange}
                 rows={2}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
 
@@ -117,7 +187,7 @@ export default function EditAllowancePage() {
                   required
                   min="0"
                   step="0.01"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 />
                 <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
                   {formData.currency}
@@ -133,7 +203,7 @@ export default function EditAllowancePage() {
                 name="frequency"
                 value={formData.frequency}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
@@ -178,7 +248,7 @@ export default function EditAllowancePage() {
                 name="effectiveDate"
                 value={formData.effectiveDate}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
           </div>
@@ -186,7 +256,7 @@ export default function EditAllowancePage() {
           <div className="flex justify-end space-x-3 pt-6 border-t">
             <button
               type="button"
-              onClick={() => router.push(`/dashboard/payroll-configuration/allowances/${allowanceId}`)}
+              onClick={() => router.push('/dashboard/payroll-configuration/allowances')}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel

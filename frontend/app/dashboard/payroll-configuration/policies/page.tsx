@@ -9,7 +9,8 @@ import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 
 export default function PoliciesPage() {
   const router = useRouter();
-  const [policies, setPolicies] = useState<PayrollPolicy[]>([]);
+  const [allPolicies, setAllPolicies] = useState<PayrollPolicy[]>([]); // Store all policies for stats
+  const [policies, setPolicies] = useState<PayrollPolicy[]>([]); // Filtered policies for display
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -23,9 +24,18 @@ export default function PoliciesPage() {
       setIsLoading(true);
       setError(null);
       
+      // Always fetch all policies for accurate stats
+      const allData = await policiesApi.getAll();
+      setAllPolicies(allData);
+      
+      // Apply filter for display
       const filter = statusFilter === 'all' ? undefined : statusFilter as 'draft' | 'approved' | 'rejected';
-      const data = await policiesApi.getAll(filter);
-      setPolicies(data);
+      if (filter) {
+        const filtered = allData.filter(p => p.status.toLowerCase() === filter.toLowerCase());
+        setPolicies(filtered);
+      } else {
+        setPolicies(allData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load policies');
       console.error('Error loading policies:', err);
@@ -72,9 +82,22 @@ export default function PoliciesPage() {
     { 
       key: 'createdBy', 
       header: 'Created By',
-      render: (item: PayrollPolicy) => (
-        <div className="text-sm text-gray-900">{item.createdBy}</div>
-      )
+      render: (item: PayrollPolicy) => {
+        // Safety check: handle if createdBy is still an object
+        let createdByDisplay = item.createdBy;
+        if (createdByDisplay && typeof createdByDisplay === 'object') {
+          if (createdByDisplay.firstName && createdByDisplay.lastName) {
+            createdByDisplay = `${createdByDisplay.firstName} ${createdByDisplay.lastName}`;
+          } else if (createdByDisplay.fullName) {
+            createdByDisplay = createdByDisplay.fullName;
+          } else if (createdByDisplay.email) {
+            createdByDisplay = createdByDisplay.email;
+          } else {
+            createdByDisplay = 'Unknown';
+          }
+        }
+        return <div className="text-sm text-gray-900">{createdByDisplay || 'N/A'}</div>;
+      }
     },
   ];
 
@@ -87,7 +110,7 @@ export default function PoliciesPage() {
   };
 
   const handleEdit = (policy: PayrollPolicy) => {
-    if (policy.status === 'draft') {
+    if (policy.status?.toLowerCase() === 'draft') {
       router.push(`/dashboard/payroll-configuration/policies/${policy.id}/edit`);
     } else {
       alert('Only draft policies can be edited.');
@@ -95,7 +118,7 @@ export default function PoliciesPage() {
   };
 
   const handleDelete = async (policy: PayrollPolicy) => {
-    if (policy.status !== 'draft') {
+    if (policy.status?.toLowerCase() !== 'draft') {
       alert('Only draft policies can be deleted.');
       return;
     }
@@ -114,7 +137,8 @@ export default function PoliciesPage() {
   };
 
   const getStatusCount = (status: 'draft' | 'approved' | 'rejected') => {
-    return policies.filter(p => p.status === status).length;
+    // Use allPolicies for accurate counts, not filtered policies
+    return allPolicies.filter(p => p.status?.toLowerCase() === status.toLowerCase()).length;
   };
 
   return (

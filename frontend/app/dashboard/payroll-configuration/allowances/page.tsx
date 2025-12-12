@@ -4,63 +4,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
-
-// Mock data
-const mockAllowances = [
-  {
-    id: '1',
-    name: 'Transportation Allowance',
-    description: 'Monthly transportation support',
-    status: 'approved' as const,
-    allowanceType: 'transportation',
-    amount: 500,
-    currency: 'EGP',
-    isRecurring: true,
-    frequency: 'monthly',
-    taxable: false,
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-01T10:00:00Z',
-    updatedAt: '2024-01-01T10:00:00Z',
-    version: 1
-  },
-  {
-    id: '2',
-    name: 'Housing Allowance',
-    description: 'Housing support for employees',
-    status: 'draft' as const,
-    allowanceType: 'housing',
-    amount: 2000,
-    currency: 'EGP',
-    isRecurring: true,
-    frequency: 'monthly',
-    taxable: true,
-    effectiveDate: '2024-02-01',
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-12T15:00:00Z',
-    updatedAt: '2024-01-12T15:00:00Z',
-    version: 1
-  },
-  {
-    id: '3',
-    name: 'Meal Allowance',
-    description: 'Daily meal allowance',
-    status: 'draft' as const,
-    allowanceType: 'meal',
-    amount: 50,
-    currency: 'EGP',
-    isRecurring: true,
-    frequency: 'monthly',
-    taxable: false,
-    createdBy: 'hr.admin@company.com',
-    createdAt: '2024-01-18T09:00:00Z',
-    updatedAt: '2024-01-18T09:00:00Z',
-    version: 1
-  }
-];
+import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function AllowancesPage() {
   const router = useRouter();
-  const [allowances, setAllowances] = useState<any[]>(mockAllowances);
+  const [allowances, setAllowances] = useState<any[]>([]);
+  const [allAllowances, setAllAllowances] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -70,14 +19,18 @@ export default function AllowancesPage() {
 
   const loadAllowances = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      let filtered = mockAllowances;
-      if (statusFilter !== 'all') {
-        filtered = mockAllowances.filter(g => g.status === statusFilter);
-      }
-      setAllowances(filtered);
+    try {
+      const status = statusFilter !== 'all' ? statusFilter as 'draft' | 'approved' | 'rejected' : undefined;
+      const data = await allowancesApi.getAll(status);
+      setAllAllowances(data);
+      setAllowances(data);
+    } catch (error) {
+      console.error('Error loading allowances:', error);
+      setAllowances([]);
+      setAllAllowances([]);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const columns = [
@@ -161,12 +114,20 @@ export default function AllowancesPage() {
       return;
     }
 
-    console.log('Delete allowance:', item.id);
-    loadAllowances();
+    try {
+      await allowancesApi.delete(item.id);
+      loadAllowances(); // Refresh
+    } catch (error) {
+      console.error('Error deleting allowance:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete allowance');
+    }
   };
 
   const getStatusCount = (status: 'draft' | 'approved' | 'rejected') => {
-    return mockAllowances.filter(g => g.status === status).length;
+    return allAllowances.filter(g => {
+      const normalizedStatus = String(g.status || '').toLowerCase();
+      return normalizedStatus === status;
+    }).length;
   };
 
   return (

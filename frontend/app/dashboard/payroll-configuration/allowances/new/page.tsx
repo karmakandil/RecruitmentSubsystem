@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function NewAllowancePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -20,14 +22,40 @@ export default function NewAllowancePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Redirect back to list
-    router.push('/dashboard/payroll-configuration/allowances');
-    router.refresh();
+    try {
+      // Validate form data
+      if (!formData.name.trim()) {
+        throw new Error('Allowance name is required');
+      }
+      if (!formData.amount || parseFloat(formData.amount) < 0) {
+        throw new Error('Allowance amount must be non-negative');
+      }
+      
+      // Prepare data for API
+      const allowanceData = {
+        name: formData.name,
+        description: formData.description || '',
+        allowanceType: formData.allowanceType,
+        amount: parseFloat(formData.amount),
+        currency: formData.currency,
+        isRecurring: formData.isRecurring,
+        frequency: formData.frequency,
+        taxable: formData.taxable,
+        effectiveDate: formData.effectiveDate || undefined,
+      };
+      
+      await allowancesApi.create(allowanceData);
+      
+      // Redirect back to list
+      router.push('/dashboard/payroll-configuration/allowances');
+    } catch (err) {
+      console.error('Error creating allowance:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create allowance');
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -52,6 +80,11 @@ export default function NewAllowancePage() {
       </div>
 
       <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
+        {error && (
+          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
@@ -64,7 +97,7 @@ export default function NewAllowancePage() {
                 value={formData.name}
                 onChange={handleChange}
                 required
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="e.g., Transportation Allowance"
               />
             </div>
@@ -77,7 +110,7 @@ export default function NewAllowancePage() {
                 name="allowanceType"
                 value={formData.allowanceType}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="transportation">Transportation</option>
                 <option value="housing">Housing</option>
@@ -97,7 +130,7 @@ export default function NewAllowancePage() {
                 value={formData.description}
                 onChange={handleChange}
                 rows={2}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 placeholder="Describe this allowance..."
               />
             </div>
@@ -115,7 +148,7 @@ export default function NewAllowancePage() {
                   required
                   min="0"
                   step="0.01"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder="0.00"
                 />
                 <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
@@ -132,7 +165,7 @@ export default function NewAllowancePage() {
                 name="frequency"
                 value={formData.frequency}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
@@ -177,7 +210,7 @@ export default function NewAllowancePage() {
                 name="effectiveDate"
                 value={formData.effectiveDate}
                 onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
           </div>

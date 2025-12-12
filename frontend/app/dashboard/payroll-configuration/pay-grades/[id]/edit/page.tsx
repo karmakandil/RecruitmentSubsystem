@@ -1,35 +1,102 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { payGradesApi } from '@/lib/api/payroll-configuration/payGrades';
 
 export default function EditPayGradePage() {
   const params = useParams();
   const router = useRouter();
   const payGradeId = params.id as string;
   const [isLoading, setIsLoading] = useState(false);
-  const [benefits, setBenefits] = useState(['Health Insurance', 'Annual Bonus', 'Stock Options']);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [benefits, setBenefits] = useState<string[]>([]);
   const [newBenefit, setNewBenefit] = useState('');
 
   const [formData, setFormData] = useState({
-    name: 'Senior Developer',
-    description: 'Experienced software development position with leadership responsibilities',
-    minSalary: '15000',
-    maxSalary: '25000',
+    name: '',
+    description: '',
+    minSalary: '',
+    maxSalary: '',
     currency: 'EGP',
-    jobGrade: 'JG-7',
-    jobBand: 'Senior Individual Contributor',
+    jobGrade: '',
+    jobBand: '',
     isActive: true,
   });
 
+  useEffect(() => {
+    loadPayGrade();
+  }, [payGradeId]);
+
+  const loadPayGrade = async () => {
+    setIsLoadingData(true);
+    try {
+      const payGrade = await payGradesApi.getById(payGradeId);
+      setFormData({
+        name: payGrade.name || '',
+        description: payGrade.description || '',
+        minSalary: String(payGrade.minSalary || ''),
+        maxSalary: String(payGrade.maxSalary || ''),
+        currency: payGrade.currency || 'EGP',
+        jobGrade: payGrade.jobGrade || '',
+        jobBand: payGrade.jobBand || '',
+        isActive: payGrade.isActive !== false,
+      });
+      setBenefits(payGrade.benefits || []);
+    } catch (err) {
+      console.error('Error loading pay grade:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load pay grade');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    router.push(`/dashboard/payroll-configuration/pay-grades/${payGradeId}`);
-    router.refresh();
+    try {
+      // Validate form data
+      if (!formData.name.trim()) {
+        throw new Error('Pay grade name is required');
+      }
+      if (!formData.jobGrade.trim()) {
+        throw new Error('Job grade is required');
+      }
+      if (!formData.minSalary || parseFloat(formData.minSalary) < 6000) {
+        throw new Error('Minimum salary must be at least 6000');
+      }
+      if (!formData.maxSalary || parseFloat(formData.maxSalary) < 6000) {
+        throw new Error('Maximum salary must be at least 6000');
+      }
+      if (parseFloat(formData.maxSalary) < parseFloat(formData.minSalary)) {
+        throw new Error('Maximum salary must be greater than or equal to minimum salary');
+      }
+      
+      // Prepare data for API
+      const payGradeData = {
+        name: formData.name,
+        description: formData.description || '',
+        minSalary: parseFloat(formData.minSalary),
+        maxSalary: parseFloat(formData.maxSalary),
+        currency: formData.currency,
+        jobGrade: formData.jobGrade,
+        jobBand: formData.jobBand,
+        benefits: benefits,
+        isActive: formData.isActive,
+      };
+      
+      await payGradesApi.update(payGradeId, payGradeData);
+      
+      // Redirect to pay grades list
+      router.push('/dashboard/payroll-configuration/pay-grades');
+    } catch (err) {
+      console.error('Error updating pay grade:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update pay grade');
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -51,11 +118,21 @@ export default function EditPayGradePage() {
     setBenefits(benefits.filter(b => b !== benefitToRemove));
   };
 
+  if (isLoadingData) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading pay grade...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center mb-6">
         <button
-          onClick={() => router.push(`/dashboard/payroll-configuration/pay-grades/${payGradeId}`)}
+          onClick={() => router.push('/dashboard/payroll-configuration/pay-grades')}
           className="mr-4 p-2 rounded-md hover:bg-gray-100"
         >
           ← Back
@@ -64,6 +141,11 @@ export default function EditPayGradePage() {
       </div>
 
       <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
+        {error && (
+          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
           <div>
             <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
@@ -117,8 +199,9 @@ export default function EditPayGradePage() {
                   name="jobBand"
                   value={formData.jobBand}
                   onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 >
+                  <option value="">Select job band</option>
                   <option value="Entry Level">Entry Level</option>
                   <option value="Individual Contributor">Individual Contributor</option>
                   <option value="Senior Individual Contributor">Senior Individual Contributor</option>
@@ -136,7 +219,7 @@ export default function EditPayGradePage() {
                   value={formData.currency}
                   onChange={handleChange}
                   required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="EGP">EGP - Egyptian Pound</option>
                   <option value="USD">USD - US Dollar</option>
@@ -160,8 +243,8 @@ export default function EditPayGradePage() {
                     value={formData.minSalary}
                     onChange={handleChange}
                     required
-                    min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    min="6000"
+                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   />
                   <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
                     {formData.currency}
@@ -180,8 +263,8 @@ export default function EditPayGradePage() {
                     value={formData.maxSalary}
                     onChange={handleChange}
                     required
-                    min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    min="6000"
+                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   />
                   <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
                     {formData.currency}
@@ -189,7 +272,7 @@ export default function EditPayGradePage() {
                 </div>
               </div>
             </div>
-            {parseFloat(formData.maxSalary) < parseFloat(formData.minSalary) && (
+            {formData.minSalary && formData.maxSalary && parseFloat(formData.maxSalary) < parseFloat(formData.minSalary) && (
               <p className="mt-2 text-sm text-red-600">Maximum salary must be greater than minimum salary.</p>
             )}
           </div>
@@ -203,7 +286,7 @@ export default function EditPayGradePage() {
                   value={newBenefit}
                   onChange={(e) => setNewBenefit(e.target.value)}
                   placeholder="Add a benefit"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addBenefit())}
                 />
                 <button
@@ -251,14 +334,14 @@ export default function EditPayGradePage() {
           <div className="flex justify-end space-x-3 pt-6 border-t">
             <button
               type="button"
-              onClick={() => router.push(`/dashboard/payroll-configuration/pay-grades/${payGradeId}`)}
+              onClick={() => router.push('/dashboard/payroll-configuration/pay-grades')}
               className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isLoading || parseFloat(formData.maxSalary) < parseFloat(formData.minSalary)}
+              disabled={isLoading || (formData.minSalary && formData.maxSalary && parseFloat(formData.maxSalary) < parseFloat(formData.minSalary))}
               className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
             >
               {isLoading ? 'Saving...' : 'Save Changes'}
@@ -269,3 +352,4 @@ export default function EditPayGradePage() {
     </div>
   );
 }
+
