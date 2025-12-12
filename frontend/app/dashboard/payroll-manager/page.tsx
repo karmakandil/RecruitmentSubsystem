@@ -1,212 +1,352 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
-import { Button } from "@/components/shared/ui/Button";
-import { useEffect, useState } from "react";
-import { payslipsApi } from "@/lib/api/payroll-tracking/payroll-tracking";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/shared/ui/Card";
 
 export default function PayrollManagerDashboardPage() {
-  const router = useRouter();
   const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
-  
-  const [pendingClaimsCount, setPendingClaimsCount] = useState<number | null>(null);
-  const [pendingDisputesCount, setPendingDisputesCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchCounts = async () => {
-      try {
-        const [claims, disputes] = await Promise.all([
-          payslipsApi.getPendingClaims().catch((err) => {
-            console.error("Failed to fetch pending claims:", err);
-            return [];
-          }),
-          payslipsApi.getPendingDisputes().catch((err) => {
-            console.error("Failed to fetch pending disputes:", err);
-            return [];
-          }),
-        ]);
-        // Filter to only show items pending manager approval
-        const claimsPendingManager = (claims || []).filter(
-          (c: any) => c.status === "pending payroll Manager approval"
-        );
-        const disputesPendingManager = (disputes || []).filter(
-          (d: any) => d.status === "pending payroll Manager approval"
-        );
-        setPendingClaimsCount(claimsPendingManager.length);
-        setPendingDisputesCount(disputesPendingManager.length);
-      } catch (err: any) {
-        console.error("Failed to load counts:", err);
-        setPendingClaimsCount(0);
-        setPendingDisputesCount(0);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCounts();
-  }, []);
 
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Payroll Manager Dashboard</h1>
         <p className="text-gray-600 mt-1">
-          Welcome, {user?.fullName || "Payroll Manager"}. Confirm approvals for claims and disputes.
+          Welcome, {user?.fullName || "Manager"}. Review and approve payroll runs, resolve exceptions, and manage payroll execution.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>Pending Claim Confirmations</CardTitle>
-            <CardDescription>Confirm claims approved by specialists</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <p className="text-sm text-gray-600">Loading...</p>
-            ) : (
-              <>
-                <p className="text-sm text-gray-600">
-                  {pendingClaimsCount === 0
-                    ? "No claims awaiting your confirmation."
-                    : `${pendingClaimsCount} claim${pendingClaimsCount !== 1 ? "s" : ""} awaiting your confirmation.`}
-                </p>
-                {pendingClaimsCount !== null && pendingClaimsCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300">
-                      {pendingClaimsCount} Pending
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/dashboard/payroll-tracking/manager-claims")}
-            >
-              Review Claims
-            </Button>
-          </CardContent>
-        </Card>
+      {/* Approval Queue */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Approval Queue
+        </h2>
+        <p className="text-gray-600 mb-4">
+          Review and approve payroll runs pending your approval
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <CardTitle>Pending Approvals</CardTitle>
+              <CardDescription>
+                Review payroll runs awaiting manager approval
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                View Pending Approvals →
+              </Link>
+            </CardContent>
+          </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>Pending Dispute Confirmations</CardTitle>
-            <CardDescription>Confirm disputes approved by specialists</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <p className="text-sm text-gray-600">Loading...</p>
-            ) : (
-              <>
-                <p className="text-sm text-gray-600">
-                  {pendingDisputesCount === 0
-                    ? "No disputes awaiting your confirmation."
-                    : `${pendingDisputesCount} dispute${pendingDisputesCount !== 1 ? "s" : ""} awaiting your confirmation.`}
-                </p>
-                {pendingDisputesCount !== null && pendingDisputesCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-300">
-                      {pendingDisputesCount} Pending
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/dashboard/payroll-tracking/manager-disputes")}
-            >
-              Review Disputes
-            </Button>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle>Approve Payroll</CardTitle>
+              <CardDescription>
+                Review and approve payroll runs submitted for approval
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/review"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Review & Approve →
+              </Link>
+            </CardContent>
+          </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>Payroll Modules</CardTitle>
-            <CardDescription>Access payroll configuration, execution, and tracking</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Jump to any payroll module to configure, execute, or review payroll results.
-            </p>
-            <Button className="w-full" onClick={() => router.push("/dashboard/payroll")}>
-              Go to Payroll Modules
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>Reports</CardTitle>
-            <CardDescription>Generate payroll reports by department</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Access department-specific payroll reports and summaries.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/dashboard/payroll-tracking/department-reports")}
-            >
-              Generate Department Reports
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>All Claims</CardTitle>
-            <CardDescription>View all expense claims</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Browse all expense claims regardless of status.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/dashboard/payroll-tracking/claims")}
-            >
-              View All Claims
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle>All Disputes</CardTitle>
-            <CardDescription>View all payroll disputes</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Browse all payroll disputes regardless of status.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/dashboard/payroll-tracking/disputes")}
-            >
-              View All Disputes
-            </Button>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Approval History</CardTitle>
+              <CardDescription>
+                View previously approved or rejected payroll runs
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/history"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View History →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      <div className="mt-8">
-        <Button variant="outline" onClick={() => router.push("/dashboard")}>
-          Back to Dashboard
-        </Button>
+      {/* Exception Resolution */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Exception Resolution
+        </h2>
+        <p className="text-gray-600 mb-4">
+          Resolve escalated irregularities and exceptions in payroll runs
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
+            <CardHeader>
+              <CardTitle>Resolve Irregularities</CardTitle>
+              <CardDescription>
+                Resolve escalated irregularities flagged by specialists
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/resolve"
+                className="block w-full text-center bg-red-600 text-white py-3 px-4 rounded-md hover:bg-red-700 transition font-medium"
+              >
+                Resolve Issues →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>View Exceptions</CardTitle>
+              <CardDescription>
+                View all exceptions and irregularities in payroll runs
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/review/exceptions"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View Exceptions →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Employee Exceptions</CardTitle>
+              <CardDescription>
+                View exceptions for specific employees
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/review/employee-exceptions"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                Employee Exceptions →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Payroll Lock Management */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Payroll Lock Management
+        </h2>
+        <p className="text-gray-600 mb-4">
+          Lock or unlock payroll runs after finance approval
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-yellow-200">
+            <CardHeader>
+              <CardTitle>Lock Payroll</CardTitle>
+              <CardDescription>
+                Lock finalized payroll runs after finance approval
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/lock"
+                className="block w-full text-center bg-yellow-600 text-white py-3 px-4 rounded-md hover:bg-yellow-700 transition font-medium"
+              >
+                Lock Payroll →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+            <CardHeader>
+              <CardTitle>Unlock Payroll</CardTitle>
+              <CardDescription>
+                Unlock payroll runs with reason if modifications needed
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/unlock"
+                className="block w-full text-center bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition font-medium"
+              >
+                Unlock Payroll →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Locked Payrolls</CardTitle>
+              <CardDescription>
+                View all locked payroll runs
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/approval/manager/locked"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View Locked →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Review & Preview */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Review & Preview
+        </h2>
+        <p className="text-gray-600 mb-4">
+          Review payroll runs and preview calculations
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200">
+            <CardHeader>
+              <CardTitle>Preview Dashboard</CardTitle>
+              <CardDescription>
+                Review system-generated payroll results in preview dashboard
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/review"
+                className="block w-full text-center bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition font-medium"
+              >
+                View Preview →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Review Payroll Runs</CardTitle>
+              <CardDescription>
+                Review payroll runs and their status
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/review"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                Review Runs →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Pre-Initiation Status</CardTitle>
+              <CardDescription>
+                View pre-initiation validation status
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/pre-initiation"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View Status →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Quick Actions
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Payroll History</CardTitle>
+              <CardDescription>
+                View complete payroll history and audit trail
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/history"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View History →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Reports</CardTitle>
+              <CardDescription>
+                Generate payroll reports and analytics
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-execution/reports"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View Reports →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>My Profile</CardTitle>
+              <CardDescription>
+                View and manage your personal information
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/employee-profile/my-profile"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                My Profile →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Team</CardTitle>
+              <CardDescription>
+                View team members and organization structure
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/employee-profile/team"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                View Team →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

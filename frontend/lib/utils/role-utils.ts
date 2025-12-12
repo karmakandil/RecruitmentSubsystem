@@ -166,12 +166,10 @@ export function getDashboardByRole(role: string): string {
       return "/dashboard/recruitment";
 
     case SystemRole.PAYROLL_MANAGER:
-      return "/dashboard";
-    case SystemRole.PAYROLL_SPECIALIST:
-      return "/dashboard";
+      return "/dashboard/payroll-manager";
 
-    case SystemRole.FINANCE_STAFF:
-      return "/dashboard/finance";
+    case SystemRole.PAYROLL_SPECIALIST:
+      return "/dashboard/payroll-specialist";
 
     case SystemRole.DEPARTMENT_HEAD:
     case SystemRole.DEPARTMENT_EMPLOYEE:
@@ -269,9 +267,9 @@ export function getPrimaryDashboard(user: User | null): string {
   if (roles.includes(SystemRole.SYSTEM_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_MANAGER)) return "/dashboard/hr";
-  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard";
+  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard/payroll-manager";
   if (roles.includes(SystemRole.PAYROLL_SPECIALIST))
-    return "/dashboard";
+    return "/dashboard/payroll-specialist";
   if (roles.includes(SystemRole.RECRUITER)) return "/dashboard/recruitment";
   if (roles.includes(SystemRole.DEPARTMENT_HEAD))
     return "/dashboard/employee-profile";
