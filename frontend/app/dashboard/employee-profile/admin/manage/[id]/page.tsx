@@ -16,6 +16,22 @@ import { Toast, useToast } from "@/components/leaves/Toast";
 import { employeeProfileApi } from "@/lib/api/employee-profile/profile";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 
+// Helper function to format dates consistently (prevents hydration errors)
+const formatDate = (date: Date | string | undefined | null): string => {
+  if (!date) return "Not provided";
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return "Invalid date";
+    // Use a consistent format that works on both server and client
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  } catch {
+    return "Invalid date";
+  }
+};
+
 export default function ManageProfilePage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -152,9 +168,7 @@ export default function ManageProfilePage() {
                   ["Employee Number", profile.employeeNumber],
                   [
                     "Date of Birth",
-                    profile.dateOfBirth
-                      ? new Date(profile.dateOfBirth).toLocaleDateString()
-                      : "Not provided",
+                    formatDate(profile.dateOfBirth),
                   ],
                   ["Gender", profile.gender || "Not provided"],
                   ["Marital Status", profile.maritalStatus || "Not provided"],
@@ -190,9 +204,9 @@ export default function ManageProfilePage() {
                 <div key={label}>
                   <p className="text-sm font-medium text-gray-800">{label}</p>
                   <p className="mt-1 text-gray-900">
-                    {value
-                      ? new Date(value as any).toLocaleDateString?.() || value
-                      : "N/A"}
+                    {label === "Date of Hire"
+                      ? formatDate(value as any)
+                      : value || "N/A"}
                   </p>
                 </div>
               ))}
