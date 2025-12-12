@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { payTypesApi } from '@/lib/api/payroll-configuration/payTypes';
 
 export default function NewPayTypePage() {
+  // Only Payroll Specialist can create new pay types
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { policiesApi } from '@/lib/api/payroll-configuration/policies';
 import { PayrollPolicy } from '@/lib/api/payroll-configuration/types';
 
 export default function EditPolicyPage() {
+  // Only Payroll Specialist can edit policies
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const params = useParams();
   const router = useRouter();
   const policyId = params.id as string;

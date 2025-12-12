@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { payGradesApi } from '@/lib/api/payroll-configuration/payGrades';
 
 export default function PayGradesPage() {
+  // Only Payroll Specialist can create/edit pay grades
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [payGrades, setPayGrades] = useState<any[]>([]);
   const [allPayGrades, setAllPayGrades] = useState<any[]>([]);

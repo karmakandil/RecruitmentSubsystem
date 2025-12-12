@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function NewAllowancePage() {
+  // Only Payroll Specialist can create new allowances
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

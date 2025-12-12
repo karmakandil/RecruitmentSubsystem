@@ -2,11 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { payTypesApi } from '@/lib/api/payroll-configuration/payTypes';
 
 export default function PayTypesPage() {
+  // Only Payroll Specialist can create/edit pay types
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
+  
   const router = useRouter();
   const [payTypes, setPayTypes] = useState<any[]>([]);
   const [allPayTypes, setAllPayTypes] = useState<any[]>([]);

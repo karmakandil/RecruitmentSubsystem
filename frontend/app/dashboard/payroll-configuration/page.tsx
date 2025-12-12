@@ -2,11 +2,27 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
+import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { SystemRole } from "@/types";
 
 export default function PayrollConfigurationPage() {
   const { user } = useAuth();
+  
+  // Protect route - only allow roles that have access to payroll configuration
+  useRequireAuth(
+    [
+      SystemRole.PAYROLL_SPECIALIST,
+      SystemRole.PAYROLL_MANAGER,
+      SystemRole.SYSTEM_ADMIN,
+      SystemRole.HR_MANAGER,
+      SystemRole.HR_ADMIN,
+      SystemRole.LEGAL_POLICY_ADMIN,
+      SystemRole.DEPARTMENT_EMPLOYEE, // View-only access
+      SystemRole.DEPARTMENT_HEAD, // View-only access
+    ],
+    '/dashboard'
+  );
 
   const hasPayrollAccess = user?.roles?.some(
     (role) =>

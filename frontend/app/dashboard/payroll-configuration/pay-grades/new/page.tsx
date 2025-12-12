@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { payGradesApi } from '@/lib/api/payroll-configuration/payGrades';
 
 export default function NewPayGradePage() {
+  // Only Payroll Specialist can create new pay grades
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
