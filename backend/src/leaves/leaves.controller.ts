@@ -259,17 +259,7 @@ export class LeaveController {
   // Leave Type Endpoints
   @Get('types')
   @UseGuards(RolesGuard)
-<<<<<<< HEAD
-  @Roles(
-    SystemRole.HR_ADMIN,
-    SystemRole.HR_MANAGER,
-    SystemRole.HR_EMPLOYEE,
-    SystemRole.DEPARTMENT_EMPLOYEE,
-    SystemRole.DEPARTMENT_HEAD,
-  )
-=======
   @Roles(SystemRole.HR_ADMIN, SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE)
->>>>>>> 01aa0a1bbfa90e4f02141b2df50719b4bac3866b
   async getLeaveTypes() {
     return await this.leavesService.getLeaveTypes();
   }
