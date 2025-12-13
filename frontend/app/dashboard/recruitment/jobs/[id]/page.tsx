@@ -12,6 +12,7 @@ import { JobRequisition, CreateApplicationDto } from "@/types/recruitment";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
+import { SystemRole } from "@/types";
 
 export default function JobDetailPage() {
   const params = useParams();
@@ -25,6 +26,12 @@ export default function JobDetailPage() {
   const [consentGiven, setConsentGiven] = useState(false);
   // CHANGED - Track if user has already applied to this job
   const [hasAlreadyApplied, setHasAlreadyApplied] = useState(false);
+
+  // Determine if user is a candidate or HR staff
+  const isCandidate = user?.userType === "candidate" || user?.roles?.includes(SystemRole.JOB_CANDIDATE);
+  const isHRStaff = user?.roles?.some(role => 
+    [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.RECRUITER, SystemRole.SYSTEM_ADMIN].includes(role as SystemRole)
+  );
 
   // CHANGED - Added state for CV upload (REC-003)
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -192,14 +199,32 @@ export default function JobDetailPage() {
         />
 
         <div className="mb-6 flex gap-4">
-          {/* CHANGED - Added back button to job requisitions */}
-          <Link href="/dashboard/recruitment/job-requisitions" className="text-blue-600 hover:underline inline-block">
-            ← Back to Job Requisitions
-          </Link>
-          <span className="text-gray-300">|</span>
-          <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline inline-block">
-            Back to Recruitment
-          </Link>
+          {/* CHANGED - Context-aware back navigation based on user type */}
+          {isCandidate ? (
+            <>
+              <Link href="/dashboard/recruitment/my-applications" className="text-blue-600 hover:underline inline-block">
+                ← Back to My Applications
+              </Link>
+              <span className="text-gray-300">|</span>
+              <Link href="/dashboard/recruitment/jobs" className="text-blue-600 hover:underline inline-block">
+                View All Jobs
+              </Link>
+            </>
+          ) : isHRStaff ? (
+            <>
+              <Link href="/dashboard/recruitment/job-requisitions" className="text-blue-600 hover:underline inline-block">
+                ← Back to Job Requisitions
+              </Link>
+              <span className="text-gray-300">|</span>
+              <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline inline-block">
+                Back to Recruitment
+              </Link>
+            </>
+          ) : (
+            <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline inline-block">
+              ← Back to Recruitment
+            </Link>
+          )}
         </div>
 
         {loading ? (

@@ -48,6 +48,7 @@ import { TimeManagementService } from '../time-management/services/time-manageme
 import { PayrollConfigurationService } from '../payroll-configuration/payroll-configuration.service';
 import { OrganizationStructureService } from '../organization-structure/organization-structure.service';
 import { LeavesService } from '../leaves/leaves.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Contract, ContractDocument } from './models/contract.schema';
 import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contract.dto';
 import { OfferResponseStatus } from './enums/offer-response-status.enum';
@@ -170,6 +171,8 @@ export class RecruitmentService {
 
     @InjectModel(EmployeeSystemRole.name)
     private readonly employeeSystemRoleModel: Model<EmployeeSystemRoleDocument>,
+
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private getErrorMessage(error: unknown): string {
@@ -221,11 +224,27 @@ export class RecruitmentService {
       throw new BadRequestException('Openings must be a positive integer');
     }
 
-      // Validate hiringManagerId if provided
-    if (dto.hiringManagerId && !Types.ObjectId.isValid(dto.hiringManagerId)) {
-        console.error('❌ Invalid hiring manager ID:', dto.hiringManagerId);
-      throw new BadRequestException('Invalid hiring manager ID format');
-    }
+      // Resolve hiringManagerId - can be either a MongoDB ObjectId or an employee number (e.g., "EMP-2025-0005")
+      let resolvedHiringManagerId: Types.ObjectId | undefined;
+      if (dto.hiringManagerId) {
+        const trimmedId = dto.hiringManagerId.trim();
+        if (Types.ObjectId.isValid(trimmedId)) {
+          // It's already a valid MongoDB ObjectId
+          resolvedHiringManagerId = new Types.ObjectId(trimmedId);
+          console.log('✅ hiringManagerId is a valid ObjectId:', trimmedId);
+        } else {
+          // Try to look up by employee number
+          console.log('🔍 Looking up employee by employeeNumber:', trimmedId);
+          const employee = await this.employeeModel.findOne({ employeeNumber: trimmedId }).exec();
+          if (employee) {
+            resolvedHiringManagerId = employee._id as Types.ObjectId;
+            console.log('✅ Found employee by employeeNumber, _id:', resolvedHiringManagerId.toString());
+          } else {
+            console.error('❌ Employee not found with employeeNumber:', trimmedId);
+            throw new BadRequestException(`Hiring manager with employee number "${trimmedId}" not found`);
+          }
+        }
+      }
 
       // Generate unique requisition ID
     const requisitionId = `REQ-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -247,11 +266,9 @@ export class RecruitmentService {
         jobRequisitionData.location = trimmedLocation;
       }
       
-      // Only include hiringManagerId if it's a valid non-empty string
-      // Completely omit it from the object if not provided to avoid any validation issues
-      const trimmedHiringManagerId = dto.hiringManagerId?.trim();
-      if (trimmedHiringManagerId && Types.ObjectId.isValid(trimmedHiringManagerId)) {
-        jobRequisitionData.hiringManagerId = new Types.ObjectId(trimmedHiringManagerId);
+      // Include hiringManagerId if we successfully resolved it
+      if (resolvedHiringManagerId) {
+        jobRequisitionData.hiringManagerId = resolvedHiringManagerId;
       }
 
       console.log('💾 Saving job requisition:', JSON.stringify(jobRequisitionData, null, 2));
@@ -865,6 +882,91 @@ export class RecruitmentService {
       console.warn('Failed to send status update notification:', e);
     }
 
+    // Notify HR Employees when application is REJECTED or HIRED
+    if (dto.status === ApplicationStatus.REJECTED || dto.status === ApplicationStatus.HIRED) {
+      try {
+        const candidate = (application as any).candidateId;
+        const candidateName = candidate?.fullName || 
+          `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 
+          'Candidate';
+        const candidateIdStr = candidate?._id?.toString() || candidate?.toString();
+
+        // Get position title
+        let positionTitle = 'Position';
+        if (application.requisitionId) {
+          const job = await this.jobModel.findById(application.requisitionId).populate('template').lean();
+          positionTitle = (job as any)?.template?.title || 'Position';
+        }
+
+        // Get all HR Employee IDs
+        const hrEmployees = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.HR_EMPLOYEE] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+        const hrEmployeeIds = hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+        if (hrEmployeeIds.length > 0) {
+          if (dto.status === ApplicationStatus.REJECTED) {
+            // Notify HR Employees about rejection
+            await this.notificationsService.notifyHREmployeesCandidateRejected(
+              hrEmployeeIds,
+              {
+                candidateName,
+                candidateId: candidateIdStr || '',
+                positionTitle,
+                applicationId: id,
+                rejectionReason: dto.rejectionReason,
+              },
+            );
+
+            // Send in-app notification to candidate about rejection
+            if (candidateIdStr) {
+              await this.notificationsService.notifyCandidateRejected(
+                candidateIdStr,
+                {
+                  positionTitle,
+                  applicationId: id,
+                  rejectionReason: dto.rejectionReason,
+                },
+              );
+            }
+
+            console.log(`[UPDATE_STATUS] Notified ${hrEmployeeIds.length} HR Employees about rejection`);
+          } else if (dto.status === ApplicationStatus.HIRED) {
+            // Notify HR Employees about hiring
+            await this.notificationsService.notifyHREmployeesCandidateHired(
+              hrEmployeeIds,
+              {
+                candidateName,
+                candidateId: candidateIdStr || '',
+                positionTitle,
+                applicationId: id,
+              },
+            );
+
+            // Send in-app notification to candidate about acceptance
+            if (candidateIdStr) {
+              await this.notificationsService.notifyCandidateAccepted(
+                candidateIdStr,
+                {
+                  positionTitle,
+                  applicationId: id,
+                },
+              );
+            }
+
+            console.log(`[UPDATE_STATUS] Notified ${hrEmployeeIds.length} HR Employees about hiring`);
+          }
+        }
+      } catch (notifError) {
+        console.warn('Failed to notify HR Employees about status change:', notifError);
+      }
+    }
+
     // Update related job requisition progress if possible
     try {
       const reqId = application.requisitionId;
@@ -897,9 +999,89 @@ export class RecruitmentService {
     return application;
   }
 
-  // ---------------------------------------------------
-  // INTERVIEWS
-  // ---------------------------------------------------
+  // =============================================================================
+  // GET HR EMPLOYEES FOR INTERVIEW PANEL SELECTION
+  // =============================================================================
+  // Returns only employees with HR_EMPLOYEE or HR_MANAGER role who can be 
+  // assigned as panel members for conducting interviews.
+  // =============================================================================
+  async getHREmployeesForPanel() {
+    try {
+      // Get all employees with HR_EMPLOYEE or HR_MANAGER role
+      const hrEmployeeRoles = await this.employeeSystemRoleModel
+        .find({
+          roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] },
+          isActive: true,
+        })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+
+      const hrEmployeeIds = hrEmployeeRoles
+        .map((role: any) => role.employeeProfileId?.toString())
+        .filter(Boolean);
+
+      if (hrEmployeeIds.length === 0) {
+        return [];
+      }
+
+      // Get the employee profiles for these HR employees using the service
+      const hrEmployees: any[] = [];
+      for (const empId of hrEmployeeIds) {
+        try {
+          const emp: any = await this.employeeProfileService.findOne(empId);
+          if (emp && emp.active !== false) {
+            hrEmployees.push({
+              _id: emp._id?.toString() || empId,
+              id: emp._id?.toString() || empId,
+              firstName: emp.firstName,
+              lastName: emp.lastName,
+              fullName: emp.fullName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+              email: emp.workEmail || emp.personalEmail,
+              department: typeof emp.department === 'object' 
+                ? emp.department?.name 
+                : emp.department,
+            });
+          }
+        } catch (e) {
+          // Skip this employee if not found
+          console.warn(`Could not fetch employee ${empId}:`, e);
+        }
+      }
+
+      return hrEmployees;
+    } catch (error) {
+      console.error('Error fetching HR Employees for panel:', error);
+      return [];
+    }
+  }
+
+  // =============================================================================
+  // INTERVIEWS - RECRUITMENT SUBSYSTEM
+  // =============================================================================
+  // 
+  // Interview Flow:
+  // 1. HR Employee schedules interview via scheduleInterview()
+  // 2. Panel members receive in-app notification (notifyInterviewPanelMembers)
+  // 3. Panel members receive email notification (sendNotification 'panel_invitation')
+  // 4. Candidate receives in-app notification (notifyCandidateInterviewScheduled)
+  // 5. Candidate receives email notification (sendNotification 'interview_scheduled')
+  // 6. Application status changes from SUBMITTED → IN_PROCESS
+  // 7. Panel members conduct interview and submit feedback
+  // 8. When all panel members submit → interview status = 'completed'
+  // 9. Application appears in HR Manager's "Job Offers" page
+  //
+  // =============================================================================
+
+  /**
+   * Schedule Interview
+   * 
+   * Creates a new interview for an application and notifies all parties:
+   * - Panel members (employees assigned to interview) - in-app + email
+   * - Candidate - in-app + email
+   * 
+   * Also updates application status from SUBMITTED to IN_PROCESS.
+   */
   async scheduleInterview(dto: ScheduleInterviewDto) {
     // Validate ObjectId
     if (!Types.ObjectId.isValid(dto.applicationId)) {
@@ -983,9 +1165,22 @@ export class RecruitmentService {
     const saved = await interview.save();
 
     try {
-      await this.applicationModel.findByIdAndUpdate(dto.applicationId, {
+      // Get the current application to check its status
+      const currentApp = await this.applicationModel.findById(dto.applicationId);
+      
+      // Build update object - always update stage, conditionally update status
+      const updateData: any = {
         currentStage: dto.stage,
-      });
+      };
+      
+      // If application is still in SUBMITTED status, change to IN_PROCESS when interview is scheduled
+      if (currentApp && currentApp.status === ApplicationStatus.SUBMITTED) {
+        updateData.status = ApplicationStatus.IN_PROCESS;
+        console.log(`[INTERVIEW] Application ${dto.applicationId} status changed from SUBMITTED to IN_PROCESS`);
+      }
+      
+      await this.applicationModel.findByIdAndUpdate(dto.applicationId, updateData);
+      
       const app = await this.applicationModel
         .findById(dto.applicationId)
         .populate('candidateId');
@@ -1021,12 +1216,49 @@ export class RecruitmentService {
         }
       }
 
+      // =============================================================
+      // RECRUITMENT NOTIFICATION: Candidate Interview Scheduled
+      // =============================================================
+      // Send in-app notification to the candidate about their scheduled interview.
+      // This appears in the candidate's notification center in the app.
+      // Note: Email notification is sent separately above via sendNotification()
+      // 
+      // Flow: scheduleInterview → notifyCandidateInterviewScheduled 
+      //       → Candidate sees "Your interview is scheduled!" in app
+      // =============================================================
+      if (candidate && candidate._id) {
+        const jobRequisition = app?.requisitionId
+          ? await this.jobModel.findById(app.requisitionId).lean().exec()
+          : null;
+        const positionTitle = (jobRequisition as any)?.title || 'Position';
+
+        try {
+          // Call the notification service to create in-app notification for candidate
+          await this.notificationsService.notifyCandidateInterviewScheduled(
+            candidate._id.toString(),
+            {
+              interviewId: saved._id.toString(),
+              positionTitle: positionTitle,
+              scheduledDate: scheduledDate,
+              method: dto.method || 'TBD',
+              videoLink: dto.videoLink,
+              stage: dto.stage,
+            },
+          );
+          console.log(`[INTERVIEW] In-app notification sent to candidate: ${candidate._id}`);
+        } catch (candidateNotifError) {
+          console.warn('Failed to send in-app notification to candidate:', candidateNotifError);
+          // Don't fail the interview creation if notification fails
+        }
+      }
+
       if (dto.panel && dto.panel.length > 0) {
         const jobRequisition = app?.requisitionId
           ? await this.jobModel.findById(app.requisitionId).lean().exec()
           : null;
         const positionTitle = (jobRequisition as any)?.title || 'Position';
 
+        // Send email notifications to panel members
         for (const panelMemberId of dto.panel) {
           try {
             const panelMember =
@@ -1060,6 +1292,36 @@ export class RecruitmentService {
               error,
             );
           }
+        }
+
+        // =============================================================
+        // RECRUITMENT NOTIFICATION: Panel Members Interview Invitation
+        // =============================================================
+        // Send in-app notifications to all panel members assigned to the interview.
+        // Each panel member receives a notification with full interview details.
+        // Note: Email notifications are sent separately above via sendNotification()
+        //
+        // Flow: scheduleInterview → notifyInterviewPanelMembers
+        //       → Each panel member sees "You have been assigned to an interview!"
+        // =============================================================
+        try {
+          // Call the notification service to create in-app notifications for all panel members
+          await this.notificationsService.notifyInterviewPanelMembers(
+            dto.panel,
+            {
+              interviewId: saved._id.toString(),
+              candidateName: candidate?.fullName || candidate?.firstName || 'Candidate',
+              positionTitle: positionTitle,
+              scheduledDate: scheduledDate,
+              method: dto.method || 'TBD',
+              videoLink: dto.videoLink,
+              stage: dto.stage,
+            },
+          );
+          console.log(`[INTERVIEW] In-app notifications sent to ${dto.panel.length} panel members`);
+        } catch (notifError) {
+          console.warn('Failed to send in-app notifications to panel members:', notifError);
+          // Don't fail the interview creation if notifications fail
         }
       }
     } catch (e) {
@@ -1185,36 +1447,64 @@ export class RecruitmentService {
     });
     const savedOffer = await offer.save();
 
-    // REC-018: Send offer letter notification to candidate
+    // =============================================================
+    // RECRUITMENT NOTIFICATION: Candidate - New Offer Received
+    // =============================================================
+    // Send both EMAIL and IN-APP notifications to the candidate
+    // about their new job offer. Candidate can view and respond
+    // in their "Job Offers" page.
+    // =============================================================
     try {
       const candidate = await this.candidateModel
         .findById(dto.candidateId)
         .lean();
-      if (candidate && candidate.personalEmail) {
-        const offerDeadlineFormatted = deadline.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        });
+      
+      // Get position title from job requisition if available
+      let positionTitle = dto.role || 'Position';
+      
+      if (candidate) {
+        // 1. Send EMAIL notification
+        if (candidate.personalEmail) {
+          const offerDeadlineFormatted = deadline.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
 
-        await this.sendNotification(
-          'offer_letter',
-          candidate.personalEmail,
-          {
-            candidateName: candidate.firstName || 'Candidate',
-            role: dto.role,
-            grossSalary: dto.grossSalary,
-            signingBonus: dto.signingBonus,
-            benefits: dto.benefits,
-            deadline: offerDeadlineFormatted,
-            content: dto.content,
-          },
-          { nonBlocking: true }, // Non-blocking - don't fail if email fails
-        );
+          await this.sendNotification(
+            'offer_letter',
+            candidate.personalEmail,
+            {
+              candidateName: candidate.firstName || 'Candidate',
+              role: dto.role,
+              grossSalary: dto.grossSalary,
+              signingBonus: dto.signingBonus,
+              benefits: dto.benefits,
+              deadline: offerDeadlineFormatted,
+              content: dto.content,
+            },
+            { nonBlocking: true },
+          );
+          console.log(`[CREATE_OFFER] Email notification sent to candidate: ${candidate.personalEmail}`);
+        }
+
+        // 2. Send IN-APP notification
+        if (candidate._id) {
+          await this.notificationsService.notifyCandidateOfferReceived(
+            candidate._id.toString(),
+            {
+              offerId: savedOffer._id.toString(),
+              positionTitle: positionTitle,
+              grossSalary: dto.grossSalary,
+              deadline: deadline,
+            },
+          );
+          console.log(`[CREATE_OFFER] In-app notification sent to candidate: ${candidate._id}`);
+        }
       }
     } catch (e) {
       // Non-critical - log but don't fail offer creation
-      console.warn('Failed to send offer letter notification:', e);
+      console.warn('Failed to send offer notifications:', e);
     }
 
     return savedOffer;
@@ -1284,9 +1574,97 @@ export class RecruitmentService {
       }
     }
 
+    // =============================================================
+    // RECRUITMENT NOTIFICATION: HR Manager - Candidate Responded
+    // =============================================================
+    // Notify HR Manager and HR Employees when candidate accepts or rejects.
+    // This allows HR Manager to:
+    // - If accepted: Finalize the offer and mark as hired
+    // - If rejected: Consider other candidates or close position
+    // =============================================================
+    try {
+      const application = (updated as any).applicationId;
+      const candidateId = updated.candidateId?.toString() || application?.candidateId?.toString();
+      
+      // Get candidate name
+      let candidateName = 'Candidate';
+      if (candidateId) {
+        const candidate = await this.candidateModel.findById(candidateId).lean();
+        if (candidate) {
+          candidateName = (candidate as any).fullName || 
+            `${(candidate as any).firstName || ''} ${(candidate as any).lastName || ''}`.trim() || 
+            'Candidate';
+        }
+      }
+
+      // Get position title from job requisition
+      let positionTitle = (updated as any).role || 'Position';
+      if (application?.requisitionId) {
+        try {
+          const job = await this.jobModel.findById(application.requisitionId).populate('template').lean();
+          positionTitle = (job as any)?.template?.title || positionTitle;
+        } catch (e) {
+          console.warn('Could not get job title:', e);
+        }
+      }
+
+      // Get all HR users to notify (HR Manager + HR Employees)
+      const hrUsers = await this.employeeSystemRoleModel
+        .find({
+          roles: { $in: [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE] },
+          isActive: true,
+        })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrUserIds = hrUsers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+      if (hrUserIds.length > 0) {
+        await this.notificationsService.notifyHROfferResponse(
+          hrUserIds,
+          {
+            candidateName,
+            candidateId: candidateId || '',
+            positionTitle,
+            offerId: id,
+            applicationId: application?._id?.toString() || '',
+            response: dto.applicantResponse === OfferResponseStatus.ACCEPTED ? 'accepted' : 'rejected',
+          },
+        );
+        console.log(`[RESPOND_OFFER] Notified ${hrUserIds.length} HR users about candidate ${dto.applicantResponse}`);
+      }
+    } catch (e) {
+      // Non-critical - notification failure shouldn't fail the response
+      console.warn('Failed to notify HR about offer response:', e);
+    }
+
     return updated;
   }
 
+  /**
+   * Finalize Offer - RECRUITMENT SUBSYSTEM
+   * 
+   * This method handles the final step of the hiring workflow.
+   * HR Manager uses this to approve or reject an offer after candidate response.
+   * 
+   * HIRING NOTIFICATION FLOW (when offer APPROVED and candidate ACCEPTED):
+   * 1. Application status → HIRED
+   * 2. notifyHREmployeesCandidateHired() → All HR Employees get in-app notification
+   *    "🎉 A candidate has been HIRED! [candidateName] for [positionTitle]"
+   * 3. notifyCandidateAccepted() → Candidate gets in-app notification
+   *    "Congratulations! You have been HIRED for [positionTitle]!"
+   * 4. sendNotification('application_status') → Candidate gets acceptance EMAIL
+   * 5. HR Employee can now see HIRED status in "Candidate Tracking" page
+   * 
+   * REJECTION NOTIFICATION FLOW (when offer REJECTED):
+   * 1. Application status → REJECTED
+   * 2. notifyHREmployeesCandidateRejected() → All HR Employees get in-app notification
+   *    "❌ A candidate has been REJECTED. [candidateName] for [positionTitle]"
+   * 3. notifyCandidateRejected() → Candidate gets in-app notification
+   *    "Thank you for your interest... we will not be moving forward..."
+   * 4. sendNotification('application_status') → Candidate gets rejection EMAIL
+   * 5. HR Employee can now see REJECTED status in "Candidate Tracking" page
+   */
   async finalizeOffer(id: string, dto: FinalizeOfferDto) {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid offer ID format');
@@ -1322,14 +1700,60 @@ export class RecruitmentService {
       throw new NotFoundException('Offer not found');
     }
 
-    // BR: When offer is approved and accepted, it's ready for onboarding
-    // Onboarding is triggered when employee profile is created from contract (REC-029)
+    // Get application and candidate details for notifications
+    const application = (offer as any).applicationId;
+    const candidateId = (offer as any).candidateId?.toString() || application?.candidateId?.toString();
+    
+    // Get job requisition for position title
+    let positionTitle = 'Position';
+    if (application?.requisitionId) {
+      try {
+        const job = await this.jobModel.findById(application.requisitionId).populate('template').lean();
+        positionTitle = (job as any)?.template?.title || 'Position';
+      } catch (e) {
+        console.warn('Could not get job title for notification:', e);
+      }
+    }
+
+    // Get candidate name
+    let candidateName = 'Candidate';
+    if (candidateId) {
+      try {
+        const candidate = await this.candidateModel.findById(candidateId).lean();
+        if (candidate) {
+          candidateName = (candidate as any).fullName || 
+            `${(candidate as any).firstName || ''} ${(candidate as any).lastName || ''}`.trim() || 
+            'Candidate';
+        }
+      } catch (e) {
+        console.warn('Could not get candidate name for notification:', e);
+      }
+    }
+
+    // Get all HR Employee IDs for notifications
+    const getHREmployeeIds = async (): Promise<string[]> => {
+      try {
+        const hrEmployees = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.HR_EMPLOYEE] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+        return hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+      } catch (e) {
+        console.warn('Could not fetch HR Employee IDs:', e);
+        return [];
+      }
+    };
+
+    // BR: When offer is APPROVED and accepted, hire the candidate
     if (
       dto.finalStatus === OfferFinalStatus.APPROVED &&
       offer.applicantResponse === OfferResponseStatus.ACCEPTED
     ) {
       try {
-        const application = (offer as any).applicationId;
         if (application && application._id) {
           // Update application status to HIRED
           await this.applicationModel.findByIdAndUpdate(application._id, {
@@ -1340,22 +1764,186 @@ export class RecruitmentService {
           // Update job requisition progress
           if (application.requisitionId) {
             const progress = this.calculateProgress('hired');
-            // Note: Progress field may not exist in schema, but Mongoose allows dynamic fields
             await this.jobModel.findByIdAndUpdate(application.requisitionId, {
               progress,
             });
           }
 
           console.log(
-            `Offer finalized and approved. Ready for employee profile creation and onboarding trigger.`,
+            `Offer finalized and approved. Application ${application._id} marked as HIRED.`,
           );
+
+          // =============================================================
+          // RECRUITMENT NOTIFICATION: HR Employees - Candidate Hired
+          // =============================================================
+          // Notify all HR Employees that a candidate has been hired.
+          // This allows HR Employees to:
+          // - Track the candidate's status in "Candidate Tracking"
+          // - Prepare onboarding documents
+          // - Send the official acceptance letter
+          // =============================================================
+          try {
+            const hrEmployeeIds = await getHREmployeeIds();
+            if (hrEmployeeIds.length > 0) {
+              await this.notificationsService.notifyHREmployeesCandidateHired(
+                hrEmployeeIds,
+                {
+                  candidateName,
+                  candidateId: candidateId || '',
+                  positionTitle,
+                  applicationId: application._id.toString(),
+                  offerId: id,
+                },
+              );
+              console.log(`[FINALIZE_OFFER] Notified ${hrEmployeeIds.length} HR Employees about hiring`);
+            }
+          } catch (notifError) {
+            console.warn('Failed to notify HR Employees about hiring:', notifError);
+          }
+
+          // =============================================================
+          // RECRUITMENT NOTIFICATION: Candidate - Hired (In-App)
+          // =============================================================
+          // Send in-app notification to candidate about acceptance.
+          // Candidate sees this in their notification center.
+          // Message: "Congratulations! You have been HIRED!"
+          // =============================================================
+          if (candidateId) {
+            try {
+              await this.notificationsService.notifyCandidateAccepted(
+                candidateId,
+                {
+                  positionTitle,
+                  applicationId: application._id.toString(),
+                },
+              );
+              console.log(`[FINALIZE_OFFER] Sent acceptance notification to candidate ${candidateId}`);
+            } catch (notifError) {
+              console.warn('Failed to send acceptance notification to candidate:', notifError);
+            }
+          }
+
+          // SEND ACCEPTANCE EMAIL to candidate
+          const candidateDoc = await this.candidateModel.findById(candidateId).lean();
+          if (candidateDoc && (candidateDoc as any).personalEmail) {
+            try {
+              await this.sendNotification(
+                'application_status',
+                (candidateDoc as any).personalEmail,
+                {
+                  candidateName,
+                  status: ApplicationStatus.HIRED,
+                },
+                { nonBlocking: true },
+              );
+            } catch (e) {
+              console.warn('Failed to send acceptance email:', e);
+            }
+          }
         }
       } catch (e) {
         // Non-critical
         console.warn(
-          'Could not update application status after offer finalization:',
+          'Could not complete post-approval actions:',
           e,
         );
+      }
+    }
+
+    // =============================================================
+    // REJECTION FLOW
+    // =============================================================
+    // When HR Manager rejects the offer, we need to:
+    // 1. Update application status to REJECTED
+    // 2. Notify all HR Employees (in-app)
+    // 3. Notify candidate (in-app)
+    // 4. Send rejection email to candidate
+    // =============================================================
+    if (dto.finalStatus === OfferFinalStatus.REJECTED) {
+      try {
+        if (application && application._id) {
+          // Step 1: Update application status to REJECTED
+          await this.applicationModel.findByIdAndUpdate(application._id, {
+            status: ApplicationStatus.REJECTED,
+          });
+
+          console.log(
+            `Offer rejected. Application ${application._id} marked as REJECTED.`,
+          );
+
+          // =============================================================
+          // RECRUITMENT NOTIFICATION: HR Employees - Candidate Rejected
+          // =============================================================
+          // Notify all HR Employees that a candidate has been rejected.
+          // This allows HR Employees to:
+          // - Track the candidate's status in "Candidate Tracking"
+          // - Update their records accordingly
+          // =============================================================
+          try {
+            const hrEmployeeIds = await getHREmployeeIds();
+            if (hrEmployeeIds.length > 0) {
+              await this.notificationsService.notifyHREmployeesCandidateRejected(
+                hrEmployeeIds,
+                {
+                  candidateName,
+                  candidateId: candidateId || '',
+                  positionTitle,
+                  applicationId: application._id.toString(),
+                },
+              );
+              console.log(`[FINALIZE_OFFER] Notified ${hrEmployeeIds.length} HR Employees about rejection`);
+            }
+          } catch (notifError) {
+            console.warn('Failed to notify HR Employees about rejection:', notifError);
+          }
+
+          // =============================================================
+          // RECRUITMENT NOTIFICATION: Candidate - Rejected (In-App)
+          // =============================================================
+          // Send in-app notification to candidate about rejection.
+          // Candidate sees this in their notification center.
+          // Message: "Thank you for your interest... we will not be moving forward..."
+          // =============================================================
+          if (candidateId) {
+            try {
+              await this.notificationsService.notifyCandidateRejected(
+                candidateId,
+                {
+                  positionTitle,
+                  applicationId: application._id.toString(),
+                },
+              );
+              console.log(`[FINALIZE_OFFER] Sent rejection notification to candidate ${candidateId}`);
+            } catch (notifError) {
+              console.warn('Failed to send rejection notification to candidate:', notifError);
+            }
+          }
+
+          // =============================================================
+          // RECRUITMENT EMAIL: Candidate - Rejection Letter
+          // =============================================================
+          // Send rejection email to candidate's personal email.
+          // Uses the 'application_status' email template.
+          // =============================================================
+          const candidateDoc = await this.candidateModel.findById(candidateId).lean();
+          if (candidateDoc && (candidateDoc as any).personalEmail) {
+            try {
+              await this.sendNotification(
+                'application_status',
+                (candidateDoc as any).personalEmail,
+                {
+                  candidateName,
+                  status: ApplicationStatus.REJECTED,
+                },
+                { nonBlocking: true },
+              );
+            } catch (e) {
+              console.warn('Failed to send rejection email:', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Could not complete post-rejection actions:', e);
       }
     }
 
@@ -3797,6 +4385,29 @@ Due: ${context.dueDate}`
         interviewerId: result.interviewerId,
         score: result.score,
       });
+
+      // Check if all panel members have submitted feedback
+      // If so, mark interview as 'completed'
+      try {
+        const panelSize = interview.panel?.length || 0;
+        const feedbackCount = await this.assessmentResultModel.countDocuments({
+          interviewId: interviewObjectId,
+        });
+        
+        console.log(`📊 Feedback submitted: ${feedbackCount}/${panelSize} panel members`);
+        
+        if (feedbackCount >= panelSize && panelSize > 0) {
+          // All panel members have submitted feedback - mark interview as completed
+          await this.interviewModel.findByIdAndUpdate(interviewId, {
+            status: 'completed',
+          });
+          console.log(`✅ Interview ${interviewId} marked as COMPLETED - all feedback received`);
+        }
+      } catch (statusError) {
+        // Non-critical - don't fail the feedback submission
+        console.warn('Could not update interview status to completed:', statusError);
+      }
+
       return result;
     } catch (error) {
       if (

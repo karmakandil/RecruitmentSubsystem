@@ -19,6 +19,7 @@ import {
 import { Textarea } from "@/components/leaves/Textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
+import { Input } from "@/components/shared/ui/Input";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
@@ -49,15 +50,52 @@ export default function JobOffersApprovalsPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [creatingOffer, setCreatingOffer] = useState(false);
 
+  // =============================================================
+  // OFFER CREATION FORM STATE
+  // =============================================================
+  // When HR Manager approves an application, they must fill in offer details.
+  // This form collects all the data needed for the Offer schema.
+  // =============================================================
+  const [offerForm, setOfferForm] = useState({
+    grossSalary: "",
+    signingBonus: "",
+    benefits: "",  // Comma-separated string, will be converted to array
+    conditions: "",
+    insurances: "",
+    content: "",
+    role: "",
+    deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
+  });
+
+  const resetOfferForm = () => {
+    setOfferForm({
+      grossSalary: "",
+      signingBonus: "",
+      benefits: "",
+      conditions: "",
+      insurances: "",
+      content: "",
+      role: "",
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    });
+  };
+
   useEffect(() => {
     loadData();
   }, []);
 
+  // =============================================================
+  // CHECK IF APPLICATION HAS COMPLETED INTERVIEW
+  // =============================================================
+  // An application is ready for HR Manager review when:
+  // - At least one interview has status 'completed'
+  // - Interview becomes 'completed' when ALL panel members submit feedback
+  // =============================================================
   const hasInterviewFeedback = (application: Application): boolean => {
     const interviews = (application as any).interviews || [];
+    // Check if at least one interview is completed (all panel members submitted feedback)
     return interviews.some((int: any) => {
-      // Check if interview has feedback submitted
-      return int.status === 'scheduled' || int.status === 'completed';
+      return int.status === 'completed';
     });
   };
 
@@ -67,12 +105,22 @@ export default function JobOffersApprovalsPage() {
       // Get all applications
       const allApps = await recruitmentApi.getApplications();
       
-      // Filter applications that need HR Manager review:
-      // 1. Applications with status "offer" - these already have offers and need approval
-      // 2. Applications with status "in_process" that have interview feedback - these need offer creation
+      // =============================================================
+      // FILTER APPLICATIONS FOR HR MANAGER REVIEW
+      // =============================================================
+      // Show applications that need HR Manager action:
+      // 1. Status "offer" - already have offers, need approval/finalization
+      // 2. Status "in_process" with completed interviews - need offer creation
+      //
+      // Interview becomes 'completed' when ALL panel members submit feedback
+      // =============================================================
       const offerApps = allApps.filter((app) => {
+        // Applications with offers need approval
         if (app.status === "offer") return true;
+        
+        // Applications in process with completed interviews need offer creation
         if (app.status === ApplicationStatus.IN_PROCESS && hasInterviewFeedback(app)) return true;
+        
         return false;
       });
       setApplications(offerApps);
@@ -188,11 +236,43 @@ export default function JobOffersApprovalsPage() {
 
   const handleAcceptApplication = (application: Application) => {
     setSelectedApplication(application);
+    // Pre-fill the role with the job title
+    const jobTitle = getJobTitle(application);
+    setOfferForm(prev => ({
+      ...prev,
+      role: jobTitle !== "Unknown Position" ? jobTitle : "",
+    }));
     setIsAcceptModalOpen(true);
   };
 
+  // =============================================================
+  // CONFIRM ACCEPT APPLICATION - CREATE OFFER
+  // =============================================================
+  // This function creates an offer using the form data filled by HR Manager.
+  // The offer will appear in the candidate's "Offers" page where they can
+  // accept or reject it.
+  //
+  // FLOW:
+  // 1. HR Manager fills offer form (salary, benefits, deadline, etc.)
+  // 2. confirmAcceptApplication() creates the offer in database
+  // 3. Application status → "offer"
+  // 4. Candidate sees offer in their Offers page
+  // 5. Candidate accepts or rejects
+  // 6. HR Manager finalizes (if candidate accepted)
+  // =============================================================
   const confirmAcceptApplication = async () => {
     if (!selectedApplication) return;
+
+    // Validate required fields
+    if (!offerForm.grossSalary || parseFloat(offerForm.grossSalary) <= 0) {
+      showToast("Please enter a valid gross salary", "error");
+      return;
+    }
+
+    if (!offerForm.deadline) {
+      showToast("Please set a deadline for the offer", "error");
+      return;
+    }
 
     try {
       setCreatingOffer(true);
@@ -206,24 +286,37 @@ export default function JobOffersApprovalsPage() {
         return;
       }
 
-      // Create a basic offer
+      // Convert benefits from comma-separated string to array
+      const benefitsArray = offerForm.benefits
+        ? offerForm.benefits.split(',').map(b => b.trim()).filter(b => b.length > 0)
+        : undefined;
+
+      // Build offer data from form
       const offerData: CreateOfferDto = {
         applicationId: selectedApplication._id,
         candidateId: candidateId as string,
-        grossSalary: 0, // HR Manager will need to set this - or we could add a form
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+        grossSalary: parseFloat(offerForm.grossSalary),
+        signingBonus: offerForm.signingBonus ? parseFloat(offerForm.signingBonus) : undefined,
+        benefits: benefitsArray,
+        conditions: offerForm.conditions || undefined,
+        insurances: offerForm.insurances || undefined,
+        content: offerForm.content || undefined,
+        role: offerForm.role || undefined,
+        deadline: new Date(offerForm.deadline).toISOString(),
       };
 
-      const createdOffer = await recruitmentApi.createOffer(offerData);
+      // Create the offer in the database
+      await recruitmentApi.createOffer(offerData);
 
-      // Update application status to "offer"
+      // Update application status to "offer" so it's tracked correctly
       await recruitmentApi.updateApplicationStatus(selectedApplication._id, {
         status: ApplicationStatus.OFFER,
       });
 
-      showToast("Application approved and offer created successfully. Please update offer details.", "success");
+      showToast("Offer created successfully! The candidate will see this offer and can accept or reject it.", "success");
       setIsAcceptModalOpen(false);
       setSelectedApplication(null);
+      resetOfferForm();
       await loadData();
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || 
@@ -735,34 +828,176 @@ export default function JobOffersApprovalsPage() {
           )}
         </Modal>
 
-        {/* Accept Application Modal (Create Offer) */}
+        {/* =============================================================
+           CREATE OFFER FORM MODAL
+           =============================================================
+           This modal allows HR Manager to fill in all offer details
+           before sending the offer to the candidate.
+           
+           Fields from Offer Schema:
+           - grossSalary (required)
+           - signingBonus (optional)
+           - benefits (optional - comma-separated)
+           - conditions (optional)
+           - insurances (optional)
+           - content (optional - offer letter text)
+           - role (optional - pre-filled from job title)
+           - deadline (required)
+           ============================================================= */}
         <Modal
           isOpen={isAcceptModalOpen}
           onClose={() => {
             setIsAcceptModalOpen(false);
             setSelectedApplication(null);
+            resetOfferForm();
           }}
-          title="Approve Application & Create Offer"
+          title="Create Job Offer"
+          size="lg"
         >
           {selectedApplication && (
-            <div className="space-y-4">
-              <p className="text-gray-700">
-                Are you sure you want to approve this application and create an offer? This will:
-              </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-2">
-                <li>Create a new offer for the candidate</li>
-                <li>Update the application status to "offer"</li>
-                <li>Make the offer visible to the candidate</li>
-              </ul>
-              <p className="text-sm text-amber-600 font-medium">
-                Note: You will need to update the offer details (salary, benefits, etc.) after creation.
-              </p>
-              <div className="flex justify-end gap-2">
+            <div className="space-y-5">
+              {/* Candidate Info Header */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-900">Creating offer for:</h3>
+                <p className="text-blue-800">{getCandidateName(selectedApplication)}</p>
+                <p className="text-sm text-blue-700">{getJobTitle(selectedApplication)}</p>
+              </div>
+
+              {/* Compensation Section */}
+              <div className="border-b pb-4">
+                <h4 className="font-medium text-gray-900 mb-3">💰 Compensation</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Gross Salary (Annual) <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 75000"
+                      value={offerForm.grossSalary}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, grossSalary: e.target.value }))}
+                      min="0"
+                      step="1000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Signing Bonus (Optional)
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 5000"
+                      value={offerForm.signingBonus}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, signingBonus: e.target.value }))}
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Benefits & Insurance Section */}
+              <div className="border-b pb-4">
+                <h4 className="font-medium text-gray-900 mb-3">🏥 Benefits & Insurance</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Benefits (comma-separated)
+                    </label>
+                    <Input
+                      placeholder="e.g., Health Insurance, 401k Match, PTO"
+                      value={offerForm.benefits}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, benefits: e.target.value }))}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Separate benefits with commas</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Insurances
+                    </label>
+                    <Input
+                      placeholder="e.g., Medical, Dental, Vision, Life"
+                      value={offerForm.insurances}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, insurances: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Role & Conditions Section */}
+              <div className="border-b pb-4">
+                <h4 className="font-medium text-gray-900 mb-3">📋 Role & Conditions</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role/Position Title
+                    </label>
+                    <Input
+                      placeholder="e.g., Software Engineer"
+                      value={offerForm.role}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, role: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Conditions (if any)
+                    </label>
+                    <Textarea
+                      placeholder="e.g., Subject to background check, 90-day probation period"
+                      value={offerForm.conditions}
+                      onChange={(e) => setOfferForm(prev => ({ ...prev, conditions: e.target.value }))}
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Offer Letter Content */}
+              <div className="border-b pb-4">
+                <h4 className="font-medium text-gray-900 mb-3">📝 Offer Letter Content</h4>
+                <Textarea
+                  placeholder="Enter the offer letter content... (This will be shown to the candidate)"
+                  value={offerForm.content}
+                  onChange={(e) => setOfferForm(prev => ({ ...prev, content: e.target.value }))}
+                  rows={4}
+                />
+              </div>
+
+              {/* Deadline Section */}
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">📅 Response Deadline</h4>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Deadline <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="date"
+                    value={offerForm.deadline}
+                    onChange={(e) => setOfferForm(prev => ({ ...prev, deadline: e.target.value }))}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Candidate must respond by this date
+                  </p>
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-sm text-green-800">
+                  <strong>What happens next:</strong> Once you create this offer, it will appear in the candidate's 
+                  "Job Offers" page. They can review the details and choose to accept or reject. After they respond, 
+                  you can finalize the hiring decision.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-2">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setIsAcceptModalOpen(false);
                     setSelectedApplication(null);
+                    resetOfferForm();
                   }}
                   disabled={creatingOffer}
                 >
@@ -770,10 +1005,10 @@ export default function JobOffersApprovalsPage() {
                 </Button>
                 <Button
                   onClick={confirmAcceptApplication}
-                  disabled={creatingOffer}
+                  disabled={creatingOffer || !offerForm.grossSalary}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  {creatingOffer ? "Creating Offer..." : "Approve & Create Offer"}
+                  {creatingOffer ? "Creating Offer..." : "Create & Send Offer"}
                 </Button>
               </div>
             </div>

@@ -567,6 +567,12 @@ export const recruitmentApi = {
     return await api.get("/recruitment/hr-managers");
   },
 
+  // ✅ Get HR Employees for interview panel selection
+  // Only HR Employees and HR Managers can be panel members
+  getHREmployeesForPanel: async (): Promise<any[]> => {
+    return await api.get("/recruitment/hr-employees");
+  },
+
   // CHANGED - Added: Get employee by ID for access management
   getEmployeeById: async (employeeId: string): Promise<any> => {
     return await api.get(`/employee-profile/${employeeId}`);

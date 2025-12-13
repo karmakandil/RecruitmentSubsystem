@@ -111,15 +111,22 @@ export default function HRInterviewsPage() {
     }
   };
 
+  // =============================================================
+  // LOAD HR EMPLOYEES FOR PANEL SELECTION
+  // =============================================================
+  // Only HR Employees and HR Managers can be assigned as panel members
+  // for conducting interviews. This ensures only qualified HR staff
+  // participate in the interview process.
+  // =============================================================
   const loadEmployees = async () => {
     try {
       setLoadingEmployees(true);
-      const response = await employeeProfileApi.getAllEmployees({ limit: 100 });
-      const employeeList = response?.data || [];
-      setEmployees(employeeList);
+      // Use the HR-specific endpoint that returns only HR Employees/Managers
+      const hrEmployees = await recruitmentApi.getHREmployeesForPanel();
+      setEmployees(Array.isArray(hrEmployees) ? hrEmployees : []);
     } catch (error: any) {
-      console.error("Failed to load employees:", error);
-      showToast("Failed to load employees for panel selection", "error");
+      console.error("Failed to load HR employees:", error);
+      showToast("Failed to load HR employees for panel selection", "error");
     } finally {
       setLoadingEmployees(false);
     }
@@ -442,13 +449,19 @@ export default function HRInterviewsPage() {
                       )}
                     </div>
                     <div className="flex gap-2 ml-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenSchedule(application)}
-                      >
-                        Schedule Interview
-                      </Button>
+                      {/* Only show Schedule Interview button if no active interview exists for this application */}
+                      {interviews.filter((int: any) => 
+                        int.applicationId === application._id && 
+                        int.status !== 'cancelled'
+                      ).length === 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenSchedule(application)}
+                        >
+                          Schedule Interview
+                        </Button>
+                      )}
                       {/* CHANGED - Only HR Employee/Manager/Admin can submit feedback, not Recruiter */}
                       {canSubmitFeedback && (
                         <Button
@@ -499,7 +512,6 @@ export default function HRInterviewsPage() {
                     { value: ApplicationStage.SCREENING, label: "Screening" },
                     { value: ApplicationStage.DEPARTMENT_INTERVIEW, label: "Department Interview" },
                     { value: ApplicationStage.HR_INTERVIEW, label: "HR Interview" },
-                    { value: ApplicationStage.OFFER, label: "Offer" },
                   ]}
                 />
               </div>
@@ -562,13 +574,13 @@ export default function HRInterviewsPage() {
                 </div>
               )}
 
-              {/* Panel Members Selection */}
+              {/* Panel Members Selection - HR Employees Only */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Panel Members *
+                  Panel Members (HR Staff Only) *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Select interview panel members. You are automatically included.
+                  Select HR employees to conduct the interview. You are automatically included.
                 </p>
                 {loadingEmployees ? (
                   <p className="text-sm text-gray-500">Loading employees...</p>

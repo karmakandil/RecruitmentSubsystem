@@ -196,6 +196,19 @@ export class RecruitmentController {
     return this.service.updateApplicationStatus(id, dto, changedBy);
   }
 
+  // =============================================================
+  // GET HR EMPLOYEES FOR INTERVIEW PANEL SELECTION
+  // =============================================================
+  // Returns only HR Employees who can be assigned as panel members
+  // for conducting interviews.
+  // =============================================================
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('hr-employees')
+  getHREmployeesForPanel() {
+    return this.service.getHREmployeesForPanel();
+  }
+
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
