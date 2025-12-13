@@ -440,13 +440,15 @@ export class LeaveController {
     @Query('toDate') toDate?: string,
     @Query('status') status?: string,
     @Query('leaveTypeId') leaveTypeId?: string,
+    @Req() req?: any, // Get current user to check if they're a delegate
   ) {
+    const userId = req?.user?.userId || req?.user?._id || req?.user?.id;
     return await this.leavesService.getPastLeaveRequests(employeeId, {
       fromDate: fromDate ? new Date(fromDate) : undefined,
       toDate: toDate ? new Date(toDate) : undefined,
       status,
       leaveTypeId,
-    });
+    }, userId);
   }
 
   // REQ-033: Filter leave history

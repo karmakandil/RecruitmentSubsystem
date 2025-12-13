@@ -36,7 +36,11 @@ import {
   EmployeeProfile,
   EmployeeProfileDocument,
 } from '../employee-profile/models/employee-profile.schema';
-import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+import {
+  EmployeeSystemRole,
+  EmployeeSystemRoleDocument,
+} from '../employee-profile/models/employee-system-role.schema';
+import { EmployeeStatus, SystemRole } from '../employee-profile/enums/employee-profile.enums';
 // import { PositionAssignment, PositionAssignmentDocument } from '../organization-structure/models/position-assignment.schema';
 // import { Position, PositionDocument } from '../organization-structure/models/position.schema';
 
@@ -70,6 +74,7 @@ import {
 import { RunCarryForwardDto } from './dto/CarryForward.dto';
 import { AccrualAdjustmentDto } from './dto/AccrualAdjustment.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
 
 @Injectable()
 export class LeavesService {
@@ -230,6 +235,10 @@ export class LeavesService {
     private calendarModel: mongoose.Model<CalendarDocument>,
     @InjectModel(EmployeeProfile.name)
     private employeeProfileModel: mongoose.Model<EmployeeProfileDocument>,
+    @InjectModel(EmployeeSystemRole.name)
+    private systemRoleModel: mongoose.Model<EmployeeSystemRoleDocument>,
+    @InjectModel('NotificationLog')
+    private notificationLogModel: mongoose.Model<any>,
     // @InjectModel(PositionAssignment.name) private positionAssignmentModel: mongoose.Model<PositionAssignmentDocument>,
     // @InjectModel(Position.name) private positionModel: mongoose.Model<PositionDocument>,
     @InjectModel(LeaveCategory.name)
@@ -1845,18 +1854,195 @@ export class LeavesService {
         ? `${employee.firstName} ${employee.lastName}`
         : 'Employee';
       
-      // Get manager ID - try directManagerId first, otherwise we'll need to get it from employee profile
+      // Get manager ID (Department Head) - use the same logic as getTeamMembers but in reverse
+      // Method 1: Try directManagerId first (if set)
+      // Method 2: Use supervisorPositionId to find manager (reverse of getTeamMembers logic)
       let managerId: string | null = null;
+      
       if (employee.directManagerId) {
         managerId = employee.directManagerId.toString();
+        console.log(`[NOTIFICATION] Found managerId from populated directManagerId: ${managerId}`);
       } else {
-        // Try to get manager from employee profile
+        // Fetch employee profile to check directManagerId and supervisorPositionId
         const employeeProfile = await this.employeeProfileModel
           .findById(employeeId)
-          .select('directManagerId')
+          .select('directManagerId supervisorPositionId employeeNumber')
+          .lean()
           .exec();
+        
+        console.log(`[NOTIFICATION] Employee profile fetched:`, {
+          employeeId,
+          employeeNumber: (employeeProfile as any)?.employeeNumber,
+          hasDirectManagerId: !!(employeeProfile as any)?.directManagerId,
+          directManagerId: (employeeProfile as any)?.directManagerId,
+          supervisorPositionId: (employeeProfile as any)?.supervisorPositionId,
+        });
+        
+        // Method 1: Check directManagerId from profile
         if (employeeProfile && (employeeProfile as any).directManagerId) {
           managerId = (employeeProfile as any).directManagerId.toString();
+          console.log(`[NOTIFICATION] Found managerId from employee profile directManagerId: ${managerId}`);
+        } 
+        // Method 2: Use supervisorPositionId to find the manager (reverse of getTeamMembers)
+        // If employee has supervisorPositionId, find the employee who has that position as primaryPositionId
+        else if (employeeProfile && (employeeProfile as any).supervisorPositionId) {
+          const supervisorPositionId = (employeeProfile as any).supervisorPositionId;
+          console.log(`[NOTIFICATION] Employee has supervisorPositionId: ${supervisorPositionId}, finding manager...`);
+          
+          // Find the employee who has this position as their primaryPositionId (this is the manager/department head)
+          // This is the reverse of: find employees where supervisorPositionId matches manager's primaryPositionId
+          // IMPORTANT: primaryPositionId is stored as STRING in MongoDB, not ObjectId
+          // Convert supervisorPositionId to string for comparison
+          const supervisorPosIdString = supervisorPositionId instanceof Types.ObjectId 
+            ? supervisorPositionId.toString() 
+            : String(supervisorPositionId);
+          
+          console.log(`[NOTIFICATION] Searching for manager with primaryPositionId (as string): ${supervisorPosIdString}`);
+          console.log(`[NOTIFICATION] supervisorPositionId type: ${typeof supervisorPositionId}, value: ${supervisorPositionId}`);
+          
+          // Since primaryPositionId is stored as String, query with string directly
+          let managerProfile = await this.employeeProfileModel
+            .findOne({
+              primaryPositionId: supervisorPosIdString, // Direct string match
+              status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+            })
+            .select('_id employeeNumber firstName lastName primaryPositionId')
+            .lean()
+            .exec();
+          
+          // If not found, try without status filter (in case status is the issue)
+          if (!managerProfile) {
+            console.log(`[NOTIFICATION] Not found with status filter, trying without status filter...`);
+            managerProfile = await this.employeeProfileModel
+              .findOne({
+                primaryPositionId: supervisorPosIdString, // Direct string match
+              })
+              .select('_id employeeNumber firstName lastName primaryPositionId status')
+              .lean()
+              .exec();
+          }
+          
+          if (managerProfile) {
+            managerId = managerProfile._id.toString();
+            console.log(`[NOTIFICATION] ✅ Found Department Head via primaryPositionId: ${managerId} (${(managerProfile as any).employeeNumber || 'N/A'} - ${(managerProfile as any).firstName || ''} ${(managerProfile as any).lastName || ''})`);
+            console.log(`[NOTIFICATION] Manager's primaryPositionId: ${(managerProfile as any).primaryPositionId?.toString() || 'N/A'}`);
+          } else {
+            // Alternative approach: Since getTeamMembers works, let's reverse it
+            // Find all employees and check which one has this employee in their team
+            // This works even if the manager's primaryPositionId is not set correctly in the UI
+            console.warn(`[NOTIFICATION] ❌ No employee found with primaryPositionId matching supervisorPositionId ${supervisorPosIdString}`);
+            console.warn(`[NOTIFICATION] Trying alternative: Finding manager by checking who has this employee in their team...`);
+            
+            // Get all active employees who might be managers (have DEPARTMENT_HEAD role or have a primaryPositionId)
+            // We'll check each one to see if this employee is in their team
+            const potentialManagers = await this.employeeProfileModel
+              .find({
+                status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+                $or: [
+                  { primaryPositionId: { $exists: true, $ne: null } },
+                ],
+              })
+              .select('_id employeeNumber firstName lastName primaryPositionId')
+              .lean()
+              .exec();
+            
+            console.log(`[NOTIFICATION] Checking ${potentialManagers.length} potential managers...`);
+            
+            // For each potential manager, check if this employee is in their team
+            // (i.e., check if employee's supervisorPositionId matches manager's primaryPositionId)
+            for (const potentialManager of potentialManagers) {
+              if ((potentialManager as any).primaryPositionId) {
+                const managerPrimaryPosId = String((potentialManager as any).primaryPositionId);
+                if (managerPrimaryPosId === supervisorPosIdString) {
+                  managerProfile = potentialManager;
+                  managerId = potentialManager._id.toString();
+                  console.log(`[NOTIFICATION] ✅ Found Department Head via reverse team lookup: ${managerId} (${(potentialManager as any).employeeNumber || 'N/A'} - ${(potentialManager as any).firstName || ''} ${(potentialManager as any).lastName || ''})`);
+                  console.log(`[NOTIFICATION] Manager's primaryPositionId: ${managerPrimaryPosId}`);
+                  break;
+                }
+              }
+            }
+            
+            // If still not found, check all employees (including inactive)
+            if (!managerProfile) {
+              console.warn(`[NOTIFICATION] Not found in active employees, checking all employees (including inactive)...`);
+              const allEmployees = await this.employeeProfileModel
+                .find({
+                  primaryPositionId: supervisorPosIdString, // Direct string match
+                })
+                .select('_id employeeNumber firstName lastName status primaryPositionId')
+                .lean()
+                .exec();
+              
+              console.warn(`[NOTIFICATION] Found ${allEmployees.length} employees (any status) with primaryPositionId ${supervisorPosIdString}:`, 
+                allEmployees.map((e: any) => ({
+                  id: e._id.toString(),
+                  employeeNumber: e.employeeNumber,
+                  name: `${e.firstName || ''} ${e.lastName || ''}`,
+                  status: e.status,
+                  primaryPositionId: String(e.primaryPositionId || 'null'),
+                }))
+              );
+              
+              if (allEmployees.length > 0) {
+                const foundEmployee = allEmployees[0];
+                managerProfile = foundEmployee;
+                managerId = foundEmployee._id.toString();
+                console.warn(`[NOTIFICATION] ⚠️ Using employee with matching position (status: ${foundEmployee.status}): ${managerId} (${foundEmployee.employeeNumber || 'N/A'})`);
+              } else {
+                // Final debug: Check what Karim's actual primaryPositionId is
+                // Karim's employee ID from the image: 692d95ebf2f917c28a7da59e
+                console.error(`[NOTIFICATION] ❌ CRITICAL: No employee found with primaryPositionId ${supervisorPosIdString}`);
+                console.error(`[NOTIFICATION] Employee's supervisorPositionId: ${supervisorPosIdString}`);
+                
+                // Debug: Check Karim's actual profile
+                const karimProfile = await this.employeeProfileModel
+                  .findById('692d95ebf2f917c28a7da59e')
+                  .select('_id employeeNumber firstName lastName primaryPositionId supervisorPositionId')
+                  .lean()
+                  .exec();
+                
+                if (karimProfile) {
+                  const karimPrimaryPosId = String((karimProfile as any).primaryPositionId || 'null');
+                  console.error(`[NOTIFICATION] DEBUG - Karim's profile:`, {
+                    id: karimProfile._id.toString(),
+                    employeeNumber: (karimProfile as any).employeeNumber,
+                    name: `${(karimProfile as any).firstName || ''} ${(karimProfile as any).lastName || ''}`,
+                    primaryPositionId: karimPrimaryPosId,
+                    supervisorPositionId: String((karimProfile as any).supervisorPositionId || 'null'),
+                  });
+                  console.error(`[NOTIFICATION] Expected primaryPositionId: ${supervisorPosIdString}`);
+                  console.error(`[NOTIFICATION] Karim's actual primaryPositionId: ${karimPrimaryPosId}`);
+                  
+                  // If Karim's primaryPositionId doesn't match, but we know the team view works,
+                  // maybe we should just use Karim directly if he's the only department head
+                  if (karimPrimaryPosId !== supervisorPosIdString) {
+                    console.error(`[NOTIFICATION] ⚠️ MISMATCH: Karim's primaryPositionId doesn't match employee's supervisorPositionId!`);
+                    console.error(`[NOTIFICATION] This explains why notifications aren't working. Karim needs to have primaryPositionId set to ${supervisorPosIdString}`);
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          console.warn(`[NOTIFICATION] Employee ${employeeId} does not have directManagerId or supervisorPositionId set!`);
+        }
+      }
+      
+      // Verify managerId exists and is valid
+      if (managerId) {
+        const managerProfile = await this.employeeProfileModel
+          .findById(managerId)
+          .select('_id employeeNumber firstName lastName')
+          .lean()
+          .exec();
+        if (!managerProfile) {
+          console.warn(`[NOTIFICATION] Manager with ID ${managerId} not found in EmployeeProfile`);
+          managerId = null;
+        } else {
+          // Ensure we use the exact _id format (as string) - this matches userId in JWT
+          managerId = managerProfile._id.toString();
+          console.log(`[NOTIFICATION] Verified Department Head: ${managerId} (${(managerProfile as any).employeeNumber || 'N/A'} - ${(managerProfile as any).firstName || ''} ${(managerProfile as any).lastName || ''})`);
         }
       }
 
@@ -1871,14 +2057,39 @@ export class LeavesService {
       // Handle different notification events
       switch (event) {
         case 'created':
-          // Notify manager when new leave request is created
+          // Notify manager (department head) when new leave request is created
+          // Also notify delegate if manager has delegated approval authority
           if (managerId) {
+            // Notify the manager
             await this.notificationsService.notifyLeaveRequestCreated(
               leaveRequest._id.toString(),
               employeeId,
               managerId,
               leaveDetails,
             );
+            
+            // Check if manager has an active delegate
+            const delegations = this.delegationMap.get(managerId);
+            if (delegations && delegations.length > 0) {
+              const now = new Date();
+              const activeDelegations = delegations.filter(
+                (del) =>
+                  del.isActive &&
+                  now >= del.startDate &&
+                  now <= del.endDate,
+              );
+              
+              // Notify all active delegates
+              for (const delegation of activeDelegations) {
+                console.log(`[NOTIFICATION] Manager ${managerId} has active delegate ${delegation.delegateId}, sending notification...`);
+                await this.notificationsService.notifyLeaveRequestCreated(
+                  leaveRequest._id.toString(),
+                  employeeId,
+                  delegation.delegateId, // Notify the delegate
+                  leaveDetails,
+                );
+              }
+            }
           }
           break;
 
@@ -1921,19 +2132,29 @@ export class LeavesService {
         case 'finalized':
         case 'overridden_approved':
         case 'overridden_rejected':
-          // Notify HR Manager, employee, and manager when leave request is finalized
-          // For HR Manager, we need to find an HR Manager user
-          // For now, we'll use the managerId as coordinatorId (can be improved)
-          const hrManagerId = managerId || employeeId; // Fallback - should be improved to find actual HR Manager
-          const coordinatorId = hrManagerId; // Attendance coordinator - should be improved
-          
-          if (managerId && hrManagerId && coordinatorId) {
+          // Notify employee and manager (department head) when leave request is finalized by HR Manager
+          // Requirement: As an HR manager, I want the system to notify the employee, 
+          // the employee's manager, when a leave request is finalized so that everyone is informed.
+          if (managerId) {
+            console.log(`[NOTIFICATION] Finalizing leave request - notifying employee and manager`);
+            console.log(`[NOTIFICATION] Employee ID: ${employeeId}, Manager ID: ${managerId}`);
+            
             await this.notificationsService.notifyLeaveRequestFinalized(
               leaveRequest._id.toString(),
               employeeId,
               managerId,
-              coordinatorId,
+              managerId, // Use managerId as coordinatorId (for backward compatibility with the method signature)
               leaveDetails,
+            );
+            
+            console.log(`[NOTIFICATION] ✅ Notifications sent to employee and manager for finalized leave request`);
+          } else {
+            // If no manager found, still notify the employee
+            console.warn(`[NOTIFICATION] No manager found, only notifying employee for finalized leave request`);
+            await this.notificationsService.notifyLeaveRequestStatusChanged(
+              leaveRequest._id.toString(),
+              employeeId,
+              'APPROVED', // Finalized means approved
             );
           }
           break;
@@ -2193,13 +2414,61 @@ export class LeavesService {
   }
 
   // REQ-032: Get past leave requests with filters
+  // Enhanced to support delegates: if userId is a delegate, show requests for the manager they're delegated for
   async getPastLeaveRequests(
     employeeId: string,
     filters?: any,
+    userId?: string, // Optional: the actual user making the request (could be a delegate)
   ): Promise<any[]> {
     try {
-      const query: any = { employeeId: new Types.ObjectId(employeeId) };
+      // Check if userId is a delegate
+      let actualManagerId: string | null = null;
+      let isDelegate = false;
+      
+      if (userId) {
+        const delegatedManagerId = this.getDelegatedManagerId(userId);
+        if (delegatedManagerId) {
+          actualManagerId = delegatedManagerId;
+          isDelegate = true;
+          console.log(`[DELEGATE] User ${userId} is a delegate for manager ${actualManagerId}`);
+        }
+      }
+      
+      // If user is a delegate, get requests for the manager's team members
+      // Otherwise, get requests for the specified employeeId
+      let query: any;
+      
+      if (isDelegate && actualManagerId) {
+        // Delegate: Get all pending requests for the manager's team
+        const manager = await this.employeeProfileModel.findById(actualManagerId).exec();
+        if (!manager || !manager.primaryPositionId) {
+          return []; // Manager not found or has no position
+        }
+        
+        // Find all team members (employees with supervisorPositionId matching manager's primaryPositionId)
+        const teamMembers = await this.employeeProfileModel
+          .find({
+            supervisorPositionId: manager.primaryPositionId,
+            status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+          })
+          .select('_id')
+          .lean()
+          .exec();
+        
+        const teamMemberIds = teamMembers.map((m: any) => m._id);
+        
+        query = { 
+          employeeId: { $in: teamMemberIds },
+          status: filters?.status || 'PENDING', // Default to pending for delegates
+        };
+        
+        console.log(`[DELEGATE] Found ${teamMemberIds.length} team members for delegate to review`);
+      } else {
+        // Regular query: get requests for specific employee
+        query = { employeeId: new Types.ObjectId(employeeId) };
+      }
 
+      // Apply date filters
       if (filters?.fromDate || filters?.toDate) {
         query['dates.from'] = {};
         if (filters?.fromDate)
@@ -2210,7 +2479,9 @@ export class LeavesService {
         }
       }
 
-      if (filters?.status) {
+      // Apply status filter (if not already set for delegate)
+      // Only apply if status is provided and not empty string (empty means "all statuses")
+      if (filters?.status && filters.status.trim() !== '' && !isDelegate) {
         query.status = filters.status;
       }
 
@@ -2388,7 +2659,7 @@ export class LeavesService {
 
           let upcomingQuery: any = {
             employeeId: new Types.ObjectId(member._id),
-            status: { $in: [LeaveStatus.APPROVED, LeaveStatus.PENDING] },
+            status: { $in: [LeaveStatus.APPROVED, LeaveStatus.PENDING, LeaveStatus.REJECTED] },
           };
           if (upcomingFromDate || upcomingToDate) {
             upcomingQuery['dates.from'] = {};
@@ -3817,6 +4088,120 @@ export class LeavesService {
    * REQ-041: Automatically run carry-forward when reset dates are reached
    * Runs daily at 3 AM to check for due carry-forwards
    */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  
+  // REQ-023, BR 28: Auto-escalate leave requests pending for > 48 hours
+  @Cron(CronExpression.EVERY_HOUR) // Check every hour for requests pending > 48 hours
+  async autoEscalatePendingRequests() {
+    try {
+      console.log('[AUTO-ESCALATION] Checking for leave requests pending > 48 hours...');
+      
+      const now = new Date();
+      const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      
+      // Find all pending requests created more than 48 hours ago
+      const pendingRequests = await this.leaveRequestModel
+        .find({
+          status: LeaveStatus.PENDING,
+          createdAt: { $lte: fortyEightHoursAgo },
+        })
+        .populate('employeeId', 'firstName lastName supervisorPositionId')
+        .exec();
+      
+      console.log(`[AUTO-ESCALATION] Found ${pendingRequests.length} requests pending > 48 hours`);
+      
+      for (const request of pendingRequests) {
+        try {
+          const employee = request.employeeId as any;
+          if (!employee || !employee.supervisorPositionId) {
+            console.warn(`[AUTO-ESCALATION] Request ${request._id} has no employee or supervisorPositionId, skipping`);
+            continue;
+          }
+          
+          // Get the manager (department head)
+          const supervisorPosIdString = String(employee.supervisorPositionId);
+          const manager = await this.employeeProfileModel
+            .findOne({
+              primaryPositionId: supervisorPosIdString,
+              status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+            })
+            .select('_id employeeNumber firstName lastName')
+            .lean()
+            .exec();
+          
+          if (!manager) {
+            console.warn(`[AUTO-ESCALATION] No manager found for request ${request._id}, skipping`);
+            continue;
+          }
+          
+          const managerId = manager._id.toString();
+          
+          // Check if manager has an active delegate
+          const delegations = this.delegationMap.get(managerId);
+          let hasActiveDelegate = false;
+          let activeDelegateId: string | null = null;
+          
+          if (delegations && delegations.length > 0) {
+            const activeDelegations = delegations.filter(
+              (del) =>
+                del.isActive &&
+                now >= del.startDate &&
+                now <= del.endDate,
+            );
+            
+            if (activeDelegations.length > 0) {
+              hasActiveDelegate = true;
+              activeDelegateId = activeDelegations[0].delegateId;
+            }
+          }
+          
+          // If there's an active delegate, escalate to HR Manager
+          // Otherwise, just log (the request is already with the manager)
+          if (hasActiveDelegate && activeDelegateId) {
+            console.log(`[AUTO-ESCALATION] Request ${request._id} has been pending > 48 hours with active delegate ${activeDelegateId}, escalating to HR Manager`);
+            
+            // Find HR Managers
+            const hrManagerRoles = await this.systemRoleModel
+              .find({
+                roles: { $in: [SystemRole.HR_MANAGER] },
+                isActive: true,
+              })
+              .select('employeeProfileId')
+              .exec();
+            
+            const hrManagerIds = hrManagerRoles
+              .map(role => role.employeeProfileId?.toString())
+              .filter((id): id is string => !!id);
+            
+            // Notify HR Managers about the escalation
+            for (const hrManagerId of hrManagerIds) {
+              await this.notificationLogModel.create({
+                to: new Types.ObjectId(hrManagerId),
+                type: NotificationType.LEAVE_CREATED,
+                message: `⚠️ ESCALATION: Leave request from ${employee.firstName || ''} ${employee.lastName || ''} has been pending for more than 48 hours and requires attention.`,
+              });
+            }
+            
+            // Also notify the delegate
+            await this.notificationLogModel.create({
+              to: new Types.ObjectId(activeDelegateId),
+              type: NotificationType.LEAVE_CREATED,
+              message: `⚠️ URGENT: Leave request from ${employee.firstName || ''} ${employee.lastName || ''} has been pending for more than 48 hours. Please review immediately.`,
+            });
+          } else {
+            console.log(`[AUTO-ESCALATION] Request ${request._id} has been pending > 48 hours (no active delegate), manager should handle`);
+          }
+        } catch (error) {
+          console.error(`[AUTO-ESCALATION] Error processing request ${request._id}:`, error);
+        }
+      }
+      
+      console.log('[AUTO-ESCALATION] Auto-escalation check completed');
+    } catch (error) {
+      console.error('[AUTO-ESCALATION] Error in auto-escalation job:', error);
+    }
+  }
+  
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async automatedCarryForwardJob() {
     console.log('[Automated Carry-Forward] Starting scheduled carry-forward job...');

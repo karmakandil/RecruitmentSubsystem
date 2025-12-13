@@ -29,7 +29,16 @@ export default function LeaveEntitlementsPage() {
   const [searchLeaveTypeId, setSearchLeaveTypeId] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPersonalizedModalOpen, setIsPersonalizedModalOpen] = useState(false);
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
   const [editingEntitlement, setEditingEntitlement] = useState<LeaveEntitlement | null>(null);
+  const [bulkEditFormData, setBulkEditFormData] = useState<{
+    yearlyEntitlement?: number;
+    accruedActual?: number;
+    carryForward?: number;
+    taken?: number;
+    pending?: number;
+    remaining?: number;
+  }>({});
   const [formData, setFormData] = useState<CreateLeaveEntitlementDto>({
     employeeId: "",
     leaveTypeId: "",
@@ -315,6 +324,79 @@ export default function LeaveEntitlementsPage() {
     }
   };
 
+  const handleBulkEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (entitlements.length === 0) {
+      showToast("No entitlements to update", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      let successCount = 0;
+      let failCount = 0;
+
+      // Build update data - only include fields that have values
+      const updateData: UpdateLeaveEntitlementDto = {};
+      if (bulkEditFormData.yearlyEntitlement !== undefined) {
+        updateData.yearlyEntitlement = Number(bulkEditFormData.yearlyEntitlement);
+      }
+      if (bulkEditFormData.accruedActual !== undefined) {
+        updateData.accruedActual = Number(bulkEditFormData.accruedActual);
+      }
+      if (bulkEditFormData.carryForward !== undefined) {
+        updateData.carryForward = Number(bulkEditFormData.carryForward);
+      }
+      if (bulkEditFormData.taken !== undefined) {
+        updateData.taken = Number(bulkEditFormData.taken);
+      }
+      if (bulkEditFormData.pending !== undefined) {
+        updateData.pending = Number(bulkEditFormData.pending);
+      }
+      if (bulkEditFormData.remaining !== undefined) {
+        updateData.remaining = Number(bulkEditFormData.remaining);
+      }
+
+      // Check if at least one field is provided
+      if (Object.keys(updateData).length === 0) {
+        showToast("Please provide at least one field to update", "error");
+        setLoading(false);
+        return;
+      }
+
+      // Update all entitlements
+      for (const ent of entitlements) {
+        try {
+          await leavesApi.updateLeaveEntitlement(ent._id, updateData);
+          successCount++;
+        } catch (error: any) {
+          console.error(`Failed to update entitlement ${ent._id}:`, error);
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        showToast(
+          `Updated ${successCount} entitlement(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
+          successCount === entitlements.length ? "success" : "warning"
+        );
+        setIsBulkEditModalOpen(false);
+        setBulkEditFormData({});
+        // Reload entitlements to show updated values
+        if (selectedContractType && searchLeaveTypeId) {
+          await loadEntitlementsByContractType();
+        }
+      } else {
+        showToast("Failed to update entitlements", "error");
+      }
+    } catch (error: any) {
+      showToast(error.message || "Failed to update entitlements", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto px-6 py-8">
       <Toast
@@ -433,12 +515,26 @@ export default function LeaveEntitlementsPage() {
       ) : entitlements.length > 0 ? (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>
-              Entitlements for {selectedContractType.replace(/_/g, ' ')} - {leaveTypes.find(t => t._id === searchLeaveTypeId)?.name}
-            </CardTitle>
-            <CardDescription>
-              Showing {entitlements.length} of {getFilteredEmployees().length} employee(s) with entitlements
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>
+                  Entitlements for {selectedContractType.replace(/_/g, ' ')} - {leaveTypes.find(t => t._id === searchLeaveTypeId)?.name}
+                </CardTitle>
+                <CardDescription>
+                  Showing {entitlements.length} of {getFilteredEmployees().length} employee(s) with entitlements
+                </CardDescription>
+              </div>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  // Pre-fill with current values from first entitlement (optional)
+                  setBulkEditFormData({});
+                  setIsBulkEditModalOpen(true);
+                }}
+              >
+                Edit All
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -719,6 +815,125 @@ export default function LeaveEntitlementsPage() {
                   remaining: parseFloat(e.target.value) || 0,
                 })
               }
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Bulk Edit Modal */}
+      <Modal
+        isOpen={isBulkEditModalOpen}
+        onClose={() => {
+          setIsBulkEditModalOpen(false);
+          setBulkEditFormData({});
+        }}
+        title={`Bulk Edit Entitlements (${entitlements.length} employee(s))`}
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => {
+              setIsBulkEditModalOpen(false);
+              setBulkEditFormData({});
+            }}>
+              Cancel
+            </Button>
+            <Button type="submit" form="bulk-edit-form" disabled={loading}>
+              {loading ? "Updating..." : "Update All"}
+            </Button>
+          </>
+        }
+      >
+        <form id="bulk-edit-form" onSubmit={handleBulkEditSubmit} className="space-y-4">
+          <div className="p-3 bg-blue-50 rounded-lg mb-4">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> Leave fields empty to keep their current values. Only filled fields will be updated for all {entitlements.length} entitlement(s).
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Yearly Entitlement"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.yearlyEntitlement ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  yearlyEntitlement: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
+            />
+            <Input
+              label="Accrued Actual"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.accruedActual ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  accruedActual: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Carry Forward"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.carryForward ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  carryForward: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
+            />
+            <Input
+              label="Taken"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.taken ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  taken: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Pending"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.pending ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  pending: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
+            />
+            <Input
+              label="Remaining"
+              type="number"
+              step="0.01"
+              value={bulkEditFormData.remaining ?? ''}
+              onChange={(e) =>
+                setBulkEditFormData({
+                  ...bulkEditFormData,
+                  remaining: e.target.value ? parseFloat(e.target.value) : undefined,
+                })
+              }
+              placeholder="Leave empty to keep current"
             />
           </div>
         </form>

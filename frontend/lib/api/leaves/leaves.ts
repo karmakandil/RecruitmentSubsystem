@@ -842,6 +842,29 @@ export const leavesApi = {
   },
 
   /**
+   * Delegate approval authority
+   * POST /leaves/delegate
+   * Required roles: DEPARTMENT_HEAD, HR_MANAGER, HR_ADMIN
+   */
+  delegateApprovalAuthority: async (
+    delegateId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<any> => {
+    try {
+      const payload = {
+        delegateId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      };
+      return await api.post('/leaves/delegate', payload);
+    } catch (error: any) {
+      console.error("Error delegating approval authority:", error);
+      throw error;
+    }
+  },
+
+  /**
    * Run carry-forward
    * POST /leaves/carry-forward
    */
