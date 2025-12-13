@@ -301,10 +301,11 @@ export default function ManagerLeaveReviewPage() {
       ) : (
         <div className="space-y-4">
           {pendingRequests.map((request) => {
-            const leaveTypeName =
-              typeof request.leaveTypeId === "object" && request.leaveTypeId !== null
+            // Use leaveTypeName from backend if available, otherwise fallback to checking leaveTypeId
+            const leaveTypeName = (request as any).leaveTypeName ||
+              (typeof request.leaveTypeId === "object" && request.leaveTypeId !== null
                 ? request.leaveTypeId.name
-                : "Unknown Leave Type";
+                : "Unknown Leave Type");
 
             return (
               <Card key={request._id}>

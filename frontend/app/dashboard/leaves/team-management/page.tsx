@@ -29,6 +29,11 @@ export default function TeamManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [total, setTotal] = useState(0);
+  const [flagModalOpen, setFlagModalOpen] = useState(false);
+  const [selectedLeaveRequestId, setSelectedLeaveRequestId] = useState<string>("");
+  const [flagReason, setFlagReason] = useState("");
+  const [flagNotes, setFlagNotes] = useState("");
+  const [flagging, setFlagging] = useState(false);
   
   const [filters, setFilters] = useState({
     departmentId: "",
@@ -50,9 +55,12 @@ export default function TeamManagementPage() {
     fetchTeamLeaveData();
   }, [user]);
 
+  // Only fetch when pagination changes or when explicitly triggered
   useEffect(() => {
-    fetchTeamLeaveData();
-  }, [filters]);
+    if (user && (filters.offset !== 0 || leaveRequests.length > 0)) {
+      fetchTeamLeaveData();
+    }
+  }, [filters.offset, filters.limit]);
 
   const fetchLeaveTypes = async () => {
     try {
@@ -81,12 +89,23 @@ export default function TeamManagementPage() {
         }
       }
       
-      setDepartments(
-        departmentsData.map((dept: any) => ({
-          id: dept._id || dept.id,
+      const mappedDepartments = departmentsData.map((dept: any) => {
+        const deptId = dept._id || dept.id;
+        console.log(`[fetchDepartments] Department:`, {
           name: dept.name,
-        }))
-      );
+          _id: dept._id,
+          id: dept.id,
+          finalId: deptId,
+          idType: typeof deptId,
+          idString: deptId?.toString()
+        });
+        return {
+          id: deptId?.toString() || deptId, // Ensure it's a string
+          name: dept.name,
+        };
+      });
+      console.log(`[fetchDepartments] Total departments:`, mappedDepartments.length);
+      setDepartments(mappedDepartments);
     } catch (error) {
       console.warn("Failed to fetch departments:", error);
       setDepartments([]);
@@ -116,12 +135,30 @@ export default function TeamManagementPage() {
       
       // Send dates as ISO strings (backend DTO expects date strings)
       if (filters.fromDate) {
-        // Convert YYYY-MM-DD to ISO string
-        filterPayload.fromDate = new Date(filters.fromDate + 'T00:00:00.000Z').toISOString();
+        try {
+          // Convert YYYY-MM-DD to ISO string
+          const date = new Date(filters.fromDate + 'T00:00:00.000Z');
+          if (isNaN(date.getTime())) {
+            throw new Error("Invalid from date format");
+          }
+          filterPayload.fromDate = date.toISOString();
+        } catch (dateError) {
+          console.warn("Invalid fromDate format:", filters.fromDate);
+          // Skip invalid date
+        }
       }
       if (filters.toDate) {
-        // Convert YYYY-MM-DD to ISO string (end of day)
-        filterPayload.toDate = new Date(filters.toDate + 'T23:59:59.999Z').toISOString();
+        try {
+          // Convert YYYY-MM-DD to ISO string (end of day)
+          const date = new Date(filters.toDate + 'T23:59:59.999Z');
+          if (isNaN(date.getTime())) {
+            throw new Error("Invalid to date format");
+          }
+          filterPayload.toDate = date.toISOString();
+        } catch (dateError) {
+          console.warn("Invalid toDate format:", filters.toDate);
+          // Skip invalid date
+        }
       }
       
       const result = await leavesApi.filterTeamLeaveData(managerId.trim(), filterPayload);
@@ -129,24 +166,41 @@ export default function TeamManagementPage() {
       console.log("Team leave data result:", result);
       console.log("Total results:", result.total);
       console.log("Items:", result.items);
+      console.log("Applied filters:", filterPayload);
       
-      setLeaveRequests(Array.isArray(result.items) ? result.items : []);
+      // Ensure unique items and convert to proper format
+      const items = Array.isArray(result.items) ? result.items : [];
+      // Remove duplicates based on _id and ensure all _id are strings
+      const uniqueItems = items.map((item: any, index: number) => ({
+        ...item,
+        _id: item._id?.toString() || `temp-${index}`,
+        employeeId: item.employeeId?.toString() || item.employeeId || '',
+      }));
+      
+      setLeaveRequests(uniqueItems);
       setTotal(result.total || 0);
       
       // Provide helpful message if no results
       if (result.total === 0) {
         const hasFilters = filters.departmentId || filters.leaveTypeId || filters.fromDate || filters.toDate || filters.status;
         if (hasFilters) {
-          setError("No leave requests found matching the current filters. Try clearing filters or adjusting date range.");
+          let errorMsg = "No leave requests found matching the current filters.";
+          if (filters.departmentId) {
+            errorMsg += " Note: Employees without a department assigned will not appear when filtering by department. Please ensure employees have their department set in their profile.";
+          } else {
+            errorMsg += " Try clearing filters or adjusting date range.";
+          }
+          setError(errorMsg);
         } else {
-          setError("No leave requests found. This could mean: 1) No team members are assigned to you, 2) Your team members have no leave requests, or 3) Team members need to have their supervisorPositionId set to your position.");
+          setError(""); // Don't show error for empty results without filters
         }
       } else {
         setError(""); // Clear error if we have results
       }
     } catch (error: any) {
       console.error("Error fetching team leave data:", error);
-      setError(error.message || "Failed to load team leave data. Please check: 1) You have a position assigned, 2) Team members have supervisorPositionId set to your position.");
+      const errorMessage = error.response?.data?.message || error.message || "Failed to load team leave data.";
+      setError(`Error: ${errorMessage} Please check: 1) You have a position assigned, 2) Team members have supervisorPositionId set to your position, 3) Try clearing filters and applying again.`);
       setLeaveRequests([]);
       setTotal(0);
     } finally {
@@ -154,18 +208,44 @@ export default function TeamManagementPage() {
     }
   };
 
-  const handleFlagIrregular = async (leaveRequestId: string) => {
+  const handleOpenFlagModal = (leaveRequestId: string) => {
+    setSelectedLeaveRequestId(leaveRequestId);
+    setFlagReason("");
+    setFlagNotes("");
+    setFlagModalOpen(true);
+  };
+
+  const handleCloseFlagModal = () => {
+    setFlagModalOpen(false);
+    setSelectedLeaveRequestId("");
+    setFlagReason("");
+    setFlagNotes("");
+  };
+
+  const handleFlagIrregular = async () => {
+    if (!flagReason.trim()) {
+      setError("Please provide a reason for flagging this pattern.");
+      return;
+    }
+
     try {
+      setFlagging(true);
+      setError("");
       const managerId = authApi.getUserId() || user?.id || user?.userId || "";
-      const flagReason = prompt("Please provide a reason for flagging this pattern:");
-      if (!flagReason) return;
       
-      const notes = prompt("Additional notes (optional):");
-      await leavesApi.flagIrregularPattern(leaveRequestId, managerId, flagReason, notes || undefined);
-      alert("Leave request flagged successfully");
+      await leavesApi.flagIrregularPattern(
+        selectedLeaveRequestId,
+        managerId,
+        flagReason.trim(),
+        flagNotes.trim() || undefined
+      );
+      
+      handleCloseFlagModal();
       fetchTeamLeaveData();
     } catch (error: any) {
-      alert(`Failed to flag pattern: ${error.message}`);
+      setError(error.message || "Failed to flag pattern. Please try again.");
+    } finally {
+      setFlagging(false);
     }
   };
 
@@ -225,7 +305,7 @@ export default function TeamManagementPage() {
               </label>
               <select
                 value={filters.departmentId}
-                onChange={(e) => setFilters({ ...filters, departmentId: e.target.value, offset: 0 })}
+                onChange={(e) => setFilters({ ...filters, departmentId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Departments</option>
@@ -242,7 +322,7 @@ export default function TeamManagementPage() {
               </label>
               <select
                 value={filters.leaveTypeId}
-                onChange={(e) => setFilters({ ...filters, leaveTypeId: e.target.value, offset: 0 })}
+                onChange={(e) => setFilters({ ...filters, leaveTypeId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Types</option>
@@ -259,7 +339,7 @@ export default function TeamManagementPage() {
               </label>
               <select
                 value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value, offset: 0 })}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Statuses</option>
@@ -276,7 +356,7 @@ export default function TeamManagementPage() {
               <input
                 type="date"
                 value={filters.fromDate}
-                onChange={(e) => setFilters({ ...filters, fromDate: e.target.value, offset: 0 })}
+                onChange={(e) => setFilters({ ...filters, fromDate: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -287,7 +367,7 @@ export default function TeamManagementPage() {
               <input
                 type="date"
                 value={filters.toDate}
-                onChange={(e) => setFilters({ ...filters, toDate: e.target.value, offset: 0 })}
+                onChange={(e) => setFilters({ ...filters, toDate: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -320,7 +400,10 @@ export default function TeamManagementPage() {
             </div>
           </div>
           <div className="mt-4 flex gap-2">
-            <Button onClick={fetchTeamLeaveData}>Apply Filters</Button>
+            <Button onClick={() => {
+              setFilters(prev => ({ ...prev, offset: 0 }));
+              fetchTeamLeaveData();
+            }}>Apply Filters</Button>
             <Button
               variant="outline"
               onClick={() => {
@@ -335,6 +418,8 @@ export default function TeamManagementPage() {
                   offset: 0,
                   limit: 10,
                 });
+                // Fetch immediately after clearing
+                setTimeout(() => fetchTeamLeaveData(), 100);
               }}
             >
               Clear Filters
@@ -378,8 +463,8 @@ export default function TeamManagementPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {leaveRequests.map((request) => (
-            <Card key={request._id} className="hover:shadow-lg transition-shadow">
+          {leaveRequests.map((request, index) => (
+            <Card key={`${request._id}-${request.employeeId}-${index}`} className="hover:shadow-lg transition-shadow">
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div className="flex-1">
@@ -424,7 +509,7 @@ export default function TeamManagementPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleFlagIrregular(request._id)}
+                      onClick={() => handleOpenFlagModal(request._id)}
                     >
                       Flag Irregular Pattern
                     </Button>
@@ -456,6 +541,61 @@ export default function TeamManagementPage() {
           >
             Next
           </Button>
+        </div>
+      )}
+
+      {/* Flag Irregular Pattern Modal */}
+      {flagModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Flag Irregular Pattern</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reason for Flagging *
+                  </label>
+                  <textarea
+                    value={flagReason}
+                    onChange={(e) => setFlagReason(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={3}
+                    placeholder="Please provide a reason for flagging this pattern..."
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Additional Notes (Optional)
+                  </label>
+                  <textarea
+                    value={flagNotes}
+                    onChange={(e) => setFlagNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    rows={2}
+                    placeholder="Any additional notes or details..."
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={handleCloseFlagModal}
+                    disabled={flagging}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleFlagIrregular}
+                    disabled={flagging || !flagReason.trim()}
+                  >
+                    {flagging ? "Flagging..." : "Flag Pattern"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

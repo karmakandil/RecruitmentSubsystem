@@ -29,6 +29,7 @@ interface TeamMemberBalance {
     dates: { from: Date; to: Date };
     durationDays: number;
     status: string;
+    isFlagged?: boolean;
   }>;
 }
 
@@ -117,11 +118,11 @@ export default function TeamBalancesPage() {
       );
       
       // Apply client-side filtering for leave type and status
-      let filteredMembers = result.teamMembers || [];
+      let filteredMembers: TeamMemberBalance[] = result.teamMembers || [];
       
       // Filter by leave type in balances and upcoming leaves
       if (filters.leaveTypeId) {
-        filteredMembers = filteredMembers.map(member => ({
+        filteredMembers = filteredMembers.map((member: TeamMemberBalance) => ({
           ...member,
           leaveBalances: member.leaveBalances.filter(
             balance => balance.leaveTypeId === filters.leaveTypeId
@@ -136,7 +137,7 @@ export default function TeamBalancesPage() {
       
       // Filter upcoming leaves by status
       if (filters.status) {
-        filteredMembers = filteredMembers.map(member => ({
+        filteredMembers = filteredMembers.map((member: TeamMemberBalance) => ({
           ...member,
           upcomingLeaves: member.upcomingLeaves.filter(
             leave => leave.status.toUpperCase() === filters.status.toUpperCase()
@@ -330,9 +331,9 @@ export default function TeamBalancesPage() {
                       <p className="text-sm text-gray-500">No leave entitlements</p>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {member.leaveBalances.map((balance) => (
+                        {member.leaveBalances.map((balance, balanceIndex) => (
                           <div
-                            key={balance.leaveTypeId}
+                            key={`${member.employeeId}-${balance.leaveTypeId}-${balanceIndex}`}
                             className="border rounded-lg p-4 bg-gray-50"
                           >
                             <div className="font-semibold text-gray-900 mb-2">
@@ -375,9 +376,16 @@ export default function TeamBalancesPage() {
                             className="border rounded-lg p-3 bg-blue-50"
                           >
                             <div className="flex justify-between items-start">
-                              <div>
-                                <div className="font-semibold text-gray-900">
-                                  {leave.leaveTypeName}
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-semibold text-gray-900">
+                                    {leave.leaveTypeName}
+                                  </div>
+                                  {leave.isFlagged && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-300" title="Flagged for irregular pattern">
+                                      🚩 Flagged
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-sm text-gray-600 mt-1">
                                   {formatDate(leave.dates.from)} - {formatDate(leave.dates.to)}

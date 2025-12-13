@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { populate } from 'dotenv';
@@ -969,8 +970,78 @@ export class LeavesService {
     doc.leaveTypeId = this.toObjectId(
       createLeaveEntitlementDto.leaveTypeId,
     ) as Types.ObjectId;
+    
+    // Get the leave policy to determine rounding rule
+    let leavePolicy = await this.leavePolicyModel
+      .findOne({ leaveTypeId: doc.leaveTypeId })
+      .exec();
+    
+    // If not found, try as string comparison
+    if (!leavePolicy) {
+      leavePolicy = await this.leavePolicyModel
+        .findOne({ leaveTypeId: createLeaveEntitlementDto.leaveTypeId })
+        .exec();
+    }
+    
+    // If still not found, try to find by string comparison as fallback
+    if (!leavePolicy) {
+      const allPolicies = await this.leavePolicyModel.find({}).exec();
+      const matchingPolicy = allPolicies.find(p => 
+        p.leaveTypeId?.toString() === doc.leaveTypeId?.toString() || 
+        p.leaveTypeId?.toString() === createLeaveEntitlementDto.leaveTypeId ||
+        (p.leaveTypeId instanceof Types.ObjectId && p.leaveTypeId.equals(doc.leaveTypeId))
+      );
+      if (matchingPolicy) {
+        leavePolicy = matchingPolicy;
+      }
+    }
+    
+    const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+    console.log(`[createLeaveEntitlement] Policy lookup:`, {
+      leaveTypeId: doc.leaveTypeId?.toString(),
+      policyFound: !!leavePolicy,
+      roundingRule: roundingRule,
+      accruedActual: doc.accruedActual
+    });
+    
+    // ALWAYS recalculate accruedRounded from accruedActual based on rounding rule
+    // This ensures rounding is applied correctly when creating entitlements
+    if (doc.accruedActual !== undefined && doc.accruedActual !== null && doc.accruedActual !== 0) {
+      const originalAccruedRounded = doc.accruedRounded;
+      doc.accruedRounded = this.applyRoundingRule(
+        doc.accruedActual,
+        roundingRule,
+      );
+      console.log(`[createLeaveEntitlement] ✅ Applied rounding: ${doc.accruedActual} -> ${doc.accruedRounded} (rule: ${roundingRule}, employeeId: ${doc.employeeId?.toString()})`);
+      
+      if (originalAccruedRounded !== undefined && originalAccruedRounded !== doc.accruedRounded) {
+        console.log(`[createLeaveEntitlement] ⚠️ Overrode frontend accruedRounded value: ${originalAccruedRounded} -> ${doc.accruedRounded}`);
+      }
+    } else {
+      // If accruedActual is not provided or is 0, default to 0
+      if (doc.accruedActual === undefined || doc.accruedActual === null) {
+        doc.accruedActual = 0;
+      }
+      doc.accruedRounded = this.applyRoundingRule(doc.accruedActual, roundingRule);
+      console.log(`[createLeaveEntitlement] Set accruedActual: ${doc.accruedActual}, accruedRounded: ${doc.accruedRounded} (employeeId: ${doc.employeeId?.toString()})`);
+    }
+    
     const newLeaveEntitlement = new this.leaveEntitlementModel(doc);
-    return await newLeaveEntitlement.save();
+    const saved = await newLeaveEntitlement.save();
+    
+    // Recalculate remaining to ensure it's correct
+    saved.remaining = this.calculateRemaining(saved);
+    await saved.save();
+    
+    console.log(`[createLeaveEntitlement] ✅ Saved entitlement:`, {
+      employeeId: saved.employeeId?.toString(),
+      leaveTypeId: saved.leaveTypeId?.toString(),
+      accruedActual: saved.accruedActual,
+      accruedRounded: saved.accruedRounded,
+      remaining: saved.remaining
+    });
+    
+    return saved;
   }
 
   async getLeaveEntitlement(
@@ -1024,7 +1095,9 @@ export class LeavesService {
 
     // Always recalculate and save to ensure consistency
     // Use Math.abs to handle floating point precision issues
-    if (Math.abs(leaveEntitlement.accruedRounded - expectedRounded) > 0.001) {
+    const needsUpdate = Math.abs(leaveEntitlement.accruedRounded - expectedRounded) > 0.001;
+    if (needsUpdate) {
+      console.log(`[getLeaveEntitlement] Recalculating rounding: ${leaveEntitlement.accruedRounded} -> ${expectedRounded} (accruedActual: ${leaveEntitlement.accruedActual}, rule: ${roundingRule})`);
       leaveEntitlement.accruedRounded = expectedRounded;
       leaveEntitlement.remaining = this.calculateRemaining(leaveEntitlement);
       await leaveEntitlement.save();
@@ -1050,17 +1123,27 @@ export class LeavesService {
       : leaveEntitlement.accruedActual;
     
     // Get policy for rounding rule
-    const leavePolicy = await this.leavePolicyModel
+    let leavePolicy = await this.leavePolicyModel
       .findOne({ leaveTypeId: leaveEntitlement.leaveTypeId })
       .exec();
+    
+    // If not found, try as string comparison
+    if (!leavePolicy) {
+      leavePolicy = await this.leavePolicyModel
+        .findOne({ leaveTypeId: leaveEntitlement.leaveTypeId.toString() })
+        .exec();
+    }
     
     const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
     
     // ALWAYS recalculate accruedRounded from accruedActual (override any frontend value)
-    updateLeaveEntitlementDto.accruedRounded = this.applyRoundingRule(
+    const newAccruedRounded = this.applyRoundingRule(
       accruedActualToUse,
       roundingRule,
     );
+    
+    console.log(`[updateLeaveEntitlement] Applied rounding: ${accruedActualToUse} -> ${newAccruedRounded} (rule: ${roundingRule}, entitlementId: ${id})`);
+    updateLeaveEntitlementDto.accruedRounded = newAccruedRounded;
 
     // Apply the update
     leaveEntitlement = await this.leaveEntitlementModel
@@ -2050,17 +2133,52 @@ export class LeavesService {
         .populate('leaveTypeId')
         .exec();
 
-      const mapped = entitlements.map((ent) => ({
-        leaveTypeId: ent.leaveTypeId?._id || ent.leaveTypeId,
-        leaveTypeName: (ent.leaveTypeId as any)?.name || undefined,
-        yearlyEntitlement: ent.yearlyEntitlement,
-        accruedActual: ent.accruedActual,
-        carryForward: ent.carryForward,
-        taken: ent.taken,
-        pending: ent.pending,
-        remaining: ent.remaining,
-        lastAccrualDate: ent.lastAccrualDate,
-      }));
+      // Map entitlements and handle null populate results - only include valid leave types
+      const mapped = (await Promise.all(
+        entitlements.map(async (ent) => {
+          let leaveTypeName = (ent.leaveTypeId as any)?.name;
+          let leaveTypeIdValue = ent.leaveTypeId?._id || ent.leaveTypeId;
+
+          // If populate failed (leaveTypeId is null or doesn't have name), fetch it separately
+          if (!leaveTypeName && ent.leaveTypeId) {
+            const storedLeaveTypeId = ent.leaveTypeId instanceof Types.ObjectId 
+              ? ent.leaveTypeId 
+              : (typeof ent.leaveTypeId === 'string' 
+                  ? new Types.ObjectId(ent.leaveTypeId) 
+                  : (ent.leaveTypeId as any)?._id || ent.leaveTypeId);
+            
+            if (storedLeaveTypeId) {
+              try {
+                const leaveType = await this.leaveTypeModel.findById(storedLeaveTypeId).exec();
+                if (leaveType) {
+                  leaveTypeName = leaveType.name;
+                  leaveTypeIdValue = leaveType._id;
+                } else {
+                  return null; // Filter out deleted leave types
+                }
+              } catch (err) {
+                return null; // Filter out invalid leave types
+              }
+            } else {
+              return null; // Filter out invalid leave types
+            }
+          } else if (!leaveTypeName) {
+            return null; // Filter out invalid leave types
+          }
+
+          return {
+            leaveTypeId: leaveTypeIdValue,
+            leaveTypeName: leaveTypeName,
+            yearlyEntitlement: ent.yearlyEntitlement,
+            accruedActual: ent.accruedActual,
+            carryForward: ent.carryForward,
+            taken: ent.taken,
+            pending: ent.pending,
+            remaining: ent.remaining,
+            lastAccrualDate: ent.lastAccrualDate,
+          };
+        })
+      )).filter(balance => balance !== null);
 
       if (leaveTypeId) {
         return mapped.length ? mapped[0] : null;
@@ -2106,19 +2224,56 @@ export class LeavesService {
         .sort({ 'dates.from': -1 })
         .exec();
 
-      return requests.map((req) => ({
-        _id: req._id,
-        employeeId: req.employeeId,
-        leaveTypeId: req.leaveTypeId ? (req.leaveTypeId as any)._id : req.leaveTypeId,
-        leaveTypeName: req.leaveTypeId ? (req.leaveTypeId as any).name : null,
-        dates: req.dates,
-        durationDays: req.durationDays,
-        justification: req.justification,
-        status: req.status,
-        approvalFlow: req.approvalFlow,
-        createdAt: (req as any).createdAt,
-        updatedAt: (req as any).updatedAt,
-      }));
+      // Map requests and handle null populate results
+      const mapped = await Promise.all(
+        requests.map(async (req) => {
+          let leaveTypeName = req.leaveTypeId ? (req.leaveTypeId as any).name : null;
+          let leaveTypeIdValue = req.leaveTypeId ? (req.leaveTypeId as any)._id : req.leaveTypeId;
+
+          // If populate failed (leaveTypeId is null or doesn't have name), fetch it separately
+          if (!leaveTypeName && req.leaveTypeId) {
+            const storedLeaveTypeId = req.leaveTypeId instanceof Types.ObjectId 
+              ? req.leaveTypeId 
+              : (typeof req.leaveTypeId === 'string' 
+                  ? new Types.ObjectId(req.leaveTypeId) 
+                  : (req.leaveTypeId as any)?._id || req.leaveTypeId);
+            
+            if (storedLeaveTypeId) {
+              try {
+                const leaveType = await this.leaveTypeModel.findById(storedLeaveTypeId).exec();
+                if (leaveType) {
+                  leaveTypeName = leaveType.name;
+                  leaveTypeIdValue = leaveType._id;
+                } else {
+                  leaveTypeName = 'Deleted Leave Type';
+                }
+              } catch (err) {
+                leaveTypeName = 'Unknown Leave Type';
+              }
+            } else {
+              leaveTypeName = 'Unknown Leave Type';
+            }
+          } else if (!leaveTypeName) {
+            leaveTypeName = 'Unknown Leave Type';
+          }
+
+          return {
+            _id: req._id,
+            employeeId: req.employeeId,
+            leaveTypeId: leaveTypeIdValue,
+            leaveTypeName: leaveTypeName,
+            dates: req.dates,
+            durationDays: req.durationDays,
+            justification: req.justification,
+            status: req.status,
+            approvalFlow: req.approvalFlow,
+            createdAt: (req as any).createdAt,
+            updatedAt: (req as any).updatedAt,
+          };
+        })
+      );
+
+      return mapped;
     } catch (error) {
       throw new Error(
         `Failed to fetch past leave requests: ${(error as any).message}`,
@@ -2221,7 +2376,7 @@ export class LeavesService {
         .find(teamMembersQuery)
         .populate('primaryDepartmentId', 'name code')
         .populate('primaryPositionId', 'title code')
-        .select('_id name primaryDepartmentId primaryPositionId')
+        .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
         .exec();
 
       const balances = await Promise.all(
@@ -2250,26 +2405,108 @@ export class LeavesService {
             .populate('leaveTypeId')
             .exec();
 
+          // Construct employee name from firstName, lastName, or use fullName if available
+          const memberData = member as any;
+          const employeeName = memberData.fullName || 
+            (memberData.firstName && memberData.lastName 
+              ? `${memberData.firstName}${memberData.middleName ? ' ' + memberData.middleName : ''} ${memberData.lastName}`.trim()
+              : 'N/A');
+
+          // Handle entitlements with fallback for null populate - only include valid leave types
+          const leaveBalances = (await Promise.all(
+            entitlements.map(async (ent) => {
+              let leaveTypeName = (ent.leaveTypeId as any)?.name;
+              let leaveTypeIdValue = (ent.leaveTypeId as any)?._id;
+
+              // If populate failed, fetch leave type separately
+              if (!leaveTypeName && ent.leaveTypeId) {
+                const storedLeaveTypeId = ent.leaveTypeId instanceof Types.ObjectId 
+                  ? ent.leaveTypeId 
+                  : (typeof ent.leaveTypeId === 'string' 
+                      ? new Types.ObjectId(ent.leaveTypeId) 
+                      : (ent.leaveTypeId as any)?._id || ent.leaveTypeId);
+                
+                if (storedLeaveTypeId) {
+                  try {
+                    const leaveType = await this.leaveTypeModel.findById(storedLeaveTypeId).exec();
+                    if (leaveType) {
+                      leaveTypeName = leaveType.name;
+                      leaveTypeIdValue = leaveType._id;
+                    } else {
+                      return null; // Filter out deleted leave types
+                    }
+                  } catch (err) {
+                    return null; // Filter out invalid leave types
+                  }
+                } else {
+                  return null; // Filter out invalid leave types
+                }
+              } else if (!leaveTypeName) {
+                return null; // Filter out invalid leave types
+              }
+
+              return {
+                leaveTypeId: leaveTypeIdValue,
+                leaveTypeName: leaveTypeName,
+                remaining: ent.remaining,
+                pending: ent.pending,
+                taken: ent.taken,
+              };
+            })
+          )).filter(balance => balance !== null);
+
+          // Handle upcomingLeaves with fallback for null populate - only include valid leave types
+          const upcomingLeavesMapped = (await Promise.all(
+            upcomingLeaves.map(async (leave) => {
+              let leaveTypeName = (leave.leaveTypeId as any)?.name;
+              let leaveTypeIdValue = (leave.leaveTypeId as any)?._id || leave.leaveTypeId;
+
+              // If populate failed, fetch leave type separately
+              if (!leaveTypeName && leave.leaveTypeId) {
+                const storedLeaveTypeId = leave.leaveTypeId instanceof Types.ObjectId 
+                  ? leave.leaveTypeId 
+                  : (typeof leave.leaveTypeId === 'string' 
+                      ? new Types.ObjectId(leave.leaveTypeId) 
+                      : (leave.leaveTypeId as any)?._id || leave.leaveTypeId);
+                
+                if (storedLeaveTypeId) {
+                  try {
+                    const leaveType = await this.leaveTypeModel.findById(storedLeaveTypeId).exec();
+                    if (leaveType) {
+                      leaveTypeName = leaveType.name;
+                      leaveTypeIdValue = leaveType._id;
+                    } else {
+                      return null; // Filter out deleted leave types
+                    }
+                  } catch (err) {
+                    return null; // Filter out invalid leave types
+                  }
+                } else {
+                  return null; // Filter out invalid leave types
+                }
+              } else if (!leaveTypeName) {
+                return null; // Filter out invalid leave types
+              }
+
+              return {
+                _id: leave._id,
+                leaveTypeId: leaveTypeIdValue,
+                leaveTypeName: leaveTypeName,
+                dates: leave.dates,
+                durationDays: leave.durationDays,
+                status: leave.status,
+                isFlagged: (leave as any).irregularPatternFlag || false,
+              };
+            })
+          )).filter(leave => leave !== null);
+
           return {
             employeeId: member._id,
-            employeeName: (member as any).name || 'N/A',
+            employeeName: employeeName,
             position: (member.primaryPositionId && (member.primaryPositionId as any).title) || 'N/A',
             department: (member.primaryDepartmentId && (member.primaryDepartmentId as any).name) || 'N/A',
-            leaveBalances: entitlements.map((ent) => ({
-              leaveTypeId: (ent.leaveTypeId as any)?._id,
-              leaveTypeName: (ent.leaveTypeId as any).name,
-              remaining: ent.remaining,
-              pending: ent.pending,
-              taken: ent.taken,
-            })),
-            upcomingLeaves: upcomingLeaves.map((leave) => ({
-              _id: leave._id,
-              leaveTypeId: (leave.leaveTypeId as any)?._id || leave.leaveTypeId,
-              leaveTypeName: (leave.leaveTypeId as any)?.name,
-              dates: leave.dates,
-              durationDays: leave.durationDays,
-              status: leave.status,
-            })),
+            leaveBalances: leaveBalances,
+            upcomingLeaves: upcomingLeavesMapped,
           };
         }),
       );
@@ -2316,15 +2553,119 @@ export class LeavesService {
 
       // Filter by department if provided
       if (filters.departmentId) {
-        teamMembersQuery.primaryDepartmentId = new Types.ObjectId(filters.departmentId);
+        console.log(`[filterTeamLeaveData] Department filter received:`, {
+          value: filters.departmentId,
+          type: typeof filters.departmentId,
+          isValidObjectId: Types.ObjectId.isValid(filters.departmentId),
+        });
+        
+        // Convert to ObjectId for proper MongoDB comparison
+        // MongoDB stores primaryDepartmentId as ObjectId, so we need to match that format
+        // Note: This will exclude employees who don't have a department assigned (primaryDepartmentId is null/undefined)
+        if (Types.ObjectId.isValid(filters.departmentId)) {
+          teamMembersQuery.primaryDepartmentId = new Types.ObjectId(filters.departmentId);
+          console.log(`[filterTeamLeaveData] Converted to ObjectId:`, teamMembersQuery.primaryDepartmentId.toString());
+          console.log(`[filterTeamLeaveData] ⚠️ Note: This filter will exclude employees without a department assigned`);
+        } else {
+          console.warn(`[filterTeamLeaveData] Invalid ObjectId format, trying as string:`, filters.departmentId);
+          // Try as string (shouldn't normally happen, but handle edge cases)
+          teamMembersQuery.primaryDepartmentId = filters.departmentId;
+        }
       }
 
       const teamMembers = await this.employeeProfileModel
         .find(teamMembersQuery)
-        .select('_id')
+        .select('_id primaryDepartmentId')
         .exec();
       
+      console.log(`[filterTeamLeaveData] Found ${teamMembers.length} team members`);
+      console.log(`[filterTeamLeaveData] Department filter applied:`, filters.departmentId);
+      console.log(`[filterTeamLeaveData] Team members query:`, JSON.stringify(teamMembersQuery, null, 2));
+      
+      if (teamMembers.length > 0) {
+        console.log(`[filterTeamLeaveData] Sample team members:`, teamMembers.slice(0, 3).map(m => {
+          const deptId = (m as any).primaryDepartmentId;
+          return {
+            employeeId: m._id.toString(),
+            departmentId: deptId?.toString() || deptId || 'N/A',
+            departmentIdType: deptId ? (deptId instanceof Types.ObjectId ? 'ObjectId' : typeof deptId) : 'N/A',
+            matchesFilter: filters.departmentId ? (
+              deptId?.toString() === filters.departmentId || 
+              (deptId instanceof Types.ObjectId && deptId.equals(new Types.ObjectId(filters.departmentId)))
+            ) : 'N/A'
+          };
+        }));
+      } else if (filters.departmentId) {
+        console.warn(`[filterTeamLeaveData] ⚠️ No team members found for department ${filters.departmentId}`);
+        console.warn(`[filterTeamLeaveData] Possible reasons:`);
+        console.warn(`  1. No employees in this department have supervisorPositionId matching manager's position`);
+        console.warn(`  2. Employees don't have a department assigned (primaryDepartmentId is null/undefined)`);
+        console.warn(`  3. The department ID format doesn't match (expected ObjectId)`);
+        
+        // Diagnostic: Check if any employees exist in this department at all
+        const diagnosticQuery: any = {
+          primaryDepartmentId: Types.ObjectId.isValid(filters.departmentId)
+            ? new Types.ObjectId(filters.departmentId)
+            : filters.departmentId,
+        };
+        const allEmployeesInDept = await this.employeeProfileModel
+          .find(diagnosticQuery)
+          .select('_id firstName lastName primaryDepartmentId supervisorPositionId')
+          .limit(5)
+          .exec();
+        console.log(`[filterTeamLeaveData] Diagnostic: Found ${allEmployeesInDept.length} total employees in this department`);
+        
+        // Also check team members without department filter to see if they have departments assigned
+        const teamMembersWithoutDeptFilter = await this.employeeProfileModel
+          .find({
+            supervisorPositionId: manager.primaryPositionId,
+            status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+          })
+          .select('_id firstName lastName primaryDepartmentId')
+          .limit(5)
+          .exec();
+        console.log(`[filterTeamLeaveData] Diagnostic: Found ${teamMembersWithoutDeptFilter.length} team members (without dept filter)`);
+        const withoutDept = teamMembersWithoutDeptFilter.filter(m => !(m as any).primaryDepartmentId);
+        if (withoutDept.length > 0) {
+          console.warn(`[filterTeamLeaveData] ⚠️ Found ${withoutDept.length} team members WITHOUT department assigned:`, 
+            withoutDept.map(m => ({
+              id: m._id.toString(),
+              name: `${(m as any).firstName || ''} ${(m as any).lastName || ''}`.trim()
+            }))
+          );
+        }
+        
+        if (allEmployeesInDept.length > 0) {
+          console.log(`[filterTeamLeaveData] Sample employees in department:`, allEmployeesInDept.map(e => ({
+            id: e._id.toString(),
+            name: `${(e as any).firstName || ''} ${(e as any).lastName || ''}`.trim(),
+            deptId: (e as any).primaryDepartmentId?.toString() || (e as any).primaryDepartmentId,
+            supervisorPosId: (e as any).supervisorPositionId?.toString() || (e as any).supervisorPositionId,
+            managerPosId: manager.primaryPositionId?.toString()
+          })));
+        }
+      }
+      
       const memberIds = teamMembers.map((m) => m._id);
+
+      // If no team members found, return empty results
+      if (memberIds.length === 0) {
+        console.warn('No team members found. Query:', JSON.stringify(teamMembersQuery));
+        return {
+          total: 0,
+          filters: {
+            managerId,
+            departmentId: filters.departmentId,
+            leaveTypeId: filters.leaveTypeId,
+            dateRange:
+              filters.fromDate || filters.toDate
+                ? { from: filters.fromDate, to: filters.toDate }
+                : undefined,
+            status: filters.status,
+          },
+          items: [],
+        };
+      }
 
       const query: any = { employeeId: { $in: memberIds } };
 
@@ -2386,10 +2727,10 @@ export class LeavesService {
             : undefined;
           
           return {
-            _id: req._id,
-            employeeId: req.employeeId,
+            _id: req._id.toString(),
+            employeeId: (req.employeeId as any)?._id?.toString() || req.employeeId?.toString() || req.employeeId,
             employeeName,
-            leaveTypeName: (req.leaveTypeId as any).name,
+            leaveTypeName: (req.leaveTypeId as any)?.name || (req.leaveTypeId as any)?.name || 'Unknown',
             dates: req.dates,
             durationDays: req.durationDays,
             status: req.status,
@@ -3317,5 +3658,312 @@ export class LeavesService {
     leaveRequest.justification = `[Document Rejected: ${rejectionReason}] ${existingJustification}`;
 
     return await leaveRequest.save();
+  }
+
+  // ==================== AUTOMATED SCHEDULED TASKS ====================
+
+  /**
+   * REQ-040: Automatically accrue leave days based on policy settings
+   * Runs daily at 2 AM to check for due accruals
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async automatedAccrualJob() {
+    console.log('[Automated Accrual] Starting scheduled accrual job...');
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get all active leave policies
+      const policies = await this.leavePolicyModel.find().exec();
+      let totalProcessed = 0;
+      let totalSuccessful = 0;
+      let totalFailed = 0;
+
+      for (const policy of policies) {
+        try {
+          const accrualMethod = policy.accrualMethod;
+          const leaveTypeId = policy.leaveTypeId.toString();
+
+          // Determine if accrual is due based on method
+          let shouldAccrue = false;
+          let accrualAmount = 0;
+
+          if (accrualMethod === AccrualMethod.MONTHLY) {
+            // Check if it's the first day of the month
+            if (today.getDate() === 1) {
+              shouldAccrue = true;
+              accrualAmount = policy.monthlyRate || 0;
+            }
+          } else if (accrualMethod === AccrualMethod.YEARLY) {
+            // Check if it's January 1st
+            if (today.getMonth() === 0 && today.getDate() === 1) {
+              shouldAccrue = true;
+              accrualAmount = policy.yearlyRate || 0;
+            }
+          } else if (accrualMethod === AccrualMethod.PER_TERM) {
+            // For per-term, accrue when reset date is reached
+            // Get all entitlements for this leave type that are due for reset
+            const entitlementsDue = await this.leaveEntitlementModel
+              .find({
+                leaveTypeId: policy.leaveTypeId,
+                nextResetDate: { $lte: today },
+              })
+              .exec();
+
+            if (entitlementsDue.length > 0) {
+              shouldAccrue = true;
+              // For per-term, use yearlyRate as the accrual amount
+              accrualAmount = policy.yearlyRate || 0;
+              
+              // Process per-term accrual for these entitlements
+              for (const entitlement of entitlementsDue) {
+                try {
+                  await this.autoAccrueLeave(
+                    entitlement.employeeId.toString(),
+                    leaveTypeId,
+                    accrualAmount,
+                    accrualMethod,
+                    undefined,
+                    'Automated per-term accrual from scheduled job',
+                  );
+                  totalSuccessful++;
+                  totalProcessed++;
+                } catch (err) {
+                  console.error(
+                    `[Automated Accrual] Failed for employee ${entitlement.employeeId}:`,
+                    (err as any).message,
+                  );
+                  totalFailed++;
+                  totalProcessed++;
+                }
+              }
+            }
+            continue; // Skip the regular accrual processing below
+          }
+
+          if (shouldAccrue && accrualAmount > 0) {
+            console.log(
+              `[Automated Accrual] Processing ${accrualMethod} accrual for leave type ${leaveTypeId}, amount: ${accrualAmount}`,
+            );
+
+            // Get all entitlements for this leave type
+            const entitlements = await this.leaveEntitlementModel
+              .find({ leaveTypeId: policy.leaveTypeId })
+              .exec();
+
+            for (const entitlement of entitlements) {
+              try {
+                // Check if accrual is due (lastAccrualDate should be before today)
+                const lastAccrual = entitlement.lastAccrualDate;
+                let needsAccrual = true;
+
+                if (lastAccrual) {
+                  const lastAccrualDate = new Date(lastAccrual);
+                  lastAccrualDate.setHours(0, 0, 0, 0);
+
+                  if (accrualMethod === AccrualMethod.MONTHLY) {
+                    // For monthly, check if last accrual was in a previous month
+                    needsAccrual =
+                      lastAccrualDate.getMonth() < today.getMonth() ||
+                      lastAccrualDate.getFullYear() < today.getFullYear();
+                  } else if (accrualMethod === AccrualMethod.YEARLY) {
+                    // For yearly, check if last accrual was in a previous year
+                    needsAccrual =
+                      lastAccrualDate.getFullYear() < today.getFullYear();
+                  }
+                }
+
+                if (needsAccrual) {
+                  await this.autoAccrueLeave(
+                    entitlement.employeeId.toString(),
+                    leaveTypeId,
+                    accrualAmount,
+                    accrualMethod,
+                    undefined,
+                    'Automated accrual from scheduled job',
+                  );
+                  totalSuccessful++;
+                }
+                totalProcessed++;
+              } catch (err) {
+                console.error(
+                  `[Automated Accrual] Failed for employee ${entitlement.employeeId}:`,
+                  (err as any).message,
+                );
+                totalFailed++;
+              }
+            }
+          }
+        } catch (err) {
+          console.error(
+            `[Automated Accrual] Error processing policy ${policy._id}:`,
+            (err as any).message,
+          );
+        }
+      }
+
+      console.log(
+        `[Automated Accrual] Completed. Processed: ${totalProcessed}, Successful: ${totalSuccessful}, Failed: ${totalFailed}`,
+      );
+    } catch (error) {
+      console.error(
+        '[Automated Accrual] Fatal error in scheduled job:',
+        (error as any).message,
+      );
+    }
+  }
+
+  /**
+   * REQ-041: Automatically run carry-forward when reset dates are reached
+   * Runs daily at 3 AM to check for due carry-forwards
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async automatedCarryForwardJob() {
+    console.log('[Automated Carry-Forward] Starting scheduled carry-forward job...');
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Find all entitlements where nextResetDate is today or has passed
+      const entitlementsDueForReset = await this.leaveEntitlementModel
+        .find({
+          nextResetDate: { $lte: today },
+        })
+        .exec();
+
+      if (entitlementsDueForReset.length === 0) {
+        console.log('[Automated Carry-Forward] No entitlements due for reset');
+        return;
+      }
+
+      // Group by leaveTypeId to process carry-forward per leave type
+      const byLeaveType = new Map<string, string[]>();
+
+      for (const entitlement of entitlementsDueForReset) {
+        const leaveTypeId = entitlement.leaveTypeId.toString();
+        if (!byLeaveType.has(leaveTypeId)) {
+          byLeaveType.set(leaveTypeId, []);
+        }
+        byLeaveType.get(leaveTypeId)?.push(entitlement._id.toString());
+      }
+
+      let totalProcessed = 0;
+      let totalSuccessful = 0;
+      let totalFailed = 0;
+
+      // Process carry-forward for each leave type
+      for (const [leaveTypeId, entitlementIds] of byLeaveType.entries()) {
+        try {
+          console.log(
+            `[Automated Carry-Forward] Processing leave type ${leaveTypeId} for ${entitlementIds.length} employees`,
+          );
+
+          // Process each entitlement individually to ensure we only process those due for reset
+          for (const entitlementId of entitlementIds) {
+            try {
+              const entitlement = await this.leaveEntitlementModel
+                .findById(entitlementId)
+                .exec();
+
+              if (!entitlement) {
+                totalFailed++;
+                continue;
+              }
+
+              // Check if reset date has actually passed
+              const resetDate = entitlement.nextResetDate;
+              if (!resetDate || new Date(resetDate) > today) {
+                continue; // Skip if not yet due
+              }
+
+              // Get policy to check carry-forward settings
+              const leavePolicy = await this.leavePolicyModel
+                .findOne({ leaveTypeId: entitlement.leaveTypeId })
+                .exec();
+
+              if (!leavePolicy?.carryForwardAllowed) {
+                // If carry-forward not allowed, just update reset date
+                const nextReset = new Date(today);
+                nextReset.setFullYear(nextReset.getFullYear() + 1);
+                await this.leaveEntitlementModel
+                  .findByIdAndUpdate(entitlementId, {
+                    $set: { nextResetDate: nextReset },
+                  })
+                  .exec();
+                totalProcessed++;
+                continue;
+              }
+
+              // Calculate carry-forward amount
+              const maxCarryForward = leavePolicy.maxCarryForward || 0;
+              const carryForwardAmount = Math.min(
+                entitlement.remaining,
+                maxCarryForward,
+              );
+
+              if (carryForwardAmount > 0) {
+                // Update entitlement with carry-forward
+                const updated = await this.leaveEntitlementModel
+                  .findByIdAndUpdate(
+                    entitlementId,
+                    {
+                      $set: { carryForward: carryForwardAmount },
+                      $inc: { remaining: -carryForwardAmount },
+                    },
+                    { new: true },
+                  )
+                  .exec();
+
+                if (updated) {
+                  // Recalculate remaining
+                  updated.remaining = this.calculateRemaining(updated);
+                  
+                  // Calculate next reset date (one year from today)
+                  const nextReset = new Date(today);
+                  nextReset.setFullYear(nextReset.getFullYear() + 1);
+                  updated.nextResetDate = nextReset;
+                  
+                  await updated.save();
+                  totalSuccessful++;
+                } else {
+                  totalFailed++;
+                }
+              } else {
+                // No carry-forward needed, just update reset date
+                const nextReset = new Date(today);
+                nextReset.setFullYear(nextReset.getFullYear() + 1);
+                await this.leaveEntitlementModel
+                  .findByIdAndUpdate(entitlementId, {
+                    $set: { nextResetDate: nextReset },
+                  })
+                  .exec();
+                totalSuccessful++;
+              }
+              totalProcessed++;
+            } catch (err) {
+              console.error(
+                `[Automated Carry-Forward] Error processing entitlement ${entitlementId}:`,
+                (err as any).message,
+              );
+              totalFailed++;
+            }
+          }
+        } catch (err) {
+          console.error(
+            `[Automated Carry-Forward] Error processing leave type ${leaveTypeId}:`,
+            (err as any).message,
+          );
+        }
+      }
+
+      console.log(
+        `[Automated Carry-Forward] Completed. Processed: ${totalProcessed}, Successful: ${totalSuccessful}, Failed: ${totalFailed}`,
+      );
+    } catch (error) {
+      console.error(
+        '[Automated Carry-Forward] Fatal error in scheduled job:',
+        (error as any).message,
+      );
+    }
   }
 }

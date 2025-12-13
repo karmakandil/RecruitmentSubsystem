@@ -21,6 +21,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(), // Enable scheduled tasks
     MongooseModule.forFeature([
       { name: LeaveType.name, schema: LeaveTypeSchema },
       { name: LeaveRequest.name, schema: LeaveRequestSchema },

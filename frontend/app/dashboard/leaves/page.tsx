@@ -113,6 +113,18 @@ export default function LeavesPage() {
                 >
                   Accrual Adjustment →
                 </Link>
+                <Link 
+                  href="/dashboard/leaves/accrual" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Manual Accrual Management →
+                </Link>
+                <Link 
+                  href="/dashboard/leaves/carry-forward" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Manual Carry-Forward Management →
+                </Link>
               </div>
             </CardContent>
           </Card>
@@ -230,30 +242,30 @@ export default function LeavesPage() {
         <Card>
           <CardHeader>
             <CardTitle>Auto Accrual Management</CardTitle>
-            <CardDescription>Automatically add leave days to employee balances</CardDescription>
+            <CardDescription>Automated accrual runs daily. Manual override available to HR Manager.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link 
-              href="/dashboard/leaves/accrual" 
-              className="text-blue-600 hover:underline font-medium"
-            >
-              Manage Accruals →
-            </Link>
+            <p className="text-sm text-gray-600 mb-2">
+              Accrual runs automatically based on policy settings (monthly/yearly/per-term).
+            </p>
+            <p className="text-xs text-gray-500">
+              Scheduled: Daily at 2 AM
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
             <CardTitle>Carry-Forward Management</CardTitle>
-            <CardDescription>Run year-end/period carry-forward automatically</CardDescription>
+            <CardDescription>Automated carry-forward runs daily. Manual override available to HR Manager.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link 
-              href="/dashboard/leaves/carry-forward" 
-              className="text-blue-600 hover:underline font-medium"
-            >
-              Manage Carry-Forward →
-            </Link>
+            <p className="text-sm text-gray-600 mb-2">
+              Carry-forward runs automatically when reset dates are reached.
+            </p>
+            <p className="text-xs text-gray-500">
+              Scheduled: Daily at 3 AM
+            </p>
           </CardContent>
         </Card>
 
