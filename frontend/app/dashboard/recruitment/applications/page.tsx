@@ -719,28 +719,82 @@ export default function ApplicationsPage() {
                         {feedbackList.length > 0 ? (
                           <div className="space-y-3">
                             <h5 className="text-sm font-medium text-gray-700">Panel Feedback:</h5>
-                            {feedbackList.map((fb: any, index: number) => (
-                              <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium text-gray-900">
-                                    Interviewer {index + 1}
-                                  </span>
-                                  <span className="text-sm font-semibold text-gray-700">
-                                    Score: {fb.score || 0}/100
-                                  </span>
+                            {feedbackList.map((fb: any, index: number) => {
+                              // =============================================================
+                              // PARSE STRUCTURED ASSESSMENT FROM COMMENTS
+                              // =============================================================
+                              // Comments may contain JSON with detailed skill scores
+                              // Format: { skillScores: {...}, generalComments: "..." }
+                              // =============================================================
+                              let parsedAssessment: any = null;
+                              try {
+                                if (fb.comments && fb.comments.startsWith('{')) {
+                                  parsedAssessment = JSON.parse(fb.comments);
+                                }
+                              } catch (e) {
+                                // Not JSON, display as plain text
+                              }
+
+                              return (
+                                <div key={index} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <span className="text-sm font-semibold text-gray-900">
+                                      Interviewer {index + 1}
+                                    </span>
+                                    <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                                      (fb.score || 0) >= 70 ? 'bg-green-100 text-green-700' :
+                                      (fb.score || 0) >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-red-100 text-red-700'
+                                    }`}>
+                                      Overall: {fb.score || 0}/100
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Display structured skill breakdown if available */}
+                                  {parsedAssessment?.skillScores && (
+                                    <div className="mb-3">
+                                      <p className="text-xs font-medium text-gray-600 mb-2">Skill Breakdown:</p>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {Object.entries(parsedAssessment.skillScores).map(([skill, skillScore]: [string, any]) => (
+                                          <div key={skill} className="flex items-center justify-between bg-white p-2 rounded border">
+                                            <span className="text-xs text-gray-700 truncate">{skill}</span>
+                                            <span className={`text-xs font-bold ${
+                                              skillScore >= 70 ? 'text-green-600' :
+                                              skillScore >= 50 ? 'text-yellow-600' :
+                                              'text-red-600'
+                                            }`}>
+                                              {skillScore}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Display general comments */}
+                                  {parsedAssessment?.generalComments && (
+                                    <div className="bg-white p-3 rounded border border-gray-100">
+                                      <p className="text-xs font-medium text-gray-600 mb-1">Comments:</p>
+                                      <p className="text-sm text-gray-700">{parsedAssessment.generalComments}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Fallback: display plain text comments if not structured */}
+                                  {!parsedAssessment && fb.comments && (
+                                    <div className="bg-white p-3 rounded border border-gray-100">
+                                      <p className="text-xs font-medium text-gray-600 mb-1">Comments:</p>
+                                      <p className="text-sm text-gray-700">{fb.comments}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {fb.createdAt && (
+                                    <p className="text-xs text-gray-500 mt-3">
+                                      Submitted: {new Date(fb.createdAt).toLocaleString()}
+                                    </p>
+                                  )}
                                 </div>
-                                {fb.comments && (
-                                  <p className="text-sm text-gray-700 mt-2">
-                                    <span className="font-medium">Comments:</span> {fb.comments}
-                                  </p>
-                                )}
-                                {fb.createdAt && (
-                                  <p className="text-xs text-gray-500 mt-2">
-                                    Submitted: {new Date(fb.createdAt).toLocaleString()}
-                                  </p>
-                                )}
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">

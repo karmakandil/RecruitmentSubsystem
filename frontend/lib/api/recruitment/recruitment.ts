@@ -649,5 +649,35 @@ export const recruitmentApi = {
   deleteHiringProcessTemplate: async (id: string): Promise<void> => {
     return await api.delete(`/recruitment/hiring-process-template/${id}`);
   },
+
+  // ============================================
+  // RECRUITMENT REPORTS
+  // ============================================
+  // Analytics and reporting for HR Manager
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get all recruitment reports)
+  getRecruitmentReports: async (): Promise<any> => {
+    return await api.get("/recruitment/reports");
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get time-to-hire report)
+  getTimeToHireReport: async (): Promise<any> => {
+    return await api.get("/recruitment/reports/time-to-hire");
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get source effectiveness report)
+  getSourceEffectivenessReport: async (): Promise<any> => {
+    return await api.get("/recruitment/reports/source-effectiveness");
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get pipeline conversion report)
+  getPipelineConversionReport: async (): Promise<any> => {
+    return await api.get("/recruitment/reports/pipeline-conversion");
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (Get interview analytics report)
+  getInterviewAnalyticsReport: async (): Promise<any> => {
+    return await api.get("/recruitment/reports/interview-analytics");
+  },
 };
 

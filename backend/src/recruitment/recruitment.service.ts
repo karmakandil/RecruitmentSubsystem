@@ -727,24 +727,39 @@ export class RecruitmentService {
       }));
     }
 
-    // Handle referral prioritization
-    if (prioritizeReferrals) {
-      const referralCandidates = await this.referralModel
-        .find()
-        .select('candidateId')
-        .lean();
-      const referralCandidateIds = new Set(
-        referralCandidates.map((ref: any) => ref.candidateId.toString()),
-      );
+    // =============================================================
+    // REFERRAL HANDLING - Add isReferral flag and prioritize
+    // =============================================================
+    // Referrals get higher priority in the recruitment process
+    // (internal candidate preference / tie-breaking rule)
+    // =============================================================
+    const referralCandidates = await this.referralModel
+      .find()
+      .select('candidateId')
+      .lean();
+    const referralCandidateIds = new Set(
+      referralCandidates.map((ref: any) => ref.candidateId.toString()),
+    );
 
+    // Add isReferral flag to each application
+    const applicationsWithReferralFlag = applicationsWithInterviews.map((app: any) => {
+      const candidateId =
+        app.candidateId?._id?.toString() ||
+        app.candidateId?.toString();
+      const isReferral = candidateId ? referralCandidateIds.has(candidateId) : false;
+      return {
+        ...app,
+        isReferral,
+      };
+    });
+
+    // Sort referrals first if prioritization is enabled
+    if (prioritizeReferrals) {
       const referrals: any[] = [];
       const nonReferrals: any[] = [];
 
-      for (const app of applicationsWithInterviews) {
-        const candidateId =
-          (app as any).candidateId?._id?.toString() ||
-          (app as any).candidateId?.toString();
-        if (candidateId && referralCandidateIds.has(candidateId)) {
+      for (const app of applicationsWithReferralFlag) {
+        if (app.isReferral) {
           referrals.push(app);
         } else {
           nonReferrals.push(app);
@@ -755,7 +770,7 @@ export class RecruitmentService {
       return [...referrals, ...nonReferrals];
     }
 
-    return applicationsWithInterviews;
+    return applicationsWithReferralFlag;
   }
 
   async updateApplicationStatus(
@@ -1002,15 +1017,16 @@ export class RecruitmentService {
   // =============================================================================
   // GET HR EMPLOYEES FOR INTERVIEW PANEL SELECTION
   // =============================================================================
-  // Returns only employees with HR_EMPLOYEE or HR_MANAGER role who can be 
-  // assigned as panel members for conducting interviews.
+  // Returns ONLY employees with HR_EMPLOYEE role who can be assigned as 
+  // panel members for conducting interviews.
+  // HR Managers are NOT included - only HR Employees can be panel members.
   // =============================================================================
   async getHREmployeesForPanel() {
     try {
-      // Get all employees with HR_EMPLOYEE or HR_MANAGER role
+      // Get ONLY employees with HR_EMPLOYEE role (not HR_MANAGER)
       const hrEmployeeRoles = await this.employeeSystemRoleModel
         .find({
-          roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] },
+          roles: { $in: [SystemRole.HR_EMPLOYEE] },  // HR_EMPLOYEE only
           isActive: true,
         })
         .select('employeeProfileId')
@@ -7539,6 +7555,414 @@ Due: ${context.dueDate}`
         success: false,
         details: this.getErrorMessage(err) || String(err),
       };
+    }
+  }
+
+  // ============================================================================
+  // RECRUITMENT REPORTS
+  // ============================================================================
+  // These methods generate comprehensive analytics for recruitment performance
+  // without requiring any schema changes - all calculations use existing data
+  // ============================================================================
+
+  /**
+   * Get comprehensive recruitment reports
+   * Combines all report types into a single response
+   */
+  async getRecruitmentReports(): Promise<any> {
+    const [timeToHire, sourceEffectiveness, pipelineConversion, interviewAnalytics] = 
+      await Promise.all([
+        this.getTimeToHireReport(),
+        this.getSourceEffectivenessReport(),
+        this.getPipelineConversionReport(),
+        this.getInterviewAnalyticsReport(),
+      ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      timeToHire,
+      sourceEffectiveness,
+      pipelineConversion,
+      interviewAnalytics,
+    };
+  }
+
+  /**
+   * Time-to-Hire Report
+   * Calculates average time from application submission to hiring
+   * Breakdown by position and overall
+   */
+  async getTimeToHireReport(): Promise<any> {
+    try {
+      // Get all hired applications with timestamps
+      const hiredApplications = await this.applicationModel
+        .find({ status: ApplicationStatus.HIRED })
+        .populate({
+          path: 'requisitionId',
+          populate: { path: 'templateId' }
+        })
+        .lean();
+
+      if (hiredApplications.length === 0) {
+        return {
+          overall: { averageDays: 0, totalHires: 0 },
+          byPosition: [],
+          byMonth: [],
+        };
+      }
+
+      // Calculate time-to-hire for each application
+      const hireData = hiredApplications.map((app: any) => {
+        const createdAt = new Date(app.createdAt);
+        const updatedAt = new Date(app.updatedAt);
+        const daysToHire = Math.ceil((updatedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        
+        return {
+          applicationId: app._id,
+          daysToHire: Math.max(0, daysToHire), // Ensure non-negative
+          position: app.requisitionId?.templateId?.title || 'Unknown',
+          department: app.requisitionId?.templateId?.department || 'Unknown',
+          hiredMonth: updatedAt.toISOString().slice(0, 7), // YYYY-MM format
+        };
+      });
+
+      // Overall average
+      const totalDays = hireData.reduce((sum, h) => sum + h.daysToHire, 0);
+      const averageDays = Math.round(totalDays / hireData.length);
+
+      // Group by position
+      const byPosition: Record<string, { total: number; count: number; position: string }> = {};
+      hireData.forEach(h => {
+        if (!byPosition[h.position]) {
+          byPosition[h.position] = { total: 0, count: 0, position: h.position };
+        }
+        byPosition[h.position].total += h.daysToHire;
+        byPosition[h.position].count++;
+      });
+
+      const positionReport = Object.values(byPosition).map(p => ({
+        position: p.position,
+        averageDays: Math.round(p.total / p.count),
+        totalHires: p.count,
+      })).sort((a, b) => a.averageDays - b.averageDays);
+
+      // Group by month
+      const byMonth: Record<string, { total: number; count: number }> = {};
+      hireData.forEach(h => {
+        if (!byMonth[h.hiredMonth]) {
+          byMonth[h.hiredMonth] = { total: 0, count: 0 };
+        }
+        byMonth[h.hiredMonth].total += h.daysToHire;
+        byMonth[h.hiredMonth].count++;
+      });
+
+      const monthReport = Object.entries(byMonth)
+        .map(([month, data]) => ({
+          month,
+          averageDays: Math.round(data.total / data.count),
+          totalHires: data.count,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      return {
+        overall: {
+          averageDays,
+          totalHires: hireData.length,
+          fastestHire: Math.min(...hireData.map(h => h.daysToHire)),
+          slowestHire: Math.max(...hireData.map(h => h.daysToHire)),
+        },
+        byPosition: positionReport,
+        byMonth: monthReport,
+      };
+    } catch (error) {
+      console.error('Error generating time-to-hire report:', error);
+      return { overall: { averageDays: 0, totalHires: 0 }, byPosition: [], byMonth: [] };
+    }
+  }
+
+  /**
+   * Source Effectiveness Report
+   * Compares referral vs direct application success rates
+   */
+  async getSourceEffectivenessReport(): Promise<any> {
+    try {
+      // Get all applications
+      const allApplications = await this.applicationModel.find().lean();
+      
+      // Get all referrals
+      const referrals = await this.referralModel.find().lean();
+      const referralCandidateIds = new Set(
+        referrals.map((ref: any) => ref.candidateId.toString()),
+      );
+
+      // Categorize applications by source
+      let referralApps = 0;
+      let referralHired = 0;
+      let referralInProcess = 0;
+      let referralRejected = 0;
+
+      let directApps = 0;
+      let directHired = 0;
+      let directInProcess = 0;
+      let directRejected = 0;
+
+      allApplications.forEach((app: any) => {
+        const candidateId = app.candidateId?.toString();
+        const isReferral = candidateId && referralCandidateIds.has(candidateId);
+
+        if (isReferral) {
+          referralApps++;
+          if (app.status === ApplicationStatus.HIRED) referralHired++;
+          else if (app.status === ApplicationStatus.IN_PROCESS || app.status === ApplicationStatus.OFFER) referralInProcess++;
+          else if (app.status === ApplicationStatus.REJECTED) referralRejected++;
+        } else {
+          directApps++;
+          if (app.status === ApplicationStatus.HIRED) directHired++;
+          else if (app.status === ApplicationStatus.IN_PROCESS || app.status === ApplicationStatus.OFFER) directInProcess++;
+          else if (app.status === ApplicationStatus.REJECTED) directRejected++;
+        }
+      });
+
+      // Calculate rates
+      const referralHireRate = referralApps > 0 ? Math.round((referralHired / referralApps) * 100) : 0;
+      const directHireRate = directApps > 0 ? Math.round((directHired / directApps) * 100) : 0;
+
+      // Get referral details by referring employee
+      const referralsByEmployee: Record<string, { count: number; hired: number }> = {};
+      for (const ref of referrals) {
+        const empId = (ref as any).referringEmployeeId?.toString() || 'unknown';
+        if (!referralsByEmployee[empId]) {
+          referralsByEmployee[empId] = { count: 0, hired: 0 };
+        }
+        referralsByEmployee[empId].count++;
+        
+        // Check if this referral was hired
+        const candidateId = (ref as any).candidateId?.toString();
+        const app = allApplications.find((a: any) => 
+          a.candidateId?.toString() === candidateId && a.status === ApplicationStatus.HIRED
+        );
+        if (app) {
+          referralsByEmployee[empId].hired++;
+        }
+      }
+
+      return {
+        summary: {
+          totalApplications: allApplications.length,
+          referralApplications: referralApps,
+          directApplications: directApps,
+          referralPercentage: allApplications.length > 0 
+            ? Math.round((referralApps / allApplications.length) * 100) 
+            : 0,
+        },
+        referral: {
+          total: referralApps,
+          hired: referralHired,
+          inProcess: referralInProcess,
+          rejected: referralRejected,
+          hireRate: referralHireRate,
+        },
+        direct: {
+          total: directApps,
+          hired: directHired,
+          inProcess: directInProcess,
+          rejected: directRejected,
+          hireRate: directHireRate,
+        },
+        comparison: {
+          referralAdvantage: referralHireRate - directHireRate,
+          recommendation: referralHireRate > directHireRate 
+            ? 'Referrals show higher hire rate - consider increasing referral program incentives'
+            : 'Direct applications show comparable or better results',
+        },
+        topReferrers: Object.entries(referralsByEmployee)
+          .map(([id, data]) => ({ employeeId: id, referrals: data.count, hires: data.hired }))
+          .sort((a, b) => b.hires - a.hires)
+          .slice(0, 10),
+      };
+    } catch (error) {
+      console.error('Error generating source effectiveness report:', error);
+      return { summary: {}, referral: {}, direct: {}, comparison: {}, topReferrers: [] };
+    }
+  }
+
+  /**
+   * Pipeline Conversion Report
+   * Calculates conversion rates through each stage of the hiring process
+   */
+  async getPipelineConversionReport(): Promise<any> {
+    try {
+      // Get all applications grouped by status
+      const applications = await this.applicationModel.find().lean();
+      
+      const statusCounts = {
+        submitted: 0,
+        in_process: 0,
+        offer: 0,
+        hired: 0,
+        rejected: 0,
+      };
+
+      applications.forEach((app: any) => {
+        const status = app.status?.toLowerCase() || 'submitted';
+        if (statusCounts.hasOwnProperty(status)) {
+          statusCounts[status]++;
+        }
+      });
+
+      const total = applications.length;
+      
+      // Calculate conversion rates
+      // Total entering pipeline
+      const enteredPipeline = total;
+      // Moved past initial screening (in_process, offer, hired)
+      const passedScreening = statusCounts.in_process + statusCounts.offer + statusCounts.hired;
+      // Received offer (offer + hired)
+      const receivedOffer = statusCounts.offer + statusCounts.hired;
+      // Final hires
+      const finalHires = statusCounts.hired;
+
+      return {
+        funnel: [
+          { stage: 'Applied', count: enteredPipeline, percentage: 100 },
+          { 
+            stage: 'Screening Passed', 
+            count: passedScreening, 
+            percentage: enteredPipeline > 0 ? Math.round((passedScreening / enteredPipeline) * 100) : 0 
+          },
+          { 
+            stage: 'Offer Extended', 
+            count: receivedOffer, 
+            percentage: enteredPipeline > 0 ? Math.round((receivedOffer / enteredPipeline) * 100) : 0 
+          },
+          { 
+            stage: 'Hired', 
+            count: finalHires, 
+            percentage: enteredPipeline > 0 ? Math.round((finalHires / enteredPipeline) * 100) : 0 
+          },
+        ],
+        conversionRates: {
+          applicationToScreening: passedScreening > 0 && enteredPipeline > 0 
+            ? Math.round((passedScreening / enteredPipeline) * 100) 
+            : 0,
+          screeningToOffer: receivedOffer > 0 && passedScreening > 0 
+            ? Math.round((receivedOffer / passedScreening) * 100) 
+            : 0,
+          offerToHire: finalHires > 0 && receivedOffer > 0 
+            ? Math.round((finalHires / receivedOffer) * 100) 
+            : 0,
+          overallConversion: finalHires > 0 && enteredPipeline > 0 
+            ? Math.round((finalHires / enteredPipeline) * 100) 
+            : 0,
+        },
+        statusBreakdown: {
+          submitted: statusCounts.submitted,
+          inProcess: statusCounts.in_process,
+          offer: statusCounts.offer,
+          hired: statusCounts.hired,
+          rejected: statusCounts.rejected,
+        },
+        dropOffAnalysis: {
+          atScreening: statusCounts.rejected,
+          atInterview: statusCounts.in_process, // Still in process = hasn't converted yet
+          atOffer: statusCounts.offer, // Offer made but not hired yet
+          rejectedPercentage: total > 0 ? Math.round((statusCounts.rejected / total) * 100) : 0,
+        },
+      };
+    } catch (error) {
+      console.error('Error generating pipeline conversion report:', error);
+      return { funnel: [], conversionRates: {}, statusBreakdown: {}, dropOffAnalysis: {} };
+    }
+  }
+
+  /**
+   * Interview Analytics Report
+   * Provides insights on interview performance and scoring
+   */
+  async getInterviewAnalyticsReport(): Promise<any> {
+    try {
+      // Get all interviews
+      const interviews = await this.interviewModel.find().lean();
+      
+      // Get all assessment results
+      const assessments = await this.assessmentResultModel.find().lean();
+
+      // Interview statistics
+      const totalInterviews = interviews.length;
+      const completedInterviews = interviews.filter((i: any) => i.status === 'completed').length;
+      const scheduledInterviews = interviews.filter((i: any) => i.status === 'scheduled').length;
+      const cancelledInterviews = interviews.filter((i: any) => i.status === 'cancelled').length;
+
+      // Score statistics
+      const scores = assessments.map((a: any) => a.score || 0).filter(s => s > 0);
+      const averageScore = scores.length > 0 
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) 
+        : 0;
+      const highScores = scores.filter(s => s >= 70).length;
+      const mediumScores = scores.filter(s => s >= 50 && s < 70).length;
+      const lowScores = scores.filter(s => s < 50).length;
+
+      // Interview method breakdown
+      const methodCounts: Record<string, number> = {};
+      interviews.forEach((i: any) => {
+        const method = i.method || 'unknown';
+        methodCounts[method] = (methodCounts[method] || 0) + 1;
+      });
+
+      // Panel member participation
+      const panelParticipation: Record<string, number> = {};
+      interviews.forEach((i: any) => {
+        (i.panel || []).forEach((panelId: any) => {
+          const id = panelId?.toString() || 'unknown';
+          panelParticipation[id] = (panelParticipation[id] || 0) + 1;
+        });
+      });
+
+      // Feedback submission rate
+      const interviewsWithFeedback = new Set<string>();
+      assessments.forEach((a: any) => {
+        interviewsWithFeedback.add(a.interviewId?.toString());
+      });
+
+      return {
+        summary: {
+          totalInterviews,
+          completedInterviews,
+          scheduledInterviews,
+          cancelledInterviews,
+          completionRate: totalInterviews > 0 
+            ? Math.round((completedInterviews / totalInterviews) * 100) 
+            : 0,
+        },
+        scoring: {
+          totalAssessments: assessments.length,
+          averageScore,
+          highScores: { count: highScores, percentage: scores.length > 0 ? Math.round((highScores / scores.length) * 100) : 0 },
+          mediumScores: { count: mediumScores, percentage: scores.length > 0 ? Math.round((mediumScores / scores.length) * 100) : 0 },
+          lowScores: { count: lowScores, percentage: scores.length > 0 ? Math.round((lowScores / scores.length) * 100) : 0 },
+          highestScore: scores.length > 0 ? Math.max(...scores) : 0,
+          lowestScore: scores.length > 0 ? Math.min(...scores) : 0,
+        },
+        byMethod: Object.entries(methodCounts).map(([method, count]) => ({
+          method: method.replace('_', ' ').toUpperCase(),
+          count,
+          percentage: totalInterviews > 0 ? Math.round((count / totalInterviews) * 100) : 0,
+        })),
+        feedbackAnalysis: {
+          interviewsWithFeedback: interviewsWithFeedback.size,
+          interviewsWithoutFeedback: totalInterviews - interviewsWithFeedback.size,
+          feedbackRate: totalInterviews > 0 
+            ? Math.round((interviewsWithFeedback.size / totalInterviews) * 100) 
+            : 0,
+        },
+        topInterviewers: Object.entries(panelParticipation)
+          .map(([id, count]) => ({ interviewerId: id, interviewCount: count }))
+          .sort((a, b) => b.interviewCount - a.interviewCount)
+          .slice(0, 10),
+      };
+    } catch (error) {
+      console.error('Error generating interview analytics report:', error);
+      return { summary: {}, scoring: {}, byMethod: [], feedbackAnalysis: {}, topInterviewers: [] };
     }
   }
 }

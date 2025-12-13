@@ -250,6 +250,21 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
+              {/* Recruitment Reports */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-800">📊 Recruitment Reports</CardTitle>
+                  <CardDescription className="text-green-700">
+                    Analytics including time-to-hire, source effectiveness, and pipeline conversion
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/reports">
+                    <Button className="w-full bg-green-600 hover:bg-green-700">View Reports & Analytics</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
               {/* Job Offers & Approvals */}
               <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
                 <CardHeader>

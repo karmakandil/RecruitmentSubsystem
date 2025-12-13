@@ -838,4 +838,49 @@ export class RecruitmentController {
   ) {
     return this.service.triggerFinalSettlement(dto.employeeId, dto.terminationId);
   }
+
+  // ============================================================================
+  // RECRUITMENT REPORTS
+  // ============================================================================
+  // Generates comprehensive recruitment analytics and reports including:
+  // - Time-to-Hire metrics
+  // - Source Effectiveness (Referral vs Direct)
+  // - Pipeline Conversion Rates
+  // - Interview Analytics
+  // - Position Performance
+  // ============================================================================
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('reports')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getRecruitmentReports() {
+    return this.service.getRecruitmentReports();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('reports/time-to-hire')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getTimeToHireReport() {
+    return this.service.getTimeToHireReport();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('reports/source-effectiveness')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getSourceEffectivenessReport() {
+    return this.service.getSourceEffectivenessReport();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('reports/pipeline-conversion')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getPipelineConversionReport() {
+    return this.service.getPipelineConversionReport();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('reports/interview-analytics')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getInterviewAnalyticsReport() {
+    return this.service.getInterviewAnalyticsReport();
+  }
 }

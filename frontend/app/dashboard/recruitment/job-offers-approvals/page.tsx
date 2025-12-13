@@ -51,6 +51,20 @@ export default function JobOffersApprovalsPage() {
   const [creatingOffer, setCreatingOffer] = useState(false);
 
   // =============================================================
+  // SORTING AND FILTERING STATE
+  // =============================================================
+  // HR Manager can sort/filter applications by:
+  // - Score (interview feedback score - higher first)
+  // - Referral status (referrals get priority - appear first)
+  // - Job/Position (filter by specific job requisition)
+  // =============================================================
+  const [sortBy, setSortBy] = useState<"score" | "referral" | "date">("referral");
+  const [filterByJob, setFilterByJob] = useState<string>("all");
+  const [availableJobs, setAvailableJobs] = useState<{ id: string; title: string }[]>([]);
+  const [applicationScores, setApplicationScores] = useState<Record<string, number>>({});
+  const [applicationReferrals, setApplicationReferrals] = useState<Record<string, boolean>>({});
+
+  // =============================================================
   // OFFER CREATION FORM STATE
   // =============================================================
   // When HR Manager approves an application, they must fill in offer details.
@@ -123,6 +137,61 @@ export default function JobOffersApprovalsPage() {
         
         return false;
       });
+
+      // =============================================================
+      // EXTRACT JOB TITLES FOR FILTERING
+      // =============================================================
+      const jobsMap = new Map<string, string>();
+      offerApps.forEach((app) => {
+        const reqId = app.requisitionId || (app.requisition as any)?._id;
+        const jobTitle = app.requisition?.template?.title || 
+                        (typeof app.requisition === 'object' && (app.requisition as any)?.template?.title) ||
+                        "Unknown Position";
+        if (reqId) {
+          jobsMap.set(reqId, jobTitle);
+        }
+      });
+      setAvailableJobs(Array.from(jobsMap.entries()).map(([id, title]) => ({ id, title })));
+
+      // =============================================================
+      // LOAD SCORES AND REFERRAL STATUS FOR SORTING
+      // =============================================================
+      const scores: Record<string, number> = {};
+      const referrals: Record<string, boolean> = {};
+      
+      for (const app of offerApps) {
+        // Check if candidate is a referral
+        const candidateId = typeof app.candidateId === 'object' 
+          ? (app.candidateId as any)?._id 
+          : app.candidateId;
+        referrals[app._id] = (app as any).isReferral || 
+                            (app.candidate as any)?.isReferral || 
+                            false;
+        
+        // Calculate average interview score
+        const interviews = (app as any).interviews || [];
+        let totalScore = 0;
+        let scoreCount = 0;
+        
+        for (const interview of interviews) {
+          if (interview.status === 'completed' && interview._id) {
+            try {
+              const avgScore = await recruitmentApi.getInterviewAverageScore(interview._id);
+              if (avgScore > 0) {
+                totalScore += avgScore;
+                scoreCount++;
+              }
+            } catch (e) {
+              // Skip if can't get score
+            }
+          }
+        }
+        
+        scores[app._id] = scoreCount > 0 ? totalScore / scoreCount : 0;
+      }
+      
+      setApplicationScores(scores);
+      setApplicationReferrals(referrals);
       setApplications(offerApps);
 
       // Load offers for these applications
@@ -146,6 +215,58 @@ export default function JobOffersApprovalsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // =============================================================
+  // GET SORTED AND FILTERED APPLICATIONS
+  // =============================================================
+  // Sorting priority:
+  // 1. Referrals first (when sortBy = "referral")
+  // 2. Higher scores first (when sortBy = "score")
+  // 3. Most recent first (when sortBy = "date")
+  // 
+  // Tie-breaking: Referrals always get preference when scores are equal
+  // =============================================================
+  const getSortedFilteredApplications = () => {
+    let filtered = [...applications];
+    
+    // Filter by job if selected
+    if (filterByJob !== "all") {
+      filtered = filtered.filter((app) => {
+        const reqId = app.requisitionId || (app.requisition as any)?._id;
+        return reqId === filterByJob;
+      });
+    }
+    
+    // Sort applications
+    filtered.sort((a, b) => {
+      const aScore = applicationScores[a._id] || 0;
+      const bScore = applicationScores[b._id] || 0;
+      const aIsReferral = applicationReferrals[a._id] || false;
+      const bIsReferral = applicationReferrals[b._id] || false;
+      
+      if (sortBy === "referral") {
+        // Referrals first, then by score
+        if (aIsReferral && !bIsReferral) return -1;
+        if (!aIsReferral && bIsReferral) return 1;
+        // If both are referrals or both are not, sort by score
+        return bScore - aScore;
+      } else if (sortBy === "score") {
+        // Higher scores first
+        // Tie-breaker: referrals get preference
+        if (bScore !== aScore) return bScore - aScore;
+        if (aIsReferral && !bIsReferral) return -1;
+        if (!aIsReferral && bIsReferral) return 1;
+        return 0;
+      } else {
+        // Sort by date (most recent first)
+        const aDate = new Date((a as any).createdAt || 0).getTime();
+        const bDate = new Date((b as any).createdAt || 0).getTime();
+        return bDate - aDate;
+      }
+    });
+    
+    return filtered;
   };
 
   const loadCandidateAssessments = async (application: Application) => {
@@ -450,6 +571,80 @@ export default function JobOffersApprovalsPage() {
           </p>
         </div>
 
+        {/* =============================================================
+            SORT AND FILTER CONTROLS
+            =============================================================
+            - Sort by: Referral Priority, Score, Date
+            - Filter by: Job Position
+            - Referrals get higher priority (internal candidate preference)
+            ============================================================= */}
+        {!loading && applications.length > 0 && (
+          <div className="mb-6 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Sort By */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Sort by:</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "score" | "referral" | "date")}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="referral">⭐ Referral Priority</option>
+                  <option value="score">📊 Interview Score</option>
+                  <option value="date">📅 Application Date</option>
+                </select>
+              </div>
+
+              {/* Filter By Job */}
+              {availableJobs.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Filter by Job:</label>
+                  <select
+                    value={filterByJob}
+                    onChange={(e) => setFilterByJob(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="all">All Positions</option>
+                    {availableJobs.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Info Badge */}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  {getSortedFilteredApplications().length} application(s)
+                </span>
+                {sortBy === "referral" && (
+                  <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                    ⭐ Referrals shown first
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-amber-400 rounded-full"></span>
+                Referral (Higher Priority)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                High Score (≥70)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
+                Has Interview Feedback
+              </span>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center py-12">
             <p className="text-gray-500">Loading offers...</p>
@@ -465,24 +660,54 @@ export default function JobOffersApprovalsPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {applications.map((application) => {
+            {getSortedFilteredApplications().map((application) => {
               const offer = offers[application._id];
               const candidateName = getCandidateName(application);
               const jobTitle = getJobTitle(application);
               const needsReview = hasInterviewFeedback(application) && application.status === ApplicationStatus.IN_PROCESS;
+              const isReferral = applicationReferrals[application._id] || false;
+              const score = applicationScores[application._id] || 0;
               
               return (
-                <Card key={application._id} className="hover:shadow-lg transition-shadow">
+                <Card 
+                  key={application._id} 
+                  className={`hover:shadow-lg transition-shadow ${
+                    isReferral ? 'ring-2 ring-amber-300 bg-amber-50/30' : ''
+                  }`}
+                >
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg">{candidateName}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-lg">{candidateName}</CardTitle>
+                          {/* Referral Badge */}
+                          {isReferral && (
+                            <span className="px-2 py-0.5 text-xs font-semibold text-amber-700 bg-amber-100 rounded-full border border-amber-300">
+                              ⭐ Referral
+                            </span>
+                          )}
+                        </div>
                         <CardDescription className="mt-1">{jobTitle}</CardDescription>
-                        {needsReview && (
-                          <span className="inline-block mt-2 px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
-                            Interview Feedback Available
-                          </span>
-                        )}
+                        
+                        {/* Score and Status Badges */}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {needsReview && (
+                            <span className="inline-block px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
+                              Interview Feedback Available
+                            </span>
+                          )}
+                          {score > 0 && (
+                            <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
+                              score >= 70 
+                                ? 'text-green-700 bg-green-100' 
+                                : score >= 50 
+                                  ? 'text-yellow-700 bg-yellow-100'
+                                  : 'text-gray-700 bg-gray-100'
+                            }`}>
+                              📊 Score: {score.toFixed(0)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <StatusBadge status={application.status} />
                     </div>
@@ -723,25 +948,78 @@ export default function JobOffersApprovalsPage() {
                               </div>
                             </div>
                             {feedbackList.length > 0 ? (
-                              <div className="space-y-2 mt-3">
+                              <div className="space-y-3 mt-3">
                                 <p className="text-sm font-medium text-gray-700">Panel Feedback:</p>
-                                {feedbackList.map((fb: any, idx: number) => (
-                                  <div key={idx} className="bg-gray-50 p-3 rounded-lg">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-sm font-medium text-gray-900">
-                                        Interviewer {idx + 1}
-                                      </span>
-                                      <span className="text-sm font-semibold text-gray-700">
-                                        Score: {fb.score || 0}/100
-                                      </span>
+                                {feedbackList.map((fb: any, idx: number) => {
+                                  // =============================================================
+                                  // PARSE STRUCTURED ASSESSMENT FROM COMMENTS
+                                  // =============================================================
+                                  // Comments field may contain JSON with detailed skill scores
+                                  // Format: { skillScores: {...}, generalComments: "...", assessmentCriteria: [...] }
+                                  // =============================================================
+                                  let parsedAssessment: any = null;
+                                  try {
+                                    if (fb.comments && fb.comments.startsWith('{')) {
+                                      parsedAssessment = JSON.parse(fb.comments);
+                                    }
+                                  } catch (e) {
+                                    // Not JSON, will display as plain text
+                                  }
+
+                                  return (
+                                    <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <span className="text-sm font-semibold text-gray-900">
+                                          Interviewer {idx + 1}
+                                        </span>
+                                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                                          (fb.score || 0) >= 70 ? 'bg-green-100 text-green-700' :
+                                          (fb.score || 0) >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                          'bg-red-100 text-red-700'
+                                        }`}>
+                                          Overall: {fb.score || 0}/100
+                                        </span>
+                                      </div>
+                                      
+                                      {/* Display structured skill scores if available */}
+                                      {parsedAssessment?.skillScores && (
+                                        <div className="mb-3">
+                                          <p className="text-xs font-medium text-gray-600 mb-2">Skill Breakdown:</p>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            {Object.entries(parsedAssessment.skillScores).map(([skill, skillScore]: [string, any]) => (
+                                              <div key={skill} className="flex items-center justify-between bg-white p-2 rounded border">
+                                                <span className="text-xs text-gray-700 truncate">{skill}</span>
+                                                <span className={`text-xs font-bold ${
+                                                  skillScore >= 70 ? 'text-green-600' :
+                                                  skillScore >= 50 ? 'text-yellow-600' :
+                                                  'text-red-600'
+                                                }`}>
+                                                  {skillScore}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Display general comments */}
+                                      {parsedAssessment?.generalComments && (
+                                        <div className="bg-white p-3 rounded border border-gray-100">
+                                          <p className="text-xs font-medium text-gray-600 mb-1">Comments:</p>
+                                          <p className="text-sm text-gray-700">{parsedAssessment.generalComments}</p>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Fallback: Display plain text comments if not structured */}
+                                      {!parsedAssessment && fb.comments && (
+                                        <div className="bg-white p-3 rounded border border-gray-100">
+                                          <p className="text-xs font-medium text-gray-600 mb-1">Comments:</p>
+                                          <p className="text-sm text-gray-700">{fb.comments}</p>
+                                        </div>
+                                      )}
                                     </div>
-                                    {fb.comments && (
-                                      <p className="text-sm text-gray-700 mt-2">
-                                        <span className="font-medium">Comments:</span> {fb.comments}
-                                      </p>
-                                    )}
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             ) : (
                               <p className="text-sm text-gray-500 mt-2">No detailed feedback available</p>

@@ -68,6 +68,18 @@ export default function HRInterviewsPage() {
     comments: "",
   });
 
+  // =============================================================
+  // STRUCTURED ASSESSMENT STATE
+  // =============================================================
+  // Assessment criteria are based on JobTemplate.skills for the position
+  // Each skill gets scored 0-100, overall score is the average
+  // Detailed scores stored as JSON in comments field
+  // =============================================================
+  const [assessmentCriteria, setAssessmentCriteria] = useState<string[]>([]);
+  const [skillScores, setSkillScores] = useState<Record<string, number>>({});
+  const [generalComments, setGeneralComments] = useState("");
+  const [loadingCriteria, setLoadingCriteria] = useState(false);
+
   useEffect(() => {
     loadData();
     loadEmployees();
@@ -144,13 +156,13 @@ export default function HRInterviewsPage() {
 
   const handleOpenSchedule = (application: any) => {
     setSelectedApplication(application);
-    const currentUserId = user?.id || user?.userId || (user as any)?._id;
+    // Don't pre-add current user to panel - they will be added automatically when scheduling
     setScheduleForm({
       applicationId: application._id,
       stage: ApplicationStage.SCREENING,
       scheduledDate: "",
       method: InterviewMethod.VIDEO,
-      panel: currentUserId ? [currentUserId] : [],
+      panel: [], // Empty - current user added automatically in handleScheduleInterview
       videoLink: "",
     });
     // CHANGED - Reset date and time fields
@@ -205,16 +217,26 @@ export default function HRInterviewsPage() {
         method: scheduleForm.method,
       };
       
-      // CHANGED - Add current user to panel so they can submit feedback
+      // Add current user to panel so they can submit feedback
+      // Then add any other selected panel members (avoiding duplicates)
       const currentUserId = user?.id || user?.userId || (user as any)?._id;
+      const panelMembers: string[] = [];
+      
+      // Always add current user first
       if (currentUserId) {
-        interviewData.panel = [currentUserId];
+        panelMembers.push(currentUserId);
       }
       
-      // Add any additional panel members
+      // Add any additional panel members (excluding current user to avoid duplicates)
       if (scheduleForm.panel && scheduleForm.panel.length > 0) {
-        interviewData.panel = [...(interviewData.panel || []), ...scheduleForm.panel];
+        for (const memberId of scheduleForm.panel) {
+          if (memberId !== currentUserId && !panelMembers.includes(memberId)) {
+            panelMembers.push(memberId);
+          }
+        }
       }
+      
+      interviewData.panel = panelMembers;
       if (scheduleForm.videoLink) {
         interviewData.videoLink = scheduleForm.videoLink;
       }
@@ -263,6 +285,46 @@ export default function HRInterviewsPage() {
     }
   };
 
+  // =============================================================
+  // STRUCTURED ASSESSMENT: Load Criteria from Job Template
+  // =============================================================
+  // Fetches the skills from the job template associated with the application
+  // These skills become the assessment criteria for structured feedback
+  // =============================================================
+  const loadAssessmentCriteria = async (application: any) => {
+    setLoadingCriteria(true);
+    try {
+      // Get job requisition ID from application
+      const requisitionId = application.requisitionId || application.requisition?._id;
+      if (!requisitionId) {
+        // No requisition, use default criteria
+        setAssessmentCriteria(["Technical Skills", "Communication", "Problem Solving", "Cultural Fit"]);
+        return;
+      }
+
+      // Fetch job requisition to get template
+      const jobRequisitions = await recruitmentApi.getJobRequisitions();
+      const job = jobRequisitions.find((j: any) => j._id === requisitionId);
+      
+      if (job?.template?.skills && job.template.skills.length > 0) {
+        // Use skills from job template as assessment criteria
+        setAssessmentCriteria(job.template.skills);
+      } else if (job?.template?.qualifications && job.template.qualifications.length > 0) {
+        // Fallback to qualifications if no skills defined
+        setAssessmentCriteria(job.template.qualifications.slice(0, 5));
+      } else {
+        // Default criteria if no template skills
+        setAssessmentCriteria(["Technical Skills", "Communication", "Problem Solving", "Cultural Fit"]);
+      }
+    } catch (error) {
+      console.error("Failed to load assessment criteria:", error);
+      // Use default criteria on error
+      setAssessmentCriteria(["Technical Skills", "Communication", "Problem Solving", "Cultural Fit"]);
+    } finally {
+      setLoadingCriteria(false);
+    }
+  };
+
   const handleOpenFeedback = async (application: any, interview?: any) => {
     setSelectedApplication(application);
     // If interview is provided, use it; otherwise try to find the first scheduled interview
@@ -279,31 +341,86 @@ export default function HRInterviewsPage() {
         setSelectedInterview(null);
       }
     }
+    
+    // Reset form state
     setFeedbackForm({ score: 0, comments: "" });
+    setSkillScores({});
+    setGeneralComments("");
+    
+    // Load assessment criteria from job template
+    await loadAssessmentCriteria(application);
+    
     setIsFeedbackModalOpen(true);
   };
 
+  // =============================================================
+  // STRUCTURED ASSESSMENT: Calculate & Submit Feedback
+  // =============================================================
+  // Overall score = average of all skill scores
+  // Comments field stores JSON with detailed skill breakdown
+  // =============================================================
   const handleSubmitFeedback = async () => {
     if (!selectedApplication || !selectedInterview?._id) {
       showToast("Please schedule an interview first to submit feedback", "error");
       return;
     }
     
-    // Validate score (backend expects 0-100)
-    if (feedbackForm.score < 0 || feedbackForm.score > 100) {
-      showToast("Score must be between 0 and 100", "error");
+    // Validate that all criteria have been scored
+    const scoredCriteria = Object.keys(skillScores);
+    if (scoredCriteria.length < assessmentCriteria.length) {
+      showToast("Please score all assessment criteria", "error");
       return;
     }
 
+    // Validate all scores are between 0-100
+    for (const [skill, score] of Object.entries(skillScores)) {
+      if (score < 0 || score > 100) {
+        showToast(`Score for "${skill}" must be between 0 and 100`, "error");
+        return;
+      }
+    }
+
+    // Calculate overall score as average of all skill scores
+    const scores = Object.values(skillScores);
+    const overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+
+    // Format comments as JSON with detailed skill breakdown
+    const structuredComments = JSON.stringify({
+      skillScores: skillScores,
+      generalComments: generalComments,
+      assessmentCriteria: assessmentCriteria,
+      assessmentDate: new Date().toISOString(),
+    });
+
     try {
-      await recruitmentApi.submitInterviewFeedback(selectedInterview._id, feedbackForm);
+      await recruitmentApi.submitInterviewFeedback(selectedInterview._id, {
+        score: overallScore,
+        comments: structuredComments,
+      });
       showToast("Feedback submitted successfully", "success");
       setIsFeedbackModalOpen(false);
       setSelectedInterview(null);
+      setSkillScores({});
+      setGeneralComments("");
       loadData();
     } catch (error: any) {
       showToast(error.message || "Failed to submit feedback", "error");
     }
+  };
+
+  // Helper to update a single skill score
+  const updateSkillScore = (skill: string, score: number) => {
+    setSkillScores(prev => ({
+      ...prev,
+      [skill]: Math.min(100, Math.max(0, score))
+    }));
+  };
+
+  // Calculate current overall score preview
+  const calculatePreviewScore = (): number => {
+    const scores = Object.values(skillScores);
+    if (scores.length === 0) return 0;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
   };
 
   return (
@@ -577,80 +694,99 @@ export default function HRInterviewsPage() {
               {/* Panel Members Selection - HR Employees Only */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Panel Members (HR Staff Only) *
+                  Panel Members (HR Employees Only) *
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
-                  Select HR employees to conduct the interview. You are automatically included.
+                  Select HR Employees to conduct the interview. You are automatically included.
                 </p>
                 {loadingEmployees ? (
                   <p className="text-sm text-gray-500">Loading employees...</p>
                 ) : (
                   <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                    {employees.length === 0 ? (
-                      <p className="text-sm text-gray-500">No employees available</p>
-                    ) : (
-                      employees.map((employee) => {
+                    {/* Show current user as already selected (not clickable) */}
+                    <div className="flex items-center space-x-2 p-2 bg-blue-50 rounded border border-blue-200">
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        disabled={true}
+                        className="rounded border-gray-300 text-blue-600"
+                      />
+                      <span className="text-sm text-blue-700 flex-1 font-medium">
+                        {user?.fullName || 'You'} 
+                        <span className="ml-2 text-xs text-blue-600">(You - Auto-included)</span>
+                      </span>
+                    </div>
+                    
+                    {/* Filter out current user from the selectable list */}
+                    {employees
+                      .filter((employee) => {
                         const employeeId = employee._id || employee.id || employee.userId;
-                        const employeeName = employee.fullName || 
-                          `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 
-                          employee.email || 
-                          'Unknown';
-                        const isSelected = scheduleForm.panel?.includes(employeeId);
-                        const isCurrentUser = employeeId === (user?.id || user?.userId || (user as any)?._id);
-                        
-                        return (
-                          <label
-                            key={employeeId}
-                            className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected || isCurrentUser}
-                              disabled={isCurrentUser}
-                              onChange={(e) => {
-                                const currentPanel = scheduleForm.panel || [];
-                                if (e.target.checked) {
-                                  if (!currentPanel.includes(employeeId)) {
-                                    setScheduleForm({
-                                      ...scheduleForm,
-                                      panel: [...currentPanel, employeeId],
-                                    });
-                                  }
-                                } else {
-                                  if (!isCurrentUser) {
+                        const currentUserId = user?.id || user?.userId || (user as any)?._id;
+                        return employeeId !== currentUserId; // Exclude current user
+                      })
+                      .length === 0 ? (
+                      <p className="text-sm text-gray-500 mt-2">No other HR employees available</p>
+                    ) : (
+                      employees
+                        .filter((employee) => {
+                          const employeeId = employee._id || employee.id || employee.userId;
+                          const currentUserId = user?.id || user?.userId || (user as any)?._id;
+                          return employeeId !== currentUserId; // Exclude current user
+                        })
+                        .map((employee) => {
+                          const employeeId = employee._id || employee.id || employee.userId;
+                          const employeeName = employee.fullName || 
+                            `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 
+                            employee.email || 
+                            'Unknown';
+                          const isSelected = scheduleForm.panel?.includes(employeeId);
+                          
+                          return (
+                            <label
+                              key={employeeId}
+                              className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const currentPanel = scheduleForm.panel || [];
+                                  if (e.target.checked) {
+                                    if (!currentPanel.includes(employeeId)) {
+                                      setScheduleForm({
+                                        ...scheduleForm,
+                                        panel: [...currentPanel, employeeId],
+                                      });
+                                    }
+                                  } else {
                                     setScheduleForm({
                                       ...scheduleForm,
                                       panel: currentPanel.filter((id) => id !== employeeId),
                                     });
                                   }
-                                }
-                              }}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-sm text-gray-700 flex-1">
-                              {employeeName}
-                              {isCurrentUser && (
-                                <span className="ml-2 text-xs text-blue-600">(You)</span>
-                              )}
-                            </span>
-                            {employee.department && (
-                              <span className="text-xs text-gray-500">
-                                {typeof employee.department === 'object' 
-                                  ? employee.department.name 
-                                  : employee.department}
+                                }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-700 flex-1">
+                                {employeeName}
                               </span>
-                            )}
-                          </label>
-                        );
-                      })
+                              {employee.department && (
+                                <span className="text-xs text-gray-500">
+                                  {typeof employee.department === 'object' 
+                                    ? employee.department.name 
+                                    : employee.department}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })
                     )}
                   </div>
                 )}
-                {scheduleForm.panel && scheduleForm.panel.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    {scheduleForm.panel.length} panel member(s) selected
-                  </p>
-                )}
+                {/* Show total panel count: current user (1) + selected others */}
+                <p className="text-xs text-gray-500 mt-2">
+                  {1 + (scheduleForm.panel?.length || 0)} panel member(s) total (including you)
+                </p>
               </div>
             </div>
 
@@ -667,29 +803,35 @@ export default function HRInterviewsPage() {
           </form>
         </Modal>
 
-        {/* Feedback Modal */}
+        {/* =============================================================
+           STRUCTURED ASSESSMENT FEEDBACK MODAL
+           =============================================================
+           Assessment criteria are loaded from JobTemplate.skills
+           Each skill is scored 0-100, overall score is the average
+           ============================================================= */}
         <Modal
           isOpen={isFeedbackModalOpen}
           onClose={() => setIsFeedbackModalOpen(false)}
           title="Submit Interview Feedback"
+          size="lg"
         >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Score (0-100) *
-              </label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={feedbackForm.score}
-                onChange={(e) =>
-                  setFeedbackForm({ ...feedbackForm, score: parseInt(e.target.value) || 0 })
-                }
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">Backend expects score between 0-100</p>
-            </div>
+          <div className="space-y-5">
+            {/* Interview Info Header */}
+            {selectedApplication && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Candidate:</strong>{" "}
+                  {selectedApplication.candidate?.fullName || 
+                   selectedApplication.candidateId?.fullName ||
+                   `${selectedApplication.candidateId?.firstName || ''} ${selectedApplication.candidateId?.lastName || ''}`.trim() ||
+                   "Unknown"}
+                </p>
+                <p className="text-sm text-blue-700">
+                  <strong>Position:</strong>{" "}
+                  {selectedApplication.requisition?.template?.title || "Position"}
+                </p>
+              </div>
+            )}
 
             {!selectedInterview && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -700,29 +842,155 @@ export default function HRInterviewsPage() {
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Comments
-              </label>
-              <Textarea
-                value={feedbackForm.comments || ""}
-                onChange={(e) =>
-                  setFeedbackForm({ ...feedbackForm, comments: e.target.value })
-                }
-                rows={4}
-                placeholder="Enter your feedback..."
-              />
-            </div>
+            {/* Structured Assessment Criteria */}
+            {selectedInterview && (
+              <>
+                <div className="border-b pb-4">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    📊 Assessment Criteria
+                    <span className="text-xs font-normal text-gray-500">
+                      (Score each criterion 0-100)
+                    </span>
+                  </h3>
+                  
+                  {loadingCriteria ? (
+                    <p className="text-sm text-gray-500">Loading assessment criteria...</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {assessmentCriteria.map((criterion, index) => (
+                        <div key={index} className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-medium text-gray-700">
+                              {criterion}
+                            </label>
+                            <span className={`text-sm font-bold ${
+                              (skillScores[criterion] || 0) >= 70 ? 'text-green-600' :
+                              (skillScores[criterion] || 0) >= 50 ? 'text-yellow-600' :
+                              (skillScores[criterion] || 0) > 0 ? 'text-red-600' :
+                              'text-gray-400'
+                            }`}>
+                              {skillScores[criterion] || 0}/100
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={skillScores[criterion] || 0}
+                              onChange={(e) => updateSkillScore(criterion, parseInt(e.target.value))}
+                              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={skillScores[criterion] || 0}
+                              onChange={(e) => updateSkillScore(criterion, parseInt(e.target.value) || 0)}
+                              className="w-20 text-center"
+                            />
+                          </div>
+                          {/* Score indicator bar */}
+                          <div className="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                (skillScores[criterion] || 0) >= 70 ? 'bg-green-500' :
+                                (skillScores[criterion] || 0) >= 50 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${skillScores[criterion] || 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-            <div className="flex justify-end gap-2 mt-6">
+                {/* Overall Score Preview */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Overall Score</h4>
+                      <p className="text-xs text-gray-500">Average of all criteria scores</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-3xl font-bold ${
+                        calculatePreviewScore() >= 70 ? 'text-green-600' :
+                        calculatePreviewScore() >= 50 ? 'text-yellow-600' :
+                        calculatePreviewScore() > 0 ? 'text-red-600' :
+                        'text-gray-400'
+                      }`}>
+                        {calculatePreviewScore()}
+                      </span>
+                      <span className="text-lg text-gray-500">/100</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-500 ${
+                        calculatePreviewScore() >= 70 ? 'bg-green-500' :
+                        calculatePreviewScore() >= 50 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}
+                      style={{ width: `${calculatePreviewScore()}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* General Comments */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    💬 General Comments & Observations
+                  </label>
+                  <Textarea
+                    value={generalComments}
+                    onChange={(e) => setGeneralComments(e.target.value)}
+                    rows={4}
+                    placeholder="Enter overall observations, strengths, areas for improvement, hiring recommendation..."
+                  />
+                </div>
+
+                {/* Scoring Guide */}
+                <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
+                  <p className="font-semibold mb-1">Scoring Guide:</p>
+                  <div className="flex flex-wrap gap-4">
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                      70-100: Excellent
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
+                      50-69: Satisfactory
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                      0-49: Needs Improvement
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-2 border-t">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsFeedbackModalOpen(false)}
+                onClick={() => {
+                  setIsFeedbackModalOpen(false);
+                  setSkillScores({});
+                  setGeneralComments("");
+                }}
               >
                 Cancel
               </Button>
-              <Button onClick={handleSubmitFeedback}>Submit</Button>
+              <Button 
+                onClick={handleSubmitFeedback}
+                disabled={!selectedInterview || Object.keys(skillScores).length < assessmentCriteria.length}
+              >
+                Submit Assessment
+              </Button>
             </div>
           </div>
         </Modal>
@@ -825,29 +1093,79 @@ export default function HRInterviewsPage() {
                                       : panelMember.department}
                                   </p>
                                 )}
-                                {memberFeedback && (
-                                  <div className="mt-2 pt-2 border-t border-gray-200">
-                                    <div className="flex items-center gap-4 text-sm">
-                                      <div>
-                                        <span className="text-gray-600">Score:</span>
-                                        <span className="ml-2 font-semibold text-gray-900">
-                                          {memberFeedback.score}/100
-                                        </span>
+                                {memberFeedback && (() => {
+                                  // =============================================================
+                                  // PARSE STRUCTURED ASSESSMENT FROM COMMENTS
+                                  // =============================================================
+                                  // Comments may contain JSON with detailed skill scores
+                                  // =============================================================
+                                  let parsedAssessment: any = null;
+                                  try {
+                                    if (memberFeedback.comments && memberFeedback.comments.startsWith('{')) {
+                                      parsedAssessment = JSON.parse(memberFeedback.comments);
+                                    }
+                                  } catch (e) {
+                                    // Not JSON, display as plain text
+                                  }
+
+                                  return (
+                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                      <div className="flex items-center gap-4 text-sm mb-2">
+                                        <div>
+                                          <span className="text-gray-600">Overall Score:</span>
+                                          <span className={`ml-2 font-bold ${
+                                            memberFeedback.score >= 70 ? 'text-green-600' :
+                                            memberFeedback.score >= 50 ? 'text-yellow-600' :
+                                            'text-red-600'
+                                          }`}>
+                                            {memberFeedback.score}/100
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-600">Submitted:</span>
+                                          <span className="ml-2 text-gray-700">
+                                            {new Date(memberFeedback.createdAt || memberFeedback.submittedAt).toLocaleDateString()}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div>
-                                        <span className="text-gray-600">Submitted:</span>
-                                        <span className="ml-2 text-gray-700">
-                                          {new Date(memberFeedback.createdAt || memberFeedback.submittedAt).toLocaleDateString()}
-                                        </span>
-                                      </div>
+                                      
+                                      {/* Display structured skill breakdown if available */}
+                                      {parsedAssessment?.skillScores && (
+                                        <div className="bg-gray-50 rounded p-2 mb-2">
+                                          <p className="text-xs font-medium text-gray-600 mb-1">Skill Breakdown:</p>
+                                          <div className="flex flex-wrap gap-2">
+                                            {Object.entries(parsedAssessment.skillScores).map(([skill, score]: [string, any]) => (
+                                              <span 
+                                                key={skill}
+                                                className={`text-xs px-2 py-1 rounded-full ${
+                                                  score >= 70 ? 'bg-green-100 text-green-700' :
+                                                  score >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                                  'bg-red-100 text-red-700'
+                                                }`}
+                                              >
+                                                {skill}: {score}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Display general comments */}
+                                      {parsedAssessment?.generalComments && (
+                                        <p className="text-sm text-gray-700">
+                                          <span className="font-medium">Comments:</span> {parsedAssessment.generalComments}
+                                        </p>
+                                      )}
+                                      
+                                      {/* Fallback: display plain text comments */}
+                                      {!parsedAssessment && memberFeedback.comments && (
+                                        <p className="text-sm text-gray-700">
+                                          <span className="font-medium">Comments:</span> {memberFeedback.comments}
+                                        </p>
+                                      )}
                                     </div>
-                                    {memberFeedback.comments && (
-                                      <p className="text-sm text-gray-700 mt-2">
-                                        <span className="font-medium">Comments:</span> {memberFeedback.comments}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
