@@ -2610,12 +2610,30 @@ Due: ${context.dueDate}`
         });
 
         // New Hire Tasks (ONB-007: Document upload)
+        // Check if contract was already uploaded during recruitment (ONB-002)
+        // If so, mark this task as completed
+        let contractTaskStatus = OnboardingTaskStatus.PENDING;
+        let contractTaskNotes = 'Required: Signed contract document';
+        
+        if (finalContractId) {
+          try {
+            const existingContract = await this.contractModel.findById(finalContractId).lean();
+            if (existingContract && existingContract.documentId) {
+              // Contract document was already uploaded during recruitment
+              contractTaskStatus = OnboardingTaskStatus.COMPLETED;
+              contractTaskNotes = 'Contract already uploaded during recruitment (ONB-002)';
+            }
+          } catch (e) {
+            // If check fails, leave as pending
+          }
+        }
+        
         tasks.push({
           name: 'Upload Signed Contract',
           department: 'HR',
-          status: OnboardingTaskStatus.PENDING,
+          status: contractTaskStatus,
           deadline: defaultDeadline,
-          notes: 'Required: Signed contract document',
+          notes: contractTaskNotes,
         });
         tasks.push({
           name: 'Upload ID Document',
@@ -2646,19 +2664,57 @@ Due: ${context.dueDate}`
         const employee = await this.employeeProfileService.findOne(
           createOnboardingDto.employeeId.toString(),
         );
-        if (employee && (employee as any).personalEmail) {
-          await this.sendNotification(
-            'onboarding_welcome',
-            (employee as any).personalEmail,
+        if (employee) {
+          // Send email notification (existing behavior)
+          if ((employee as any).personalEmail) {
+            await this.sendNotification(
+              'onboarding_welcome',
+              (employee as any).personalEmail,
+              {
+                employeeName: (employee as any).firstName || 'New Hire',
+                taskCount: tasks.length,
+              },
+              { nonBlocking: true }, // Non-blocking - don't fail if email fails
+            );
+          }
+
+          // ONB-005: Send in-app welcome notification to new hire with employee number for login
+          const employeeName = `${(employee as any).firstName || ''} ${(employee as any).lastName || ''}`.trim() || 'New Hire';
+          const employeeNumber = (employee as any).employeeNumber || 'N/A';
+          let positionTitle = 'New Position';
+          
+          if ((employee as any).primaryPositionId) {
+            try {
+              const position = await this.organizationStructureService.getPositionById(
+                (employee as any).primaryPositionId.toString(),
+              );
+              if (position) {
+                positionTitle = position.title || 'New Position';
+              }
+            } catch (e) {
+              // Position lookup failed, use default
+            }
+          }
+
+          // ONB-004/ONB-005: Include employee number so new hire knows how to log in
+          await this.notificationsService.notifyNewHireWelcome(
+            createOnboardingDto.employeeId.toString(),
             {
-              employeeName: (employee as any).firstName || 'New Hire',
-              taskCount: tasks.length,
+              employeeName,
+              employeeNumber, // New hire needs this to log in as employee
+              positionTitle,
+              startDate: startDate || new Date(),
+              totalTasks: tasks.length,
+              onboardingId: saved._id.toString(),
             },
-            { nonBlocking: true }, // Non-blocking - don't fail if email fails
+          );
+          
+          console.log(
+            `[ONB-005] Sent ONBOARDING_WELCOME notification to new hire: ${createOnboardingDto.employeeId} (Employee Number: ${employeeNumber})`,
           );
         }
       } catch (e) {
-        // Non-critical
+        // Non-critical - don't fail onboarding creation if notification fails
         console.warn('Failed to send onboarding welcome notification:', e);
       }
 
@@ -2675,8 +2731,42 @@ Due: ${context.dueDate}`
 
   async getAllOnboardings(): Promise<any[]> {
     try {
-      return await this.onboardingModel.find().select('-__v').lean().exec();
+      // Use Mongoose populate to fetch employee data
+      const onboardings = await this.onboardingModel
+        .find()
+        .populate({
+          path: 'employeeId',
+          select: 'firstName lastName fullName employeeNumber workEmail personalEmail',
+          model: 'EmployeeProfile',
+        })
+        .select('-__v')
+        .lean()
+        .exec();
+
+      // Transform the data to have 'employee' field for frontend
+      return onboardings.map((onboarding: any) => {
+        const employeeData = onboarding.employeeId;
+        return {
+          ...onboarding,
+          // Keep original employeeId as string for reference
+          employeeId: employeeData?._id?.toString() || onboarding.employeeId?.toString(),
+          // Add employee object with all details
+          employee: employeeData ? {
+            _id: employeeData._id,
+            firstName: employeeData.firstName,
+            lastName: employeeData.lastName,
+            fullName: employeeData.fullName || `${employeeData.firstName || ''} ${employeeData.lastName || ''}`.trim(),
+            employeeNumber: employeeData.employeeNumber,
+            workEmail: employeeData.workEmail,
+            personalEmail: employeeData.personalEmail,
+          } : {
+            fullName: 'Unknown Employee',
+            employeeNumber: 'N/A',
+          },
+        };
+      });
     } catch (error) {
+      console.error('Error fetching onboardings:', error);
       throw new BadRequestException(
         'Failed to fetch onboarding records: ' + this.getErrorMessage(error),
       );
@@ -2897,6 +2987,11 @@ Due: ${context.dueDate}`
         );
       }
 
+      // Store the task before updating to check if it's an IT task
+      const currentTask = onboarding.tasks[taskIndex];
+      const isITTask = currentTask.department === 'IT';
+      const wasNotCompleted = currentTask.status !== OnboardingTaskStatus.COMPLETED;
+      
       Object.assign(onboarding.tasks[taskIndex], updateTaskDto);
       // Only set completedAt if status is actually COMPLETED
       if (updateTaskDto.status === OnboardingTaskStatus.COMPLETED) {
@@ -2908,6 +3003,97 @@ Due: ${context.dueDate}`
         // Clear completedAt if status changed from COMPLETED to something else
         onboarding.tasks[taskIndex].completedAt = undefined;
       }
+
+      // Store task department for checking
+      const isAdminTask = currentTask.department === 'Admin';
+
+      // ============= ONB-009: Check if all IT tasks are complete and notify employee =============
+      if (isITTask && wasNotCompleted && updateTaskDto.status === OnboardingTaskStatus.COMPLETED) {
+        // Check if ALL IT tasks are now complete
+        const itTasks = onboarding.tasks.filter((task: any) => task.department === 'IT');
+        const allITTasksComplete = itTasks.every(
+          (task: any) => task.status === OnboardingTaskStatus.COMPLETED
+        );
+
+        if (allITTasksComplete) {
+          // Send notification to the employee that all IT access has been provisioned
+          try {
+            const employee = await this.employeeProfileService.findOne(
+              onboarding.employeeId.toString(),
+            );
+            
+            if (employee) {
+              const completedITTasks = itTasks.map((t: any) => t.name).join(', ');
+              
+              await this.notificationsService.notifyAccessProvisioned(
+                [onboarding.employeeId.toString()],
+                {
+                  employeeId: onboarding.employeeId.toString(),
+                  employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Employee',
+                  accessType: 'System Access (IT)',
+                  systemName: completedITTasks || 'Email, Laptop, SSO',
+                  provisionedBy: 'IT Department (System Admin)',
+                },
+              );
+              
+              console.log(
+                `✅ [ONB-009] All IT tasks complete! Notification sent to employee ${employee.employeeNumber}`,
+              );
+            }
+          } catch (notifyError) {
+            console.warn(
+              `⚠️ Failed to send IT access provisioned notification:`,
+              this.getErrorMessage(notifyError),
+            );
+          }
+        }
+      }
+      // ============= END ONB-009 =============
+
+      // ============= ONB-012: Check if all Admin tasks are complete and notify employee =============
+      if (isAdminTask && wasNotCompleted && updateTaskDto.status === OnboardingTaskStatus.COMPLETED) {
+        // Check if ALL Admin tasks are now complete
+        const adminTasks = onboarding.tasks.filter((task: any) => task.department === 'Admin');
+        const allAdminTasksComplete = adminTasks.every(
+          (task: any) => task.status === OnboardingTaskStatus.COMPLETED
+        );
+
+        if (allAdminTasksComplete) {
+          // Send notification to the employee that all equipment/resources are ready
+          try {
+            const employee = await this.employeeProfileService.findOne(
+              onboarding.employeeId.toString(),
+            );
+            
+            if (employee) {
+              const completedAdminTaskNames = adminTasks.map((t: any) => t.name);
+              
+              await this.notificationsService.notifyEquipmentReserved(
+                [onboarding.employeeId.toString()],
+                {
+                  employeeId: onboarding.employeeId.toString(),
+                  employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Employee',
+                  equipmentList: completedAdminTaskNames.length > 0 ? completedAdminTaskNames : ['Desk', 'ID Badge', 'Access Card'],
+                  workspaceDetails: 'Your workspace has been prepared',
+                  reservedBy: 'HR Employee',
+                  readyDate: new Date(), // Resources are ready now
+                },
+              );
+              
+              console.log(
+                `✅ [ONB-012] All Admin tasks complete! Notification sent to employee ${employee.employeeNumber}`,
+              );
+            }
+          } catch (notifyError) {
+            console.warn(
+              `⚠️ Failed to send equipment reserved notification:`,
+              this.getErrorMessage(notifyError),
+            );
+          }
+        }
+      }
+      // ============= END ONB-012 =============
+
       const allCompleted =
         onboarding.tasks.length > 0 &&
         onboarding.tasks.every(
@@ -2919,17 +3105,18 @@ Due: ${context.dueDate}`
 
         // ============= INTEGRATION: Auto-update employee status =============
         // When onboarding is completed, automatically change employee status from PROBATION to ACTIVE
+        let employeeData: any = null;
         try {
-          const employee = await this.employeeProfileService.findOne(
+          employeeData = await this.employeeProfileService.findOne(
             onboarding.employeeId.toString(),
           );
-          if (employee && employee.status === EmployeeStatus.PROBATION) {
+          if (employeeData && employeeData.status === EmployeeStatus.PROBATION) {
             // Use onboarding.employeeId directly instead of employee._id to avoid TypeScript issues
             await this.employeeProfileService.update(onboarding.employeeId.toString(), {
               status: EmployeeStatus.ACTIVE,
             });
             console.log(
-              `✅ Employee ${employee.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+              `✅ Employee ${employeeData.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
             );
           }
         } catch (error) {
@@ -2940,6 +3127,55 @@ Due: ${context.dueDate}`
           );
         }
         // ============= END INTEGRATION =============
+
+        // ============= ONBOARDING COMPLETE NOTIFICATIONS =============
+        try {
+          const employeeName = employeeData 
+            ? `${employeeData.firstName || ''} ${employeeData.lastName || ''}`.trim() || 'New Employee'
+            : 'New Employee';
+          const positionTitle = employeeData?.position || employeeData?.jobTitle || 'Employee';
+
+          // 1. Notify the EMPLOYEE that their onboarding is complete
+          await this.notificationsService.notifyOnboardingCompleted(
+            [onboarding.employeeId.toString()],
+            {
+              employeeId: onboarding.employeeId.toString(),
+              employeeName: employeeName,
+              positionTitle: positionTitle,
+              completedDate: new Date(),
+              totalTasks: onboarding.tasks.length,
+            },
+          );
+          console.log(`✅ [ONBOARDING] Completion notification sent to employee ${employeeData?.employeeNumber || onboarding.employeeId}`);
+
+          // 2. Notify HR MANAGERS that the employee completed onboarding
+          const hrManagers = await this.employeeSystemRoleModel
+            .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+            .select('employeeProfileId')
+            .lean()
+            .exec();
+          const hrManagerIds = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+          if (hrManagerIds.length > 0) {
+            await this.notificationsService.notifyOnboardingCompleted(
+              hrManagerIds,
+              {
+                employeeId: onboarding.employeeId.toString(),
+                employeeName: employeeName,
+                positionTitle: positionTitle,
+                completedDate: new Date(),
+                totalTasks: onboarding.tasks.length,
+              },
+            );
+            console.log(`✅ [ONBOARDING] Completion notification sent to ${hrManagerIds.length} HR Manager(s)`);
+          }
+        } catch (notifyError) {
+          console.warn(
+            `⚠️ Failed to send onboarding completion notifications:`,
+            this.getErrorMessage(notifyError),
+          );
+        }
+        // ============= END ONBOARDING COMPLETE NOTIFICATIONS =============
       } else if (onboarding.completed) {
         // If a task is uncompleted, mark onboarding as incomplete
         onboarding.completed = false;
@@ -3227,9 +3463,72 @@ Due: ${context.dueDate}`
         onboarding.tasks[taskIndex].completedAt = new Date();
       }
 
+      // Get employee details for notifications
+      let employeeName = 'New Hire';
+      let positionTitle = 'New Position';
+      const employeeForNotification = await this.employeeProfileService.findOne(
+        onboarding.employeeId.toString(),
+      );
+      
+      if (employeeForNotification) {
+        employeeName = `${(employeeForNotification as any).firstName || ''} ${(employeeForNotification as any).lastName || ''}`.trim() || 'New Hire';
+        
+        if ((employeeForNotification as any).primaryPositionId) {
+          try {
+            const position = await this.organizationStructureService.getPositionById(
+              (employeeForNotification as any).primaryPositionId.toString(),
+            );
+            if (position) {
+              positionTitle = position.title || 'New Position';
+            }
+          } catch (e) {
+            // Position lookup failed, use default
+          }
+        }
+      }
+
+      // ONB-007: Send notification to HR about document upload
+      try {
+        const hrRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+
+        const hrUserIds = hrRoles.map((role: any) => role.employeeProfileId.toString());
+
+        if (hrUserIds.length > 0) {
+          // Extract filename from filePath or use document type as name
+          const documentName = savedDocument.filePath 
+            ? savedDocument.filePath.split('/').pop() || savedDocument.filePath.split('\\').pop() || 'Uploaded Document'
+            : documentType || 'Uploaded Document';
+          
+          await this.notificationsService.notifyHRDocumentUploaded(
+            hrUserIds,
+            {
+              employeeId: onboarding.employeeId.toString(),
+              employeeName,
+              documentType: documentType || 'DOCUMENT',
+              documentName,
+              taskName: task.name,
+              onboardingId: onboardingId,
+            },
+          );
+          
+          console.log(
+            `[ONB-007] Sent ONBOARDING_DOCUMENT_UPLOADED notification to ${hrUserIds.length} HR user(s)`,
+          );
+        }
+      } catch (notificationError) {
+        console.warn('Failed to send document upload notification to HR:', notificationError);
+      }
+
       // 14. Check if all tasks completed
       const allCompleted = onboarding.tasks.every(
-        (task) => task.status === OnboardingTaskStatus.COMPLETED,
+        (t) => t.status === OnboardingTaskStatus.COMPLETED,
       );
 
       if (allCompleted) {
@@ -3257,7 +3556,7 @@ Due: ${context.dueDate}`
             }
             // ============= END INTEGRATION =============
 
-            // Send completion notification
+            // Send email completion notification
             if ((employee as any).personalEmail) {
               await this.sendNotification(
                 'onboarding_completed',
@@ -3267,6 +3566,42 @@ Due: ${context.dueDate}`
                 },
                 { nonBlocking: true },
               );
+            }
+
+            // Send in-app completion notification to new hire and HR
+            try {
+              const recipientIds = [onboarding.employeeId.toString()];
+              
+              // Also notify HR
+              const hrRoles = await this.employeeSystemRoleModel
+                .find({
+                  roles: { $in: [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE] },
+                  isActive: true,
+                })
+                .select('employeeProfileId')
+                .lean()
+                .exec();
+              
+              hrRoles.forEach((role: any) => {
+                recipientIds.push(role.employeeProfileId.toString());
+              });
+
+              await this.notificationsService.notifyOnboardingCompleted(
+                recipientIds,
+                {
+                  employeeId: onboarding.employeeId.toString(),
+                  employeeName,
+                  positionTitle,
+                  completedDate: new Date(),
+                  totalTasks: onboarding.tasks.length,
+                },
+              );
+              
+              console.log(
+                `[ONBOARDING] Sent ONBOARDING_COMPLETED notification to ${recipientIds.length} recipient(s)`,
+              );
+            } catch (notificationError) {
+              console.warn('Failed to send onboarding completion in-app notification:', notificationError);
             }
           }
         } catch (e) {
@@ -3281,6 +3616,7 @@ Due: ${context.dueDate}`
         message: 'Document uploaded successfully',
         document: savedDocument.toObject(),
         onboarding: savedOnboarding.toObject(),
+        notificationsSent: true,
       };
     } catch (error) {
       console.error('Error uploading document:', error);
@@ -3482,16 +3818,17 @@ Due: ${context.dueDate}`
           .lean();
       }
 
-      // 4. Validate contract exists and has signed document
+      // 4. ONB-002: Validate contract exists and has signed document
+      // BR: HR Manager must access signed contract detail to create employee profile
       if (!contract) {
-        throw new NotFoundException(
-          'No contract found for this offer. Please create and upload signed contract first.',
+        throw new BadRequestException(
+          'Cannot create employee: No signed contract found. The candidate must upload their signed contract first before you can create their employee profile.',
         );
       }
 
       if (!contract.documentId) {
         throw new BadRequestException(
-          'Contract must have a signed document attached before creating employee profile',
+          'Cannot create employee: The contract does not have a signed document attached. Please ensure the candidate has uploaded their signed contract.',
         );
       }
 
@@ -3500,7 +3837,9 @@ Due: ${context.dueDate}`
         .findById(contract.documentId)
         .lean();
       if (!contractDocument) {
-        throw new NotFoundException('Signed contract document not found');
+        throw new NotFoundException(
+          'Cannot create employee: Signed contract document not found in the system. Please contact support.',
+        );
       }
 
       // 6. Get candidate data
@@ -3542,12 +3881,14 @@ Due: ${context.dueDate}`
       }
 
       // 8. Map data to CreateEmployeeDto
+      // IMPORTANT: Transfer password from candidate so they can login with the same credentials
       const createEmployeeDto: CreateEmployeeDto = {
         // Personal info from candidate
         firstName: candidate.firstName,
         middleName: candidate.middleName,
         lastName: candidate.lastName,
         nationalId: candidate.nationalId,
+        password: candidate.password, // Transfer hashed password from candidate - allows login with same credentials
         gender: candidate.gender,
         maritalStatus: candidate.maritalStatus,
         dateOfBirth: candidate.dateOfBirth,
@@ -3557,10 +3898,13 @@ Due: ${context.dueDate}`
         address: candidate.address,
         profilePictureUrl: candidate.profilePictureUrl,
 
-        // Work info from offer/contract
+        // ONB-004/ONB-005: Use HR-specified employee number (will be sent to candidate in notification)
+        employeeNumber: dto.employeeNumber,
+
+        // Work info from contract (ONB-002: use signed contract data)
         workEmail: workEmail,
-        dateOfHire: contract.acceptanceDate || new Date(),
-        contractStartDate: contract.acceptanceDate,
+        dateOfHire: dto.startDate ? new Date(dto.startDate) : (contract.acceptanceDate || new Date()),
+        contractStartDate: dto.startDate ? new Date(dto.startDate) : contract.acceptanceDate,
         contractEndDate: undefined, // Can be set manually by HR if needed
         contractType: dto.contractType,
         workType: dto.workType,
@@ -3674,10 +4018,10 @@ Due: ${context.dueDate}`
           contractSigningDate,
           startDate,
           workEmail, // Pass work email to include in onboarding tasks
-          contract._id, // Pass contractId (required by schema)
+          contract._id, // Pass contractId (required by ONB-002)
         );
 
-        // ONB-018: Automatically trigger payroll initiation
+        // ONB-018: Automatically trigger payroll initiation using contract data
         if (contract.grossSalary && contract.grossSalary > 0) {
           try {
             await this.triggerPayrollInitiation(
@@ -3690,7 +4034,7 @@ Due: ${context.dueDate}`
           }
         }
 
-        // ONB-019: Automatically process signing bonus
+        // ONB-019: Automatically process signing bonus using contract data
         if (contract.signingBonus && contract.signingBonus > 0) {
           try {
             await this.processSigningBonus(
@@ -3720,9 +4064,9 @@ Due: ${context.dueDate}`
         console.warn('Failed to create onboarding automatically:', e);
       }
 
-      // 11. Return success response with employee and contract details
+      // 11. Return success response with employee and contract details (ONB-002)
       return {
-        message: 'Employee profile created successfully from contract',
+        message: 'Employee profile created successfully from signed contract',
         employee: employee,
         onboarding: onboardingCreated,
         contractDetails: {
@@ -3746,6 +4090,75 @@ Due: ${context.dueDate}`
         'Failed to create employee from contract: ' +
           this.getErrorMessage(error),
       );
+    }
+  }
+
+  // ============= CONTRACT STATUS CHECK (ONB-002) =============
+
+  /**
+   * ONB-002: Get contract status for an offer
+   * HR Manager needs to see if candidate has uploaded signed contract before creating employee
+   */
+  async getContractStatusForOffer(offerId: string): Promise<{
+    hasContract: boolean;
+    hasSignedDocument: boolean;
+    contract: any | null;
+    message: string;
+  }> {
+    try {
+      if (!Types.ObjectId.isValid(offerId)) {
+        throw new BadRequestException('Invalid offer ID format');
+      }
+
+      const offer = await this.offerModel.findById(offerId).lean();
+      if (!offer) {
+        throw new NotFoundException('Offer not found');
+      }
+
+      // Find contract for this offer
+      const contract = await this.contractModel
+        .findOne({ offerId: new Types.ObjectId(offerId) })
+        .populate('documentId')
+        .lean();
+
+      if (!contract) {
+        return {
+          hasContract: false,
+          hasSignedDocument: false,
+          contract: null,
+          message: 'Candidate has not uploaded a signed contract yet. Please wait for the candidate to upload their signed contract.',
+        };
+      }
+
+      if (!contract.documentId) {
+        return {
+          hasContract: true,
+          hasSignedDocument: false,
+          contract: {
+            _id: contract._id,
+          },
+          message: 'Contract record exists but signed document has not been uploaded yet.',
+        };
+      }
+
+      return {
+        hasContract: true,
+        hasSignedDocument: true,
+        contract: {
+          _id: contract._id,
+          documentId: contract.documentId,
+          grossSalary: contract.grossSalary,
+          signingBonus: contract.signingBonus,
+          acceptanceDate: contract.acceptanceDate,
+          employeeSignedAt: contract.employeeSignedAt,
+        },
+        message: 'Signed contract is available. You can now create the employee profile.',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to get contract status: ' + this.getErrorMessage(error));
     }
   }
 
@@ -4567,9 +4980,14 @@ Due: ${context.dueDate}`
    * BR: Reminders required
    */
   /**
-   * ONB-005: Send reminders and notifications for onboarding tasks
+   * ONB-005: Send reminders for incomplete onboarding tasks
    * BR: Reminders required; track delivery and status accordingly
-   * As a New Hire, I want to receive reminders and notifications, so that I don't miss important onboarding tasks
+   * 
+   * IMPORTANT: Reminders go to the RESPONSIBLE PARTY based on user stories:
+   * - ONB-007 tasks (document uploads) → New Hire
+   * - ONB-009 tasks (IT/system access) → System Admin
+   * - ONB-012 tasks (equipment/workspace) → HR Employee
+   * - Other HR tasks → HR Manager
    */
   async sendOnboardingReminders(): Promise<void> {
     try {
@@ -4580,27 +4998,75 @@ Due: ${context.dueDate}`
         .lean();
 
       if (!allOnboardings || allOnboardings.length === 0) {
-        console.log('No incomplete onboardings found for reminders');
+        console.log('[ONB-005] No incomplete onboardings found for reminders');
         return;
       }
+      
+      console.log(`[ONB-005] Processing ${allOnboardings.length} incomplete onboarding(s) for reminders`);
+
+      // Helper function to determine who is responsible for a task based on user stories
+      const getTaskResponsibility = (taskName: string, department: string): 'NEW_HIRE' | 'SYSTEM_ADMIN' | 'HR_EMPLOYEE' | 'HR_MANAGER' => {
+        const name = taskName.toLowerCase();
+        const dept = department.toLowerCase();
+        
+        // ONB-007: New Hire tasks (document uploads)
+        if (name.includes('upload') || name.includes('document') || 
+            name.includes('id document') || name.includes('certification')) {
+          return 'NEW_HIRE';
+        }
+        
+        // ONB-009: System Admin tasks (IT/system access)
+        if (dept === 'it' || name.includes('email') || name.includes('laptop') || 
+            name.includes('equipment') || name.includes('sso') || name.includes('system access')) {
+          return 'SYSTEM_ADMIN';
+        }
+        
+        // ONB-012: HR Employee tasks (equipment/workspace/admin)
+        if (dept === 'admin' || name.includes('workspace') || name.includes('desk') || 
+            name.includes('badge') || name.includes('access card')) {
+          return 'HR_EMPLOYEE';
+        }
+        
+        // Default to HR Manager for other tasks (benefits, payroll, etc.)
+        return 'HR_MANAGER';
+      };
+
+      // Get System Admins
+      const systemAdmins = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const systemAdminIds = systemAdmins.map((a: any) => a.employeeProfileId?.toString()).filter(Boolean);
+      console.log(`[ONB-005] Found ${systemAdminIds.length} System Admins:`, systemAdminIds);
+
+      // Get HR Employees
+      const hrEmployees = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_EMPLOYEE] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrEmployeeIds = hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+      console.log(`[ONB-005] Found ${hrEmployeeIds.length} HR Employees:`, hrEmployeeIds);
+
+      // Get HR Managers
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+      console.log(`[ONB-005] Found ${hrManagerIds.length} HR Managers:`, hrManagerIds);
 
       let remindersSent = 0;
       let remindersFailed = 0;
+      const now = new Date();
 
       for (const onboarding of allOnboardings) {
         try {
           const employee = (onboarding as any).employeeId;
           if (!employee) {
-            console.warn(
-              `Onboarding ${onboarding._id} has no associated employee`,
-            );
-            continue;
-          }
-
-          if (!employee.personalEmail) {
-            console.warn(
-              `Employee ${employee._id} has no personal email for reminders`,
-            );
+            console.warn(`Onboarding ${onboarding._id} has no associated employee`);
             continue;
           }
 
@@ -4610,112 +5076,97 @@ Due: ${context.dueDate}`
             continue;
           }
 
-          const now = new Date();
-          const overdueTasks =
-            onboarding.tasks.filter((task: any) => {
-              // Skip completed tasks
-              if (task.status === OnboardingTaskStatus.COMPLETED) {
-                return false;
-              }
+          const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Hire';
 
-              // Skip tasks without deadlines
-              if (!task.deadline) {
-                return false;
-              }
-
-              // Validate deadline is a valid date
-              const deadline = new Date(task.deadline);
-              if (isNaN(deadline.getTime())) {
-                console.warn(
-                  `Invalid deadline for task ${task.name} in onboarding ${onboarding._id}`,
-                );
-                return false;
-              }
-
-              // Task is overdue if deadline has passed
-              return deadline < now;
-            }) || [];
-
-          const upcomingTasks = onboarding.tasks.filter((task: any) => {
+          // Process each incomplete task
+          for (const task of onboarding.tasks) {
             // Skip completed tasks
             if (task.status === OnboardingTaskStatus.COMPLETED) {
-              return false;
+              continue;
             }
 
             // Skip tasks without deadlines
             if (!task.deadline) {
-              return false;
+              continue;
             }
 
-            // Validate deadline is a valid date
             const deadline = new Date(task.deadline);
             if (isNaN(deadline.getTime())) {
-              return false;
+              continue;
             }
 
-            // Calculate days until deadline
+            // Calculate if overdue or upcoming (within 2 days)
             const daysUntilDeadline = Math.ceil(
               (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
             );
+            
+            const isOverdue = deadline < now;
+            const isUpcoming = daysUntilDeadline <= 2 && daysUntilDeadline > 0;
 
-            // Upcoming tasks: due within 2 days (but not overdue)
-            return daysUntilDeadline <= 2 && daysUntilDeadline > 0;
-          }) || [];
+            // Only send reminder if overdue or upcoming
+            if (!isOverdue && !isUpcoming) {
+              continue;
+            }
 
-          // Only send reminder if there are overdue or upcoming tasks
-          if (overdueTasks.length === 0 && upcomingTasks.length === 0) {
-            continue;
-          }
+            // Determine who should receive the reminder based on user stories
+            const responsibility = getTaskResponsibility(task.name || '', task.department || '');
+            let recipientIds: string[] = [];
 
-          // Format tasks for notification
-          const formattedOverdueTasks = overdueTasks.map((task: any) => {
-            const deadline = new Date(task.deadline);
-            const daysOverdue = Math.ceil(
-              (now.getTime() - deadline.getTime()) / (1000 * 60 * 60 * 24),
-            );
-            return {
-              name: task.name || 'Unnamed Task',
-              department: task.department || 'Unknown',
-              daysOverdue: daysOverdue,
-            };
-          });
+            switch (responsibility) {
+              case 'NEW_HIRE':
+                // ONB-007: New hire gets reminder for document upload tasks
+                recipientIds = [employee._id.toString()];
+                break;
+              case 'SYSTEM_ADMIN':
+                // ONB-009: System admins get reminder for IT tasks
+                recipientIds = systemAdminIds.length > 0 ? systemAdminIds : hrManagerIds;
+                break;
+              case 'HR_EMPLOYEE':
+                // ONB-012: HR employees get reminder for equipment/workspace tasks
+                recipientIds = hrEmployeeIds.length > 0 ? hrEmployeeIds : hrManagerIds;
+                break;
+              case 'HR_MANAGER':
+                // HR managers get reminder for other HR tasks
+                recipientIds = hrManagerIds;
+                break;
+            }
 
-          const formattedUpcomingTasks = upcomingTasks.map((task: any) => {
-            const deadline = new Date(task.deadline);
-            const daysLeft = Math.ceil(
-              (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-            );
-            return {
-              name: task.name || 'Unnamed Task',
-              department: task.department || 'Unknown',
-              daysLeft: daysLeft,
-            };
-          });
+            // Send notification to each responsible party
+            console.log(`[ONB-005] Task "${task.name}" (${task.department}) -> Responsibility: ${responsibility}, Recipients: ${recipientIds.length}`);
+            
+            if (recipientIds.length === 0) {
+              console.warn(`[ONB-005] No recipients found for task "${task.name}" with responsibility ${responsibility}`);
+              continue;
+            }
 
-          // Send notification
-          try {
-            await this.sendNotification(
-              'onboarding_reminder',
-              employee.personalEmail,
-              {
-                employeeName: employee.firstName || 'New Hire',
-                overdueTasks: formattedOverdueTasks,
-                upcomingTasks: formattedUpcomingTasks,
-                totalOverdue: overdueTasks.length,
-                totalUpcoming: upcomingTasks.length,
-              },
-              { nonBlocking: true }, // Non-blocking - don't fail if email fails
-            );
-            remindersSent++;
-            console.log(
-              `Reminder sent to ${employee.personalEmail} for onboarding ${onboarding._id}`,
-            );
-          } catch (e) {
-            remindersFailed++;
-            console.warn(
-              `Failed to send reminder to ${employee.personalEmail}:`,
-              this.getErrorMessage(e),
-            );
+            for (const recipientId of recipientIds) {
+              try {
+                console.log(`[ONB-005] Sending reminder to ${recipientId} for task "${task.name}"...`);
+                const result = await this.notificationsService.notifyOnboardingTaskReminder(
+                  recipientId,
+                  {
+                    employeeName: employeeName,
+                    taskName: task.name || 'Unnamed Task',
+                    taskDepartment: task.department || 'Unknown',
+                    deadline: deadline,
+                    isOverdue: isOverdue,
+                    daysRemaining: isOverdue ? 0 : daysUntilDeadline,
+                  },
+                );
+                if (result.success) {
+                  remindersSent++;
+                  console.log(
+                    `[ONB-005] ✅ Reminder SENT to ${responsibility} (${recipientId}) for task "${task.name}" - Employee: ${employeeName}`,
+                  );
+                } else {
+                  remindersFailed++;
+                  console.warn(`[ONB-005] ❌ Reminder FAILED for ${recipientId}: ${result.message || 'Unknown error'}`);
+                }
+              } catch (e) {
+                remindersFailed++;
+                console.warn(`[ONB-005] ❌ Exception sending task reminder:`, this.getErrorMessage(e));
+              }
+            }
           }
         } catch (error) {
           remindersFailed++;
@@ -4727,7 +5178,7 @@ Due: ${context.dueDate}`
       }
 
       console.log(
-        `Onboarding reminders completed: ${remindersSent} sent, ${remindersFailed} failed`,
+        `[ONB-005] Onboarding reminders completed: ${remindersSent} sent, ${remindersFailed} failed`,
       );
     } catch (error) {
       console.error('Error sending onboarding reminders:', error);
@@ -5147,6 +5598,12 @@ Due: ${context.dueDate}`
   /**
    * ONB-018: Automatically handle payroll initiation based on contract signing day
    * BR: Payroll trigger automatic (REQ-PY-23)
+   * 
+   * This method:
+   * 1. Validates employee and onboarding data
+   * 2. Marks the payroll task as completed
+   * 3. Sends notifications to Payroll team (NEW_HIRE_PAYROLL_READY)
+   * 4. Sends confirmation to HR (ONBOARDING_PAYROLL_TASK_COMPLETED)
    */
   async triggerPayrollInitiation(
     employeeId: string,
@@ -5204,6 +5661,36 @@ Due: ${context.dueDate}`
         throw new NotFoundException('Employee not found');
       }
 
+      // Get position and department details for notifications
+      let positionTitle = 'New Hire';
+      let departmentName = '';
+      
+      if (employee.primaryPositionId) {
+        try {
+          const position = await this.organizationStructureService.getPositionById(
+            employee.primaryPositionId.toString(),
+          );
+          if (position) {
+            positionTitle = position.title || 'New Hire';
+          }
+        } catch (e) {
+          // Position lookup failed, use default
+        }
+      }
+
+      if (employee.primaryDepartmentId) {
+        try {
+          const department = await this.organizationStructureService.getDepartmentById(
+            employee.primaryDepartmentId.toString(),
+          );
+          if (department) {
+            departmentName = department.name || '';
+          }
+        } catch (e) {
+          // Department lookup failed, use default
+        }
+      }
+
       // Employee is ready for payroll inclusion:
       // 1. Employee profile exists and is active
       // 2. Contract has been signed with gross salary
@@ -5223,6 +5710,87 @@ Due: ${context.dueDate}`
       console.log(
         `Payroll readiness confirmed for employee ${employeeId} (REQ-PY-23). Employee will be included in payroll runs automatically.`,
       );
+
+      // ============= NOTIFICATION: Notify Payroll Team (ONB-018) =============
+      // Send notifications to Payroll Specialists and Payroll Managers
+      try {
+        // Find all Payroll Specialists and Payroll Managers
+        const payrollTeamRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+
+        const payrollTeamIds = payrollTeamRoles.map(
+          (role: any) => role.employeeProfileId.toString(),
+        );
+
+        if (payrollTeamIds.length > 0) {
+          const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Employee';
+          
+          await this.notificationsService.notifyPayrollTeamNewHire(
+            payrollTeamIds,
+            {
+              employeeId,
+              employeeName,
+              employeeNumber: employee.employeeNumber,
+              positionTitle,
+              departmentName,
+              grossSalary,
+              contractStartDate: contractSigningDate,
+            },
+          );
+          
+          console.log(
+            `[ONB-018] Sent NEW_HIRE_PAYROLL_READY notification to ${payrollTeamIds.length} payroll team member(s)`,
+          );
+        } else {
+          console.warn(
+            '[ONB-018] No payroll team members found to notify. Consider adding Payroll Specialists/Managers.',
+          );
+        }
+
+        // Also notify HR about task completion
+        const hrRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+
+        const hrUserIds = hrRoles.map((role: any) => role.employeeProfileId.toString());
+
+        if (hrUserIds.length > 0) {
+          const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Employee';
+          
+          await this.notificationsService.notifyHRPayrollTaskCompleted(
+            hrUserIds,
+            {
+              employeeId,
+              employeeName,
+              positionTitle,
+              grossSalary,
+            },
+          );
+          
+          console.log(
+            `[ONB-018] Sent ONBOARDING_PAYROLL_TASK_COMPLETED notification to ${hrUserIds.length} HR user(s)`,
+          );
+        }
+      } catch (notificationError) {
+        // Log notification error but don't fail the main operation
+        console.error(
+          '[ONB-018] Failed to send payroll notifications:',
+          this.getErrorMessage(notificationError),
+        );
+      }
+      // ============= END NOTIFICATION =============
+
       // ============= END INTEGRATION =============
 
       return {
@@ -5230,6 +5798,7 @@ Due: ${context.dueDate}`
         contractSigningDate,
         grossSalary,
         task: payrollTask,
+        notificationsSent: true,
       };
     } catch (error) {
       if (
@@ -5247,6 +5816,12 @@ Due: ${context.dueDate}`
   /**
    * ONB-019: Automatically process signing bonuses based on contract
    * BR: Bonuses treated as distinct payroll components (REQ-PY-27)
+   * 
+   * This method:
+   * 1. Validates employee and onboarding data
+   * 2. Creates EmployeeSigningBonus record in payroll-execution module
+   * 3. Marks the signing bonus task as completed
+   * 4. Sends notifications to Payroll team (SIGNING_BONUS_PENDING_REVIEW)
    */
   async processSigningBonus(
     employeeId: string,
@@ -5308,8 +5883,9 @@ Due: ${context.dueDate}`
         throw new NotFoundException('Employee not found');
       }
 
-      let signingBonusResult = null;
+      let signingBonusResult: any = null;
       let integrationNote = '';
+      let positionTitle = 'New Hire';
 
       // Find signing bonus configuration by position title
       if (employee.primaryPositionId) {
@@ -5321,6 +5897,8 @@ Due: ${context.dueDate}`
             );
 
           if (position && position.title) {
+            positionTitle = position.title;
+            
             // Find matching signing bonus configuration
             const signingBonusesResult =
               await this.payrollConfigurationService.findAllSigningBonuses({
@@ -5384,6 +5962,57 @@ Due: ${context.dueDate}`
       console.log(
         `Signing bonus processed for employee ${employeeId} (REQ-PY-27): ${signingBonus}`,
       );
+
+      // ============= NOTIFICATION: Notify Payroll Team (ONB-019) =============
+      // Send notifications to Payroll Specialists and Payroll Managers about pending signing bonus
+      try {
+        // Find all Payroll Specialists and Payroll Managers
+        const payrollTeamRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+
+        const payrollTeamIds = payrollTeamRoles.map(
+          (role: any) => role.employeeProfileId.toString(),
+        );
+
+        if (payrollTeamIds.length > 0) {
+          const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'New Employee';
+          
+          await this.notificationsService.notifyPayrollTeamSigningBonus(
+            payrollTeamIds,
+            {
+              employeeId,
+              employeeName,
+              employeeNumber: employee.employeeNumber,
+              positionTitle,
+              signingBonusAmount: signingBonus,
+              signingBonusId: signingBonusResult?._id?.toString(),
+              paymentDate: contractSigningDate,
+            },
+          );
+          
+          console.log(
+            `[ONB-019] Sent SIGNING_BONUS_PENDING_REVIEW notification to ${payrollTeamIds.length} payroll team member(s)`,
+          );
+        } else {
+          console.warn(
+            '[ONB-019] No payroll team members found to notify about signing bonus.',
+          );
+        }
+      } catch (notificationError) {
+        // Log notification error but don't fail the main operation
+        console.error(
+          '[ONB-019] Failed to send signing bonus notifications:',
+          this.getErrorMessage(notificationError),
+        );
+      }
+      // ============= END NOTIFICATION =============
+
       // ============= END INTEGRATION =============
 
       return {
@@ -5391,6 +6020,8 @@ Due: ${context.dueDate}`
         signingBonus,
         contractSigningDate,
         task: bonusTask,
+        signingBonusRecord: signingBonusResult,
+        notificationsSent: true,
       };
     } catch (error) {
       if (
@@ -5702,6 +6333,32 @@ Due: ${context.dueDate}`
       contractId: employee._id, // Using employee._id as dummy ObjectId (no separate contract entity)
     });
 
+    // OFF-018: Send notifications to HR Managers about the resignation
+    try {
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+      if (hrManagerIds.length > 0) {
+        await this.notificationsService.notifyResignationSubmitted(
+          hrManagerIds,
+          {
+            employeeId: employee._id.toString(),
+            employeeName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber,
+            reason: dto.reason,
+            requestedLastDay: dto.requestedLastDay,
+            department: (employee as any).department,
+          },
+        );
+        console.log(`[OFF-018] Resignation notification sent to ${hrManagerIds.length} HR Manager(s)`);
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-018] Failed to send resignation notification:', this.getErrorMessage(notifyError));
+    }
+
     return {
       message: 'Resignation submitted successfully. HR will review your request.',
       resignation,
@@ -5808,6 +6465,39 @@ Due: ${context.dueDate}`
       contractId: employee._id,
     });
 
+    // OFF-001: Send notifications about termination initiation
+    try {
+      const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber;
+      const initiatorName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.employeeNumber || 'HR Manager';
+
+      // Notify other HR Managers and Department Head
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagers
+        .map((hr: any) => hr.employeeProfileId?.toString())
+        .filter((id: string) => id && id !== user.id); // Exclude the initiator
+
+      if (hrManagerIds.length > 0) {
+        await this.notificationsService.notifyTerminationInitiated(
+          hrManagerIds,
+          {
+            employeeId: employee._id.toString(),
+            employeeName: employeeName,
+            reason: termination.reason,
+            performanceScore: latestRecord.totalScore,
+            initiatedBy: initiatorName,
+            terminationDate: dto.terminationDate,
+          },
+        );
+        console.log(`[OFF-001] Termination notification sent to ${hrManagerIds.length} HR Manager(s)`);
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-001] Failed to send termination notification:', this.getErrorMessage(notifyError));
+    }
+
     return {
       message: `Termination request created for employee ${dto.employeeId}.`,
       performanceScore: latestRecord.totalScore,
@@ -5865,6 +6555,52 @@ Due: ${context.dueDate}`
       .exec();
     
     return requests;
+  }
+
+  // ============================================================================
+  // HR MANAGER: Get ALL termination/resignation requests (OFF-001, OFF-018, OFF-019)
+  // ============================================================================
+  /**
+   * Allows HR Manager to view ALL termination/resignation requests in the system.
+   * Used for managing the offboarding workflow.
+   */
+  async getAllTerminationRequests() {
+    try {
+      const requests = await this.terminationModel
+        .find()
+        .populate({
+          path: 'employeeId',
+          select: 'firstName lastName fullName employeeNumber department position workEmail',
+          model: 'EmployeeProfile',
+        })
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec();
+      
+      // Transform to include employee details
+      return requests.map((request: any) => {
+        const employee = request.employeeId;
+        return {
+          ...request,
+          employeeId: employee?._id?.toString() || request.employeeId?.toString(),
+          employee: employee ? {
+            _id: employee._id,
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            fullName: employee.fullName || `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+            employeeNumber: employee.employeeNumber,
+            department: employee.department,
+            position: employee.position,
+            workEmail: employee.workEmail,
+          } : null,
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching all termination requests:', error);
+      throw new BadRequestException(
+        'Failed to fetch termination requests: ' + this.getErrorMessage(error),
+      );
+    }
   }
 
   // 3) HR UPDATES TERMINATION STATUS
@@ -5950,6 +6686,57 @@ Due: ${context.dueDate}`
         console.warn('Failed to create clearance checklist automatically:', e);
       }
     }
+
+    // ============= SEND NOTIFICATIONS (OFF-019) =============
+    try {
+      // Get employee details
+      const employee = await this.employeeModel.findById(termination.employeeId).exec();
+      const employeeName = employee 
+        ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber
+        : 'Employee';
+      
+      const isResignation = termination.initiator === TerminationInitiation.EMPLOYEE;
+      
+      // Notify the EMPLOYEE about their status update (OFF-019)
+      if (employee) {
+        await this.notificationsService.notifyResignationStatusUpdated(
+          employee._id.toString(),
+          {
+            employeeName: employeeName,
+            newStatus: dto.status,
+            effectiveDate: termination.terminationDate?.toISOString(),
+            hrComments: dto.hrComments,
+          },
+        );
+        console.log(`[OFF-019] ${isResignation ? 'Resignation' : 'Termination'} status update notification sent to ${employeeName}`);
+      }
+
+      // If APPROVED, also notify IT for access revocation (OFF-007)
+      if (dto.status === TerminationStatus.APPROVED) {
+        const systemAdmins = await this.employeeSystemRoleModel
+          .find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+        const adminIds = systemAdmins.map((a: any) => a.employeeProfileId?.toString()).filter(Boolean);
+
+        if (adminIds.length > 0) {
+          await this.notificationsService.notifyTerminationApproved(
+            adminIds,
+            {
+              employeeId: termination.employeeId.toString(),
+              employeeName: employeeName,
+              effectiveDate: termination.terminationDate?.toISOString() || new Date().toISOString(),
+              reason: termination.reason,
+            },
+          );
+          console.log(`[OFF-007] Termination approved notification sent to ${adminIds.length} System Admin(s)`);
+        }
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-019] Failed to send status update notification:', this.getErrorMessage(notifyError));
+    }
+    // ============= END NOTIFICATIONS =============
 
     return saved;
   }
@@ -6545,6 +7332,46 @@ Due: ${context.dueDate}`
       (i: any) => i.status === ApprovalStatus.APPROVED,
     );
 
+    // ============= OFF-010: SEND CLEARANCE UPDATE NOTIFICATIONS =============
+    try {
+      // Get employee details
+      const termination = await this.terminationModel.findById(updatedChecklist.terminationId);
+      const employee = termination 
+        ? await this.employeeModel.findById(termination.employeeId) 
+        : null;
+      const employeeName = employee 
+        ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber
+        : 'Employee';
+      const updaterName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.employeeNumber || 'User';
+
+      // Notify HR Managers about the clearance update
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagers
+        .map((hr: any) => hr.employeeProfileId?.toString())
+        .filter((id: string) => id && id !== user.id);
+
+      if (hrManagerIds.length > 0) {
+        await this.notificationsService.notifyClearanceItemUpdated(
+          hrManagerIds,
+          {
+            employeeName: employeeName,
+            department: dto.department,
+            newStatus: dto.status,
+            updatedBy: updaterName,
+            comments: dto.comments,
+          },
+        );
+        console.log(`[OFF-010] Clearance update notification sent to ${hrManagerIds.length} HR Manager(s)`);
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-010] Failed to send clearance update notification:', this.getErrorMessage(notifyError));
+    }
+    // ============= END CLEARANCE UPDATE NOTIFICATIONS =============
+
     if (allApproved) {
       updatedChecklist.cardReturned = true;
       await updatedChecklist.save();
@@ -6555,6 +7382,45 @@ Due: ${context.dueDate}`
           status: TerminationStatus.APPROVED,
         },
       );
+
+      // ============= OFF-010: NOTIFY ALL CLEARANCES APPROVED =============
+      try {
+        const termination = await this.terminationModel.findById(updatedChecklist.terminationId);
+        const employee = termination 
+          ? await this.employeeModel.findById(termination.employeeId) 
+          : null;
+        const employeeName = employee 
+          ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber
+          : 'Employee';
+
+        // Get HR Managers
+        const hrManagers = await this.employeeSystemRoleModel
+          .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+        const hrManagerIds = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+        // Notify employee and HR Managers
+        const allRecipients = employee 
+          ? [employee._id.toString(), ...hrManagerIds] 
+          : hrManagerIds;
+
+        if (allRecipients.length > 0) {
+          await this.notificationsService.notifyAllClearancesApproved(
+            allRecipients,
+            {
+              employeeId: employee?._id.toString() || '',
+              employeeName: employeeName,
+              completionDate: new Date().toISOString(),
+            },
+          );
+          console.log(`[OFF-010] All clearances approved notification sent to ${allRecipients.length} recipient(s)`);
+        }
+      } catch (notifyError) {
+        console.warn('[OFF-010] Failed to send all clearances approved notification:', this.getErrorMessage(notifyError));
+      }
+      // ============= END ALL CLEARANCES APPROVED NOTIFICATION =============
 
       // OFF-013: Trigger final settlement when all clearances are approved
       try {
@@ -6935,6 +7801,55 @@ Due: ${context.dueDate}`
     } catch (err) {
       console.warn('triggerFinalSettlement: Failed to send notifications:', this.getErrorMessage(err) || err);
     }
+
+    // ============= OFF-013: SEND IN-APP NOTIFICATIONS =============
+    try {
+      const employeeName = employee.fullName || 
+        `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 
+        employee.employeeNumber;
+      
+      // Get payroll team IDs
+      const payrollTeam = await this.employeeSystemRoleModel
+        .find({ 
+          roles: { $in: [SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER] }, 
+          isActive: true 
+        })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const payrollIds = payrollTeam.map((p: any) => p.employeeProfileId?.toString()).filter(Boolean);
+
+      // Get HR Manager IDs
+      const hrManagerRoles = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagerRoles.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+      // Combine recipients: Payroll + HR + Employee
+      const allRecipients = [
+        ...new Set([employee._id.toString(), ...payrollIds, ...hrManagerIds]),
+      ];
+
+      if (allRecipients.length > 0) {
+        await this.notificationsService.notifyFinalSettlementTriggered(
+          allRecipients,
+          {
+            employeeId: employee._id.toString(),
+            employeeName: employeeName,
+            leaveBalance: settlementData.components?.leaveEncashment?.totalUnusedDays,
+            leaveEncashment: settlementData.components?.leaveEncashment?.encashmentAmount,
+            deductions: 0, // Placeholder
+            estimatedFinalAmount: settlementData.components?.leaveEncashment?.encashmentAmount || 0,
+          },
+        );
+        console.log(`[OFF-013] Final settlement in-app notification sent to ${allRecipients.length} recipient(s)`);
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-013] Failed to send final settlement in-app notification:', this.getErrorMessage(notifyError));
+    }
+    // ============= END OFF-013 NOTIFICATIONS =============
 
     console.log(
       `triggerFinalSettlement: Initiated for employee ${employee.employeeNumber}, status: ${settlementData.status}`,
@@ -7466,6 +8381,55 @@ Due: ${context.dueDate}`
         this.getErrorMessage(err) || err,
       );
     }
+
+    // ============= OFF-007: SEND IN-APP NOTIFICATIONS =============
+    try {
+      const employeeName = employee.fullName || 
+        `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 
+        employee.employeeNumber;
+      const revokerName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 
+        user.employeeNumber || 'System Admin';
+      const revokedSystems = actions
+        .filter((a) => a.success)
+        .map((a) => a.service)
+        .filter(Boolean);
+
+      // Collect recipient IDs: HR Managers + IT Admins + Employee
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const hrManagerIds = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+      
+      const systemAdmins = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      const adminIds = systemAdmins.map((a: any) => a.employeeProfileId?.toString()).filter(Boolean);
+      
+      const allRecipients = [
+        ...new Set([employee._id.toString(), ...hrManagerIds, ...adminIds]),
+      ];
+
+      if (allRecipients.length > 0) {
+        await this.notificationsService.notifyAccessRevoked(
+          allRecipients,
+          {
+            employeeId: employee._id.toString(),
+            employeeName: employeeName,
+            revokedSystems: revokedSystems.length > 0 ? revokedSystems : ['Email', 'SSO', 'Internal Apps'],
+            effectiveDate: new Date().toISOString(),
+            revokedBy: revokerName,
+          },
+        );
+        console.log(`[OFF-007] Access revoked in-app notification sent to ${allRecipients.length} recipient(s)`);
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-007] Failed to send access revoked in-app notification:', this.getErrorMessage(notifyError));
+    }
+    // ============= END OFF-007 NOTIFICATIONS =============
 
     return {
       message:

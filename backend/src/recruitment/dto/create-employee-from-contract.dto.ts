@@ -1,4 +1,4 @@
-import { IsMongoId, IsOptional, IsString, IsEnum } from 'class-validator';
+import { IsMongoId, IsOptional, IsString, IsEnum, IsDateString } from 'class-validator';
 import {
   ContractType,
   WorkType,
@@ -19,6 +19,14 @@ export class CreateEmployeeFromContractDto {
   @IsOptional()
   @IsString()
   workEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  employeeNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
 
   @IsOptional()
   @IsEnum(ContractType)

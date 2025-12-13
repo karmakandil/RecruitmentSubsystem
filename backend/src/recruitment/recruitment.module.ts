@@ -47,7 +47,6 @@ import {
   Candidate,
   CandidateSchema,
 } from '../employee-profile/models/candidate.schema';
-
 import { PayrollExecutionModule } from '../payroll-execution/payroll-execution.module';
 import { TimeManagementModule } from '../time-management/time-management.module';
 import { PayrollConfigurationModule } from '../payroll-configuration/payroll-configuration.module';

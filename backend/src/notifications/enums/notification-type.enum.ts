@@ -166,4 +166,205 @@ export enum NotificationType {
    * Message: Professional rejection with feedback if available
    */
   APPLICATION_REJECTED = 'APPLICATION_REJECTED',
+
+  // =============================================================================
+  // ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS (ONB-018, ONB-019)
+  // =============================================================================
+  // Notifications sent to Payroll team when new hires are ready for payroll
+  //
+  // Flow:
+  //   1. Employee profile created from contract → Onboarding triggered
+  //   2. triggerPayrollInitiation() called → Payroll team notified
+  //   3. processSigningBonus() called → Payroll team notified of pending bonus
+  //   4. Payroll team reviews and includes in next payroll run
+
+  /**
+   * NEW_HIRE_PAYROLL_READY
+   * Sent to: Payroll Specialist, Payroll Manager
+   * When: New employee profile is created and ready for payroll inclusion (ONB-018)
+   * Contains: Employee name, position, gross salary, start date, signing bonus (if any)
+   * Purpose: Notify payroll team that a new hire will be included in next payroll run
+   */
+  NEW_HIRE_PAYROLL_READY = 'NEW_HIRE_PAYROLL_READY',
+
+  /**
+   * SIGNING_BONUS_PENDING_REVIEW
+   * Sent to: Payroll Specialist, Payroll Manager
+   * When: A signing bonus record is created for a new hire (ONB-019)
+   * Contains: Employee name, position, bonus amount, payment date
+   * Purpose: Notify payroll team to review and approve the signing bonus
+   */
+  SIGNING_BONUS_PENDING_REVIEW = 'SIGNING_BONUS_PENDING_REVIEW',
+
+  /**
+   * ONBOARDING_PAYROLL_TASK_COMPLETED
+   * Sent to: HR Manager, HR Employee
+   * When: Payroll initiation task is completed in onboarding
+   * Contains: Employee name, confirmation of payroll readiness
+   * Purpose: Confirm to HR that payroll setup is complete for the new hire
+   */
+  ONBOARDING_PAYROLL_TASK_COMPLETED = 'ONBOARDING_PAYROLL_TASK_COMPLETED',
+
+  // =============================================================================
+  // ONBOARDING NOTIFICATIONS (ONB-004, ONB-005)
+  // =============================================================================
+  // Notifications for the onboarding workflow
+
+  /**
+   * ONBOARDING_WELCOME
+   * Sent to: New Hire
+   * When: Onboarding is created for the new employee
+   * Contains: Welcome message, task summary, next steps
+   * Purpose: Welcome the new hire and inform them about onboarding tasks
+   */
+  ONBOARDING_WELCOME = 'ONBOARDING_WELCOME',
+
+  /**
+   * ONBOARDING_TASK_REMINDER
+   * Sent to: New Hire, Assigned Department
+   * When: Task is overdue or approaching deadline
+   * Contains: Task name, deadline, status
+   * Purpose: Remind about pending onboarding tasks
+   */
+  ONBOARDING_TASK_REMINDER = 'ONBOARDING_TASK_REMINDER',
+
+  /**
+   * ONBOARDING_COMPLETED
+   * Sent to: New Hire, HR Manager
+   * When: All onboarding tasks are completed
+   * Contains: Completion confirmation, next steps
+   * Purpose: Confirm successful onboarding completion
+   */
+  ONBOARDING_COMPLETED = 'ONBOARDING_COMPLETED',
+
+  /**
+   * ONBOARDING_DOCUMENT_UPLOADED
+   * Sent to: HR Manager, HR Employee
+   * When: New hire uploads a compliance document (ONB-007)
+   * Contains: Document type, employee name, verification status
+   * Purpose: Notify HR to review uploaded documents
+   */
+  ONBOARDING_DOCUMENT_UPLOADED = 'ONBOARDING_DOCUMENT_UPLOADED',
+
+  /**
+   * ONBOARDING_ACCESS_PROVISIONED
+   * Sent to: New Hire, IT Department
+   * When: System access is provisioned (ONB-009, ONB-013)
+   * Contains: Access type, provisioned systems
+   * Purpose: Confirm access has been granted
+   */
+  ONBOARDING_ACCESS_PROVISIONED = 'ONBOARDING_ACCESS_PROVISIONED',
+
+  /**
+   * ONBOARDING_EQUIPMENT_RESERVED
+   * Sent to: New Hire, Admin Department
+   * When: Equipment/workspace is reserved (ONB-012)
+   * Contains: Equipment list, workspace details
+   * Purpose: Confirm resources are ready for Day 1
+   */
+  ONBOARDING_EQUIPMENT_RESERVED = 'ONBOARDING_EQUIPMENT_RESERVED',
+
+  // =============================================================================
+  // OFFBOARDING NOTIFICATIONS (OFF-001 to OFF-019)
+  // =============================================================================
+  // Notifications for the offboarding/separation workflow
+
+  /**
+   * RESIGNATION_SUBMITTED (OFF-018)
+   * Sent to: HR Manager, Line Manager
+   * When: Employee submits a resignation request
+   * Contains: Employee name, reason, requested last day
+   * Purpose: Notify HR and manager to review the resignation
+   */
+  RESIGNATION_SUBMITTED = 'RESIGNATION_SUBMITTED',
+
+  /**
+   * RESIGNATION_STATUS_UPDATED (OFF-019)
+   * Sent to: Employee
+   * When: Resignation request status changes (approved/rejected)
+   * Contains: Status, next steps, effective date
+   * Purpose: Keep employee informed about their resignation status
+   */
+  RESIGNATION_STATUS_UPDATED = 'RESIGNATION_STATUS_UPDATED',
+
+  /**
+   * TERMINATION_INITIATED (OFF-001)
+   * Sent to: HR Manager, Department Head
+   * When: HR initiates termination based on performance
+   * Contains: Employee name, reason, performance score
+   * Purpose: Notify relevant parties about termination initiation
+   */
+  TERMINATION_INITIATED = 'TERMINATION_INITIATED',
+
+  /**
+   * TERMINATION_APPROVED (OFF-001)
+   * Sent to: Employee, HR Manager, IT Department
+   * When: Termination request is approved
+   * Contains: Employee name, effective date, next steps
+   * Purpose: Trigger offboarding process and access revocation
+   */
+  TERMINATION_APPROVED = 'TERMINATION_APPROVED',
+
+  /**
+   * CLEARANCE_CHECKLIST_CREATED (OFF-006)
+   * Sent to: All departments (IT, Finance, Facilities, HR, Admin)
+   * When: Offboarding checklist is created for an employee
+   * Contains: Employee name, termination date, checklist items
+   * Purpose: Notify departments to begin clearance sign-off
+   */
+  CLEARANCE_CHECKLIST_CREATED = 'CLEARANCE_CHECKLIST_CREATED',
+
+  /**
+   * CLEARANCE_SIGN_OFF_NEEDED (OFF-010)
+   * Sent to: Department Head
+   * When: Their department needs to sign off on clearance
+   * Contains: Employee name, department items to clear
+   * Purpose: Remind department to complete their clearance items
+   */
+  CLEARANCE_SIGN_OFF_NEEDED = 'CLEARANCE_SIGN_OFF_NEEDED',
+
+  /**
+   * CLEARANCE_ITEM_UPDATED (OFF-010)
+   * Sent to: HR Manager
+   * When: A department updates their clearance status
+   * Contains: Employee name, department, new status
+   * Purpose: Track clearance progress
+   */
+  CLEARANCE_ITEM_UPDATED = 'CLEARANCE_ITEM_UPDATED',
+
+  /**
+   * CLEARANCE_ALL_APPROVED (OFF-010)
+   * Sent to: HR Manager, Employee
+   * When: All departments have approved clearance
+   * Contains: Employee name, completion date
+   * Purpose: Trigger final settlement process
+   */
+  CLEARANCE_ALL_APPROVED = 'CLEARANCE_ALL_APPROVED',
+
+  /**
+   * ACCESS_REVOKED (OFF-007)
+   * Sent to: IT Department, HR Manager, Employee
+   * When: System access is revoked for terminated employee
+   * Contains: Employee name, systems revoked, effective date
+   * Purpose: Confirm security measures are in place
+   */
+  ACCESS_REVOKED = 'ACCESS_REVOKED',
+
+  /**
+   * FINAL_SETTLEMENT_TRIGGERED (OFF-013)
+   * Sent to: Payroll Team, HR Manager
+   * When: Final settlement calculation is triggered
+   * Contains: Employee name, leave balance, deductions, final amount
+   * Purpose: Process final pay and benefits termination
+   */
+  FINAL_SETTLEMENT_TRIGGERED = 'FINAL_SETTLEMENT_TRIGGERED',
+
+  /**
+   * FINAL_SETTLEMENT_COMPLETED (OFF-013)
+   * Sent to: Employee, HR Manager
+   * When: Final settlement is processed
+   * Contains: Final amount, payment date, settlement details
+   * Purpose: Confirm offboarding is complete
+   */
+  FINAL_SETTLEMENT_COMPLETED = 'FINAL_SETTLEMENT_COMPLETED',
 }

@@ -297,26 +297,11 @@ export default function OffersPage() {
                               >
                                 Respond to Offer
                               </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedOffer(offer);
-                                  setUploadType("contract");
-                                  setIsUploadModalOpen(true);
-                                }}
-                              >
-                                Upload Contract
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedOffer(offer);
-                                  setUploadType("form");
-                                  setIsUploadModalOpen(true);
-                                }}
-                              >
-                                Upload Forms
-                              </Button>
+                              <div className="w-full mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-sm text-blue-800">
+                                  📋 <strong>Review this offer carefully.</strong> Once you accept, you'll be able to upload your signed contract and required forms.
+                                </p>
+                              </div>
                             </>
                           ) : (
                             <div className="w-full p-3 bg-yellow-50 border border-yellow-200 rounded-lg">

@@ -68,13 +68,38 @@ export class EmployeeProfileService {
       );
     }
 
-    // Generate employee number
-    const employeeNumber = await this.generateEmployeeNumber();
+    // ONB-004/ONB-005: Use provided employee number if given, otherwise generate one
+    let employeeNumber: string;
+    if (createEmployeeDto.employeeNumber) {
+      // Check if this employee number already exists
+      const existingWithNumber = await this.employeeModel
+        .findOne({ employeeNumber: createEmployeeDto.employeeNumber })
+        .exec();
+      if (existingWithNumber) {
+        throw new ConflictException(
+          `Employee number ${createEmployeeDto.employeeNumber} already exists. Please use a different employee number.`,
+        );
+      }
+      employeeNumber = createEmployeeDto.employeeNumber;
+    } else {
+      // Auto-generate employee number
+      employeeNumber = await this.generateEmployeeNumber();
+    }
 
     // Hash password if provided
+    // Check if password is already hashed (bcrypt hashes start with $2a$ or $2b$)
+    // This allows transferring already-hashed passwords from candidate → employee
     let hashedPassword: string | undefined;
     if (createEmployeeDto.password) {
-      hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
+      const isAlreadyHashed = createEmployeeDto.password.startsWith('$2a$') || 
+                               createEmployeeDto.password.startsWith('$2b$');
+      if (isAlreadyHashed) {
+        // Password is already hashed (e.g., transferred from candidate)
+        hashedPassword = createEmployeeDto.password;
+      } else {
+        // Plain text password - hash it
+        hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
+      }
     }
 
     // Create full name

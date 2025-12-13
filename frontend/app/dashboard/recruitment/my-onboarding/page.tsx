@@ -23,11 +23,11 @@ import { Select } from "@/components/leaves/Select";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 
-// CHANGED - Document types for upload
+// CHANGED - Document types for upload (lowercase to match backend enum)
 const DOCUMENT_TYPES = [
-  { value: "CONTRACT", label: "📝 Signed Contract", icon: "📝" },
-  { value: "ID", label: "🪪 ID Document (Passport/National ID)", icon: "🪪" },
-  { value: "CERTIFICATE", label: "📜 Certification/Diploma", icon: "📜" },
+  { value: "contract", label: "📝 Signed Contract", icon: "📝" },
+  { value: "id", label: "🪪 ID Document (Passport/National ID)", icon: "🪪" },
+  { value: "certificate", label: "📜 Certification/Diploma", icon: "📜" },
 ];
 
 // CHANGED - Task step icons
@@ -98,12 +98,13 @@ const isDocumentTask = (taskName: string): boolean => {
 };
 
 // CHANGED - Get suggested document type based on task name
+// Note: Backend expects lowercase values matching the DocumentType enum
 const getSuggestedDocType = (taskName: string): string => {
   const name = taskName.toLowerCase();
-  if (name.includes("contract")) return "CONTRACT";
-  if (name.includes("id")) return "ID";
-  if (name.includes("certification") || name.includes("certificate")) return "CERTIFICATE";
-  return "CONTRACT";
+  if (name.includes("contract")) return "contract";
+  if (name.includes("id")) return "id";
+  if (name.includes("certification") || name.includes("certificate")) return "certificate";
+  return "contract";
 };
 
 export default function MyOnboardingPage() {
@@ -119,7 +120,7 @@ export default function MyOnboardingPage() {
   const [selectedTask, setSelectedTask] = useState<OnboardingTask | null>(null);
   const [uploadForm, setUploadForm] = useState({
     file: null as File | null,
-    documentType: "CONTRACT",
+    documentType: "contract",
     nationalId: "",
     documentDescription: "",
   });
@@ -569,7 +570,20 @@ export default function MyOnboardingPage() {
             {/* CHANGED - Tasks by Department */}
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-gray-900">All Tasks</h2>
-              {Object.entries(tasksByDept).map(([department, tasks]) => (
+              {Object.entries(tasksByDept).map(([department, tasks]) => {
+                // Map department codes to user-friendly labels based on user stories
+                const getDepartmentLabel = (dept: string): string => {
+                  switch (dept) {
+                    case "IT": return "System Admin Tasks";      // ONB-009
+                    case "Admin": return "HR Employee Tasks";    // ONB-012
+                    case "HR": return "HR Tasks";
+                    case "Payroll": return "Payroll Tasks";
+                    case "Legal": return "Legal Tasks";
+                    default: return `${dept} Tasks`;
+                  }
+                };
+                
+                return (
                 <Card key={department}>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -586,7 +600,7 @@ export default function MyOnboardingPage() {
                           ? "⚖️"
                           : "📋"}
                       </span>
-                      {department} Tasks
+                      {getDepartmentLabel(department)}
                     </CardTitle>
                     <CardDescription>
                       {tasks.filter((t) => t.task.status === OnboardingTaskStatus.COMPLETED).length} of{" "}
@@ -655,7 +669,8 @@ export default function MyOnboardingPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
 
             {/* CHANGED - Help Section */}
@@ -749,7 +764,7 @@ export default function MyOnboardingPage() {
               </div>
             </div>
 
-            {uploadForm.documentType === "ID" && (
+            {uploadForm.documentType === "id" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   National ID / Passport Number

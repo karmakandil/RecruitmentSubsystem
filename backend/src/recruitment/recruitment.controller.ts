@@ -311,6 +311,14 @@ export class RecruitmentController {
     return this.service.finalizeOffer(id, dto);
   }
 
+  // ONB-002: Get contract status for an offer (so HR can see if candidate uploaded contract)
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Get('offer/:id/contract-status')
+  async getContractStatus(@Param('id') offerId: string) {
+    return this.service.getContractStatusForOffer(offerId);
+  }
+
   // changed - modified to accept either file upload OR manual JSON body for testing
   @UseGuards(RolesGuard)
   @Roles(SystemRole.JOB_CANDIDATE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
@@ -468,8 +476,9 @@ export class RecruitmentController {
   }
 
   // changed - modified to accept either file upload OR manual entry for testing
+  // ONB-007: New hires can upload their own documents for onboarding tasks
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Post('onboarding/:id/task/:taskIndex/upload')
   @UseInterceptors(FileInterceptor('file', multerConfig))
   async uploadTaskDocument(
@@ -718,6 +727,14 @@ export class RecruitmentController {
   @Get('offboarding/my-resignation')
   getMyResignationRequests(@Req() req: any) {
     return this.service.getMyResignationRequests(req.user);
+  }
+
+  // NEW: HR Manager gets ALL termination/resignation requests (OFF-001, OFF-018, OFF-019)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('offboarding/terminations')
+  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  getAllTerminationRequests() {
+    return this.service.getAllTerminationRequests();
   }
 
   // changed - added JwtAuthGuard

@@ -43,6 +43,64 @@ export default function HROnboardingPage() {
     deadline: "",
   });
 
+  // CHANGED - Check user roles for task permissions
+  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
+  const isHREmployee = user?.roles?.includes(SystemRole.HR_EMPLOYEE);
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
+
+  // CHANGED - Check if a task is a document upload task (done by New Hire, not HR)
+  const isDocumentUploadTask = (taskName: string): boolean => {
+    const name = taskName.toLowerCase();
+    return name.includes('upload') || 
+           name.includes('document') || 
+           name.includes('id document') ||
+           name.includes('certification') ||
+           name.includes('contract');
+  };
+
+  // CHANGED - Determine if user can update a specific task based on department, role, and task name
+  const canUpdateTask = (taskDepartment: string, taskName: string): boolean => {
+    // Document upload tasks are ONLY for the New Hire to complete - HR can only view
+    if (isDocumentUploadTask(taskName)) {
+      return false; // No one in HR/Admin/IT can update document tasks - only the employee
+    }
+
+    // Payroll tasks are automatic - no one updates them manually
+    if (taskDepartment === 'Payroll') {
+      return false;
+    }
+
+    // HR Manager can only update HR department tasks (e.g., "Set up Benefits")
+    if (isHRManager && taskDepartment === 'HR') return true;
+    
+    // System Admin can update IT department tasks
+    if (isSystemAdmin && taskDepartment === 'IT') return true;
+    
+    // HR Employee can update Admin department tasks
+    if (isHREmployee && taskDepartment === 'Admin') return true;
+    
+    // System Admin has broader access as fallback (except document tasks)
+    if (isSystemAdmin) return true;
+    
+    return false;
+  };
+
+  // CHANGED - Get label for who should complete this task
+  const getTaskResponsibleRole = (taskDepartment: string, taskName: string): string => {
+    // Document upload tasks are done by the New Hire
+    if (isDocumentUploadTask(taskName)) {
+      return 'New Hire';
+    }
+    
+    switch (taskDepartment) {
+      case 'IT': return 'System Admin';
+      case 'Admin': return 'HR Employee';
+      case 'HR': return 'HR Manager';
+      case 'Payroll': return 'System (Auto)';
+      default: return taskDepartment;
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -191,6 +249,37 @@ export default function HROnboardingPage() {
           </div>
         </div>
 
+        {/* CHANGED - Permission Legend */}
+        <Card className="mb-6 bg-blue-50 border-blue-200">
+          <CardContent className="py-4">
+            <h3 className="font-semibold text-blue-900 mb-2">📋 Task Permissions</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800">New Hire</span>
+                <span className="text-gray-600">→ Document Uploads</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">HR Manager</span>
+                <span className="text-gray-600">→ Benefits Setup</span>
+                {isHRManager && <span className="text-green-600 text-xs">✓ You</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">System Admin</span>
+                <span className="text-gray-600">→ IT Access</span>
+                {isSystemAdmin && <span className="text-green-600 text-xs">✓ You</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800">HR Employee</span>
+                <span className="text-gray-600">→ Desk, Badge</span>
+                {isHREmployee && <span className="text-green-600 text-xs">✓ You</span>}
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Document upload tasks are completed by the New Hire only. You can view all tasks, but only update tasks assigned to your role.
+            </p>
+          </CardContent>
+        </Card>
+
         {loading ? (
           <div className="text-center py-12">
             <p className="text-gray-500">Loading onboardings...</p>
@@ -209,9 +298,29 @@ export default function HROnboardingPage() {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-xl">
-                        Employee: {onboarding.employee?.fullName || onboarding.employeeId}
-                      </CardTitle>
+                      {/* Employee Name - Prominent Display */}
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <span className="text-blue-600 font-bold text-lg">
+                            {(onboarding.employee?.fullName || onboarding.employee?.firstName || 'E')[0].toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <CardTitle className="text-xl text-gray-900">
+                            {onboarding.employee?.fullName || 
+                             `${onboarding.employee?.firstName || ''} ${onboarding.employee?.lastName || ''}`.trim() || 
+                             'Unknown Employee'}
+                          </CardTitle>
+                          <p className="text-sm text-gray-500">
+                            {onboarding.employee?.employeeNumber && (
+                              <span className="font-medium">#{onboarding.employee.employeeNumber}</span>
+                            )}
+                            {onboarding.employee?.workEmail && (
+                              <span className="ml-2">• {onboarding.employee.workEmail}</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
                       <CardDescription className="mt-1">
                         Progress: {getProgressPercentage(onboarding)}% •{" "}
                         {onboarding.tasks?.length || 0} tasks
@@ -239,42 +348,71 @@ export default function HROnboardingPage() {
                   </div>
                   {onboarding.tasks && onboarding.tasks.length > 0 ? (
                     <div className="space-y-2">
-                      {onboarding.tasks.map((task, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 border rounded"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              {/* CHANGED - Added text-gray-900 for visibility */}
-                              <span className="font-medium text-gray-900">{task.name}</span>
-                              <StatusBadge status={task.status} type="onboarding" />
+                      {onboarding.tasks.map((task, index) => {
+                        const userCanUpdate = canUpdateTask(task.department, task.name);
+                        const responsibleRole = getTaskResponsibleRole(task.department, task.name);
+                        
+                        return (
+                          <div
+                            key={index}
+                            className={`flex items-center justify-between p-3 border rounded ${
+                              userCanUpdate ? 'bg-white' : 'bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                {/* Task name with department icon */}
+                                <span className="text-lg">
+                                  {task.department === 'IT' ? '💻' : 
+                                   task.department === 'Admin' ? '🏢' : 
+                                   task.department === 'HR' ? '👥' : 
+                                   task.department === 'Payroll' ? '💵' : '📋'}
+                                </span>
+                                <span className="font-medium text-gray-900">{task.name}</span>
+                                <StatusBadge status={task.status} type="onboarding" />
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1">
+                                <span className={`inline-block px-2 py-0.5 rounded text-xs mr-2 ${
+                                  task.department === 'IT' ? 'bg-blue-100 text-blue-800' :
+                                  task.department === 'Admin' ? 'bg-purple-100 text-purple-800' :
+                                  task.department === 'HR' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {responsibleRole}
+                                </span>
+                                {task.deadline && `Deadline: ${new Date(task.deadline).toLocaleDateString()}`}
+                              </p>
+                              {task.notes && (
+                                <p className="text-sm text-gray-600 mt-1">{task.notes}</p>
+                              )}
                             </div>
-                            <p className="text-sm text-gray-500 mt-1">
-                              {task.department} {task.deadline && `• Deadline: ${new Date(task.deadline).toLocaleDateString()}`}
-                            </p>
-                            {task.notes && (
-                              <p className="text-sm text-gray-600 mt-1">{task.notes}</p>
-                            )}
+                            <div className="flex gap-2 items-center">
+                              {userCanUpdate ? (
+                                /* User can update - show dropdown */
+                                <Select
+                                  value={task.status}
+                                  onChange={(e) =>
+                                    handleUpdateTask(onboarding._id, index, {
+                                      status: e.target.value as OnboardingTaskStatus,
+                                    })
+                                  }
+                                  className="w-32"
+                                  options={[
+                                    { value: OnboardingTaskStatus.PENDING, label: "Pending" },
+                                    { value: OnboardingTaskStatus.IN_PROGRESS, label: "In Progress" },
+                                    { value: OnboardingTaskStatus.COMPLETED, label: "Completed" },
+                                  ]}
+                                />
+                              ) : (
+                                /* User cannot update - show view-only badge */
+                                <span className="text-xs text-gray-400 italic">
+                                  View only
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Select
-                              value={task.status}
-                              onChange={(e) =>
-                                handleUpdateTask(onboarding._id, index, {
-                                  status: e.target.value as OnboardingTaskStatus,
-                                })
-                              }
-                              className="w-32"
-                              options={[
-                                { value: OnboardingTaskStatus.PENDING, label: "Pending" },
-                                { value: OnboardingTaskStatus.IN_PROGRESS, label: "In Progress" },
-                                { value: OnboardingTaskStatus.COMPLETED, label: "Completed" },
-                              ]}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-gray-500 text-sm">No tasks assigned yet.</p>

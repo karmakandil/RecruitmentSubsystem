@@ -61,7 +61,7 @@ export default function TerminationsPage() {
     loadData();
   }, []);
 
-  // CHANGED - Load employees and existing terminations
+  // CHANGED - Load employees and ALL terminations for HR Manager
   const loadData = async () => {
     try {
       setLoading(true);
@@ -71,12 +71,12 @@ export default function TerminationsPage() {
       const employeeList = employeeResponse?.data || employeeResponse || [];
       setEmployees(Array.isArray(employeeList) ? employeeList : []);
 
-      // Load existing resignation/termination requests for current user
+      // FIXED: Load ALL termination/resignation requests (not just current user's)
       try {
-        const resignations = await recruitmentApi.getMyResignationRequests();
-        setTerminations(Array.isArray(resignations) ? resignations : []);
+        const allTerminations = await recruitmentApi.getAllTerminationRequests();
+        setTerminations(Array.isArray(allTerminations) ? allTerminations : []);
       } catch (e) {
-        // HR Manager viewing - may not have their own resignations
+        console.log("Could not load all terminations:", e);
         setTerminations([]);
       }
     } catch (error: any) {
@@ -325,77 +325,107 @@ export default function TerminationsPage() {
               </CardContent>
             </Card>
 
-            {/* CHANGED - Existing Termination Requests Section */}
+            {/* CHANGED - Separation Requests Section (Resignations + Terminations) */}
             <Card>
               <CardHeader>
-                <CardTitle>Termination Requests</CardTitle>
+                <CardTitle>Separation Requests</CardTitle>
                 <CardDescription>
-                  Track and manage existing termination requests
+                  Manage employee resignations (OFF-018) and terminations (OFF-001)
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {terminations.length === 0 ? (
                   <p className="text-gray-500 text-center py-4">
-                    No termination requests found.
+                    No separation requests found.
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {terminations.map((term) => (
-                      <div
-                        key={term._id}
-                        className="border rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h3 className="font-semibold text-gray-900">
-                              {term.employee?.fullName ||
-                                term.employee?.employeeNumber ||
-                                term.employeeId}
-                            </h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                              {term.reason}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-2">
-                              Initiated:{" "}
-                              {term.createdAt
-                                ? new Date(term.createdAt).toLocaleDateString()
-                                : "N/A"}
-                              {term.initiator && ` • By: ${term.initiator}`}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <span
-                              className={`px-3 py-1 text-xs rounded-full ${getStatusColor(
-                                term.status
-                              )}`}
-                            >
-                              {term.status}
-                            </span>
-                            {term.status === "pending" && (
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() =>
-                                    handleUpdateStatus(term._id, "approved")
-                                  }
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() =>
-                                    handleUpdateStatus(term._id, "rejected")
-                                  }
-                                >
-                                  Reject
-                                </Button>
+                    {terminations.map((term) => {
+                      // Determine if this is a resignation or termination
+                      const isResignation = term.initiator === TerminationInitiation.EMPLOYEE;
+                      const typeLabel = isResignation ? "Resignation" : "Termination";
+                      const typeColor = isResignation 
+                        ? "bg-blue-100 text-blue-800" 
+                        : "bg-red-100 text-red-800";
+                      
+                      return (
+                        <div
+                          key={term._id}
+                          className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
+                            isResignation ? 'border-blue-200' : 'border-red-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold text-gray-900">
+                                  {term.employee?.fullName ||
+                                    term.employee?.employeeNumber ||
+                                    term.employeeId}
+                                </h3>
+                                {/* Type Badge: Resignation vs Termination */}
+                                <span className={`px-2 py-0.5 text-xs rounded-full ${typeColor}`}>
+                                  {typeLabel}
+                                </span>
                               </div>
-                            )}
+                              {term.employee?.department && (
+                                <p className="text-sm text-gray-500">
+                                  {term.employee.department} • {term.employee.position || 'N/A'}
+                                </p>
+                              )}
+                              <p className="text-sm text-gray-600 mt-2">
+                                <span className="font-medium">Reason:</span> {term.reason}
+                              </p>
+                              {term.employeeComments && isResignation && (
+                                <p className="text-sm text-gray-500 mt-1">
+                                  <span className="font-medium">Employee Comments:</span> {term.employeeComments}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-400 mt-2">
+                                Submitted:{" "}
+                                {term.createdAt
+                                  ? new Date(term.createdAt).toLocaleDateString()
+                                  : "N/A"}
+                                {term.terminationDate && (
+                                  <span> • Requested Last Day: {new Date(term.terminationDate).toLocaleDateString()}</span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`px-3 py-1 text-xs rounded-full ${getStatusColor(
+                                  term.status
+                                )}`}
+                              >
+                                {term.status}
+                              </span>
+                              {term.status === "pending" && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700"
+                                    onClick={() =>
+                                      handleUpdateStatus(term._id, "approved")
+                                    }
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleUpdateStatus(term._id, "rejected")
+                                    }
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>

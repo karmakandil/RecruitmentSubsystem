@@ -15,6 +15,7 @@ import {
   OfferResponseStatus,
   FinalizeOfferDto,
   CreateOfferDto,
+  CreateEmployeeFromContractDto,
 } from "@/types/recruitment";
 import { Textarea } from "@/components/leaves/Textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
@@ -49,6 +50,22 @@ export default function JobOffersApprovalsPage() {
   const [isRejectApplicationModalOpen, setIsRejectApplicationModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [creatingOffer, setCreatingOffer] = useState(false);
+  
+  // Create Employee state
+  const [isCreateEmployeeModalOpen, setIsCreateEmployeeModalOpen] = useState(false);
+  const [creatingEmployee, setCreatingEmployee] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState<CreateEmployeeFromContractDto>({
+    startDate: "",
+    workEmail: "",
+    employeeNumber: "",
+  });
+  
+  // ONB-002: Contract status tracking - HR needs to see if candidate uploaded contract
+  const [contractStatuses, setContractStatuses] = useState<Record<string, {
+    hasContract: boolean;
+    hasSignedDocument: boolean;
+    message: string;
+  }>>({});
 
   // =============================================================
   // SORTING AND FILTERING STATE
@@ -125,6 +142,7 @@ export default function JobOffersApprovalsPage() {
       // Show applications that need HR Manager action:
       // 1. Status "offer" - already have offers, need approval/finalization
       // 2. Status "in_process" with completed interviews - need offer creation
+      // 3. Status "hired" - need to create employee profile
       //
       // Interview becomes 'completed' when ALL panel members submit feedback
       // =============================================================
@@ -134,6 +152,9 @@ export default function JobOffersApprovalsPage() {
         
         // Applications in process with completed interviews need offer creation
         if (app.status === ApplicationStatus.IN_PROCESS && hasInterviewFeedback(app)) return true;
+        
+        // Hired applications need employee creation
+        if (app.status === "hired") return true;
         
         return false;
       });
@@ -196,20 +217,48 @@ export default function JobOffersApprovalsPage() {
 
       // Load offers for these applications
       const offerMap: Record<string, Offer> = {};
+      const contractStatusMap: Record<string, { hasContract: boolean; hasSignedDocument: boolean; message: string }> = {};
+      
       for (const app of offerApps) {
-        try {
-          const offer = await recruitmentApi.getOfferByApplicationId(app._id);
-          if (offer && offer._id) {
-            offerMap[app._id] = offer;
-          }
-        } catch (error: any) {
-          // 404 is expected if offer doesn't exist yet
-          if (error?.response?.status !== 404) {
-            console.error(`Error loading offer for application ${app._id}:`, error);
+        // Only try to load offer if application has status "offer" or "hired"
+        // Applications in "in_process" won't have offers yet
+        if (app.status === "offer" || app.status === "hired") {
+          try {
+            const offer = await recruitmentApi.getOfferByApplicationId(app._id);
+            if (offer && offer._id) {
+              offerMap[app._id] = offer;
+              
+              // ONB-002: Load contract status for accepted offers
+              // HR Manager needs to see if candidate has uploaded signed contract
+              if (offer.applicantResponse === OfferResponseStatus.ACCEPTED) {
+                try {
+                  const contractStatus = await recruitmentApi.getContractStatus(offer._id);
+                  contractStatusMap[offer._id] = {
+                    hasContract: contractStatus.hasContract,
+                    hasSignedDocument: contractStatus.hasSignedDocument,
+                    message: contractStatus.message,
+                  };
+                } catch (e) {
+                  // If contract status fails, assume no contract
+                  contractStatusMap[offer._id] = {
+                    hasContract: false,
+                    hasSignedDocument: false,
+                    message: 'Unable to check contract status',
+                  };
+                }
+              }
+            }
+          } catch (error: any) {
+            // "Offer not found" is expected if offer doesn't exist yet - silently skip
+            const errorMessage = error?.message || '';
+            if (!errorMessage.toLowerCase().includes('not found')) {
+              console.error(`Error loading offer for application ${app._id}:`, error);
+            }
           }
         }
       }
       setOffers(offerMap);
+      setContractStatuses(contractStatusMap);
     } catch (error: any) {
       showToast(error.message || "Failed to load data", "error");
     } finally {
@@ -551,6 +600,49 @@ export default function JobOffersApprovalsPage() {
            "Unknown Position";
   };
 
+  // =============================================================
+  // CREATE EMPLOYEE HANDLERS
+  // =============================================================
+  const handleOpenCreateEmployee = (application: Application, offer: Offer) => {
+    setSelectedApplication(application);
+    setSelectedOffer(offer);
+    const candidateName = getCandidateName(application);
+    // Generate a suggested employee number
+    const suggestedEmployeeNumber = `EMP-${Date.now().toString().slice(-6)}`;
+    setEmployeeForm({
+      startDate: new Date().toISOString().split('T')[0],
+      workEmail: `${candidateName.toLowerCase().replace(/\s+/g, '.')}@company.com`,
+      employeeNumber: suggestedEmployeeNumber,
+    });
+    setIsCreateEmployeeModalOpen(true);
+  };
+
+  const handleCreateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOffer?._id) {
+      showToast("No offer selected", "error");
+      return;
+    }
+
+    try {
+      setCreatingEmployee(true);
+      await recruitmentApi.createEmployeeFromContract(selectedOffer._id, employeeForm);
+      showToast("Employee created successfully! Onboarding has been initiated.", "success");
+      setIsCreateEmployeeModalOpen(false);
+      setSelectedOffer(null);
+      setSelectedApplication(null);
+      await loadData();
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || 
+                          error?.response?.data?.error || 
+                          error?.message || 
+                          "Failed to create employee";
+      showToast(errorMessage, "error");
+    } finally {
+      setCreatingEmployee(false);
+    }
+  };
+
   return (
     <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN]}>
       <div className="container mx-auto px-6 py-8">
@@ -816,6 +908,39 @@ export default function JobOffersApprovalsPage() {
                             </>
                           )}
                         </>
+                      )}
+                      {/* ONB-002: Create Employee button - shows when offer is ACCEPTED + APPROVED */}
+                      {/* Contract must be uploaded by candidate before HR can create employee */}
+                      {offer && 
+                        offer.applicantResponse === OfferResponseStatus.ACCEPTED && 
+                        offer.finalStatus === OfferFinalStatus.APPROVED && (
+                        (() => {
+                          const contractStatus = contractStatuses[offer._id];
+                          const hasContract = contractStatus?.hasSignedDocument;
+                          return (
+                            <div className="flex flex-col gap-2">
+                              {/* Contract Status Indicator */}
+                              {!hasContract ? (
+                                <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                  ⏳ Waiting for candidate to upload signed contract
+                                </div>
+                              ) : (
+                                <div className="text-xs text-green-600 bg-green-50 border border-green-200 rounded px-2 py-1">
+                                  ✓ Signed contract uploaded
+                                </div>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenCreateEmployee(application, offer)}
+                                className={`flex-1 ${hasContract ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'} text-white`}
+                                disabled={creatingEmployee || !hasContract}
+                                title={!hasContract ? 'Candidate must upload signed contract first (ONB-002)' : 'Create employee profile'}
+                              >
+                                {creatingEmployee ? "Creating..." : "Create Employee"}
+                              </Button>
+                            </div>
+                          );
+                        })()
                       )}
                     </div>
                   </CardContent>
@@ -1384,6 +1509,99 @@ export default function JobOffersApprovalsPage() {
                 </Button>
               </div>
             </div>
+          )}
+        </Modal>
+
+        {/* Create Employee Modal */}
+        <Modal
+          isOpen={isCreateEmployeeModalOpen}
+          onClose={() => {
+            setIsCreateEmployeeModalOpen(false);
+            setSelectedApplication(null);
+            setSelectedOffer(null);
+          }}
+          title="Create Employee Profile"
+        >
+          {selectedApplication && selectedOffer && (
+            <form onSubmit={handleCreateEmployee} className="space-y-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <p className="text-green-800 font-medium">
+                  ✓ Offer Accepted by: {getCandidateName(selectedApplication)}
+                </p>
+                <p className="text-green-700 text-sm mt-1">
+                  Position: {getJobTitle(selectedApplication)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Employee Number *
+                </label>
+                <Input
+                  type="text"
+                  value={employeeForm.employeeNumber}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, employeeNumber: e.target.value })}
+                  required
+                  placeholder="e.g., EMP-001234"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This will be the employee's login username.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Work Email *
+                </label>
+                <Input
+                  type="email"
+                  value={employeeForm.workEmail}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, workEmail: e.target.value })}
+                  required
+                  placeholder="john.doe@company.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date *
+                </label>
+                <Input
+                  type="date"
+                  value={employeeForm.startDate}
+                  onChange={(e) => setEmployeeForm({ ...employeeForm, startDate: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  ℹ️ The new employee will be able to log in using the Employee Number above with the same password they used during the application process.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsCreateEmployeeModalOpen(false);
+                    setSelectedApplication(null);
+                    setSelectedOffer(null);
+                  }}
+                  disabled={creatingEmployee}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={creatingEmployee || !employeeForm.employeeNumber || !employeeForm.workEmail || !employeeForm.startDate}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {creatingEmployee ? "Creating Employee..." : "Create Employee & Start Onboarding"}
+                </Button>
+              </div>
+            </form>
           )}
         </Modal>
       </div>

@@ -295,6 +295,51 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
+              {/* HR Onboarding - ONB-001, ONB-002, ONB-004 */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-800">🎯 HR Onboarding</CardTitle>
+                  <CardDescription className="text-green-700">
+                    Manage new hire onboarding, track task progress, and ensure compliance (ONB-001 to ONB-019)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/hr-onboarding">
+                    <Button className="w-full bg-green-600 hover:bg-green-700">Manage Onboarding</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Termination Management - OFF-001 */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-red-200 bg-red-50">
+                <CardHeader>
+                  <CardTitle className="text-red-800">⚠️ Termination Management</CardTitle>
+                  <CardDescription className="text-red-700">
+                    Review performance, initiate terminations, and manage exit requests (OFF-001)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/terminations">
+                    <Button className="w-full bg-red-600 hover:bg-red-700">Manage Terminations</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Offboarding Checklists - OFF-006, OFF-010, OFF-013 */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200 bg-orange-50">
+                <CardHeader>
+                  <CardTitle className="text-orange-800">📋 Offboarding Checklists</CardTitle>
+                  <CardDescription className="text-orange-700">
+                    Manage exit clearance, department sign-offs, and final settlements (OFF-006, OFF-010, OFF-013)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/offboarding-checklists">
+                    <Button className="w-full bg-orange-600 hover:bg-orange-700">Manage Offboarding</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
               {/* Referrals */}
               <Card className="hover:shadow-lg transition-shadow border-2 border-gray-200">
                 <CardHeader>

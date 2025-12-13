@@ -1729,4 +1729,1325 @@ export class NotificationsService {
       return [];
     }
   }
+
+  // =============================================================================
+  // ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS (ONB-018, ONB-019)
+  // =============================================================================
+  //
+  // This section handles notifications for the onboarding-to-payroll integration.
+  // When a new hire is onboarded, the payroll team needs to be notified so they
+  // can include the employee in the next payroll run.
+  //
+  // Flow:
+  //   1. Employee profile created from contract
+  //   2. Onboarding created with payroll tasks
+  //   3. triggerPayrollInitiation() called → notifyPayrollTeamNewHire()
+  //   4. processSigningBonus() called → notifyPayrollTeamSigningBonus()
+  //   5. Payroll team reviews pending items before payroll run
+  //
+  // =============================================================================
+
+  /**
+   * ONB-018: Notify Payroll Team about New Hire Ready for Payroll
+   * 
+   * Purpose: Inform Payroll Specialist and Payroll Manager that a new employee
+   * has been onboarded and will be included in the next payroll run.
+   * 
+   * Called by: triggerPayrollInitiation() in RecruitmentService
+   * 
+   * Flow:
+   * createEmployeeFromContract() → triggerPayrollInitiation() → notifyPayrollTeamNewHire()
+   *                                                                    ↓
+   *                                                        Payroll Specialist sees notification
+   *                                                        "New hire ready for payroll"
+   *                                                                    ↓
+   *                                                        Employee included in next payroll run
+   * 
+   * @param payrollTeamIds - Array of Payroll Specialist/Manager user IDs
+   * @param newHireDetails - Object containing:
+   *   - employeeId: MongoDB ObjectId of the new employee
+   *   - employeeName: Full name of the new hire
+   *   - employeeNumber: Employee number/ID
+   *   - positionTitle: Job title
+   *   - departmentName: Department name
+   *   - grossSalary: Monthly gross salary
+   *   - contractStartDate: Employment start date
+   *   - signingBonus: (optional) Signing bonus amount
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyPayrollTeamNewHire(
+    payrollTeamIds: string[],
+    newHireDetails: {
+      employeeId: string;
+      employeeName: string;
+      employeeNumber?: string;
+      positionTitle: string;
+      departmentName?: string;
+      grossSalary: number;
+      contractStartDate: Date;
+      signingBonus?: number;
+    },
+  ) {
+    if (!payrollTeamIds || payrollTeamIds.length === 0) {
+      console.log('[PAYROLL_NOTIFICATION] No payroll team members to notify');
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedStartDate = newHireDetails.contractStartDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const formattedSalary = newHireDetails.grossSalary.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+
+    for (const payrollUserId of payrollTeamIds) {
+      try {
+        let message = `📋 New Hire Ready for Payroll (ONB-018)\n\n` +
+          `A new employee has been onboarded and is ready for payroll inclusion.\n\n` +
+          `👤 Employee Details:\n` +
+          `• Name: ${newHireDetails.employeeName}\n` +
+          (newHireDetails.employeeNumber ? `• Employee #: ${newHireDetails.employeeNumber}\n` : '') +
+          `• Position: ${newHireDetails.positionTitle}\n` +
+          (newHireDetails.departmentName ? `• Department: ${newHireDetails.departmentName}\n` : '') +
+          `• Start Date: ${formattedStartDate}\n` +
+          `• Gross Salary: ${formattedSalary}\n`;
+
+        if (newHireDetails.signingBonus && newHireDetails.signingBonus > 0) {
+          const formattedBonus = newHireDetails.signingBonus.toLocaleString('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 0,
+          });
+          message += `• Signing Bonus: ${formattedBonus} (pending review)\n`;
+        }
+
+        message += `\n📌 Action Required:\n` +
+          `• Employee will be automatically included in the next payroll run\n` +
+          `• Verify salary and benefits configuration\n` +
+          `• Review any pending signing bonuses`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(payrollUserId),
+          type: NotificationType.NEW_HIRE_PAYROLL_READY,
+          message: message,
+          data: {
+            employeeId: newHireDetails.employeeId,
+            employeeName: newHireDetails.employeeName,
+            employeeNumber: newHireDetails.employeeNumber,
+            positionTitle: newHireDetails.positionTitle,
+            departmentName: newHireDetails.departmentName,
+            grossSalary: newHireDetails.grossSalary,
+            contractStartDate: newHireDetails.contractStartDate.toISOString(),
+            signingBonus: newHireDetails.signingBonus,
+            action: 'NEW_HIRE_PAYROLL_READY',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+        console.log(`[PAYROLL_NOTIFICATION] Sent NEW_HIRE_PAYROLL_READY to: ${payrollUserId}`);
+      } catch (error) {
+        console.error(`[PAYROLL_NOTIFICATION] Failed to notify payroll user ${payrollUserId}:`, error);
+      }
+    }
+
+    console.log(`[PAYROLL_NOTIFICATION] Created ${notifications.length} notifications for payroll team (ONB-018)`);
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+      notifications,
+    };
+  }
+
+  /**
+   * ONB-019: Notify Payroll Team about Signing Bonus Pending Review
+   * 
+   * Purpose: Inform Payroll Specialist and Payroll Manager that a signing bonus
+   * record has been created for a new hire and needs review before payroll run.
+   * 
+   * Called by: processSigningBonus() in RecruitmentService
+   * 
+   * Flow:
+   * createEmployeeFromContract() → processSigningBonus() → notifyPayrollTeamSigningBonus()
+   *                                                                ↓
+   *                                                    Payroll team sees notification
+   *                                                    "Signing bonus pending review"
+   *                                                                ↓
+   *                                                    Payroll team reviews/approves bonus
+   *                                                    (via reviewSigningBonus in payroll-execution)
+   * 
+   * @param payrollTeamIds - Array of Payroll Specialist/Manager user IDs
+   * @param bonusDetails - Object containing:
+   *   - employeeId: MongoDB ObjectId of the employee
+   *   - employeeName: Full name of the employee
+   *   - employeeNumber: Employee number/ID
+   *   - positionTitle: Job title
+   *   - signingBonusAmount: Bonus amount
+   *   - signingBonusId: MongoDB ObjectId of the EmployeeSigningBonus record
+   *   - paymentDate: Expected payment date
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyPayrollTeamSigningBonus(
+    payrollTeamIds: string[],
+    bonusDetails: {
+      employeeId: string;
+      employeeName: string;
+      employeeNumber?: string;
+      positionTitle: string;
+      signingBonusAmount: number;
+      signingBonusId?: string;
+      paymentDate: Date;
+    },
+  ) {
+    if (!payrollTeamIds || payrollTeamIds.length === 0) {
+      console.log('[PAYROLL_NOTIFICATION] No payroll team members to notify about signing bonus');
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedPaymentDate = bonusDetails.paymentDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const formattedBonus = bonusDetails.signingBonusAmount.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+
+    for (const payrollUserId of payrollTeamIds) {
+      try {
+        const message = `🎁 Signing Bonus Pending Review (ONB-019)\n\n` +
+          `A signing bonus has been created for a new hire and requires your review.\n\n` +
+          `👤 Employee Details:\n` +
+          `• Name: ${bonusDetails.employeeName}\n` +
+          (bonusDetails.employeeNumber ? `• Employee #: ${bonusDetails.employeeNumber}\n` : '') +
+          `• Position: ${bonusDetails.positionTitle}\n\n` +
+          `💰 Bonus Details:\n` +
+          `• Amount: ${formattedBonus}\n` +
+          `• Payment Date: ${formattedPaymentDate}\n` +
+          (bonusDetails.signingBonusId ? `• Bonus ID: ${bonusDetails.signingBonusId.slice(-8)}\n` : '') +
+          `\n📌 Action Required:\n` +
+          `• Review the signing bonus in Payroll → Review Signing Bonuses\n` +
+          `• Approve or reject before payroll initiation\n` +
+          `• Ensure bonus is processed in the correct payroll period`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(payrollUserId),
+          type: NotificationType.SIGNING_BONUS_PENDING_REVIEW,
+          message: message,
+          data: {
+            employeeId: bonusDetails.employeeId,
+            employeeName: bonusDetails.employeeName,
+            employeeNumber: bonusDetails.employeeNumber,
+            positionTitle: bonusDetails.positionTitle,
+            signingBonusAmount: bonusDetails.signingBonusAmount,
+            signingBonusId: bonusDetails.signingBonusId,
+            paymentDate: bonusDetails.paymentDate.toISOString(),
+            action: 'SIGNING_BONUS_PENDING_REVIEW',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+        console.log(`[PAYROLL_NOTIFICATION] Sent SIGNING_BONUS_PENDING_REVIEW to: ${payrollUserId}`);
+      } catch (error) {
+        console.error(`[PAYROLL_NOTIFICATION] Failed to notify payroll user ${payrollUserId} about signing bonus:`, error);
+      }
+    }
+
+    console.log(`[PAYROLL_NOTIFICATION] Created ${notifications.length} notifications for signing bonus (ONB-019)`);
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+      notifications,
+    };
+  }
+
+  /**
+   * ONB-018: Notify HR about Payroll Task Completion
+   * 
+   * Purpose: Confirm to HR Manager/Employee that the payroll initiation task
+   * has been completed for a new hire.
+   * 
+   * Called by: triggerPayrollInitiation() in RecruitmentService
+   * 
+   * @param hrUserIds - Array of HR Manager/Employee user IDs
+   * @param completionDetails - Object containing employee and task details
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyHRPayrollTaskCompleted(
+    hrUserIds: string[],
+    completionDetails: {
+      employeeId: string;
+      employeeName: string;
+      positionTitle: string;
+      grossSalary: number;
+    },
+  ) {
+    if (!hrUserIds || hrUserIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedSalary = completionDetails.grossSalary.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+
+    for (const hrUserId of hrUserIds) {
+      try {
+        const message = `✅ Payroll Task Completed (ONB-018)\n\n` +
+          `Payroll initiation has been completed for a new hire.\n\n` +
+          `👤 Employee: ${completionDetails.employeeName}\n` +
+          `📋 Position: ${completionDetails.positionTitle}\n` +
+          `💰 Gross Salary: ${formattedSalary}\n\n` +
+          `The employee is now ready for payroll inclusion. ` +
+          `The payroll team has been notified.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrUserId),
+          type: NotificationType.ONBOARDING_PAYROLL_TASK_COMPLETED,
+          message: message,
+          data: {
+            employeeId: completionDetails.employeeId,
+            employeeName: completionDetails.employeeName,
+            positionTitle: completionDetails.positionTitle,
+            grossSalary: completionDetails.grossSalary,
+            action: 'PAYROLL_TASK_COMPLETED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`[PAYROLL_NOTIFICATION] Failed to notify HR user ${hrUserId}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  // =============================================================================
+  // ONBOARDING NOTIFICATIONS (ONB-004, ONB-005, ONB-007, ONB-009, ONB-012)
+  // =============================================================================
+
+  /**
+   * ONB-005: Send Welcome Notification to New Hire
+   * 
+   * Purpose: Welcome the new employee and provide an overview of onboarding tasks.
+   * 
+   * Called by: createOnboarding() in RecruitmentService
+   * 
+   * @param newHireId - MongoDB ObjectId of the new hire
+   * @param welcomeDetails - Object containing onboarding summary
+   * @returns Object with success status and notification object
+   */
+  async notifyNewHireWelcome(
+    newHireId: string,
+    welcomeDetails: {
+      employeeName: string;
+      employeeNumber: string; // ONB-004/ONB-005: Include employee number so new hire can log in
+      positionTitle: string;
+      startDate: Date;
+      totalTasks: number;
+      onboardingId: string;
+    },
+  ) {
+    if (!newHireId) {
+      return { success: false, message: 'No new hire ID provided' };
+    }
+
+    try {
+      const formattedStartDate = welcomeDetails.startDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      // ONB-004/ONB-005: Include employee number in welcome message so new hire can log in
+      const message = `🎉 Welcome to the Team, ${welcomeDetails.employeeName}!\n\n` +
+        `We're excited to have you join us as ${welcomeDetails.positionTitle}.\n\n` +
+        `🔐 Your Login Credentials:\n` +
+        `• Employee Number: ${welcomeDetails.employeeNumber}\n` +
+        `• Password: Use the same password you created during registration\n\n` +
+        `📋 Your Onboarding Summary:\n` +
+        `• Start Date: ${formattedStartDate}\n` +
+        `• Total Tasks: ${welcomeDetails.totalTasks} tasks to complete\n\n` +
+        `📌 Next Steps:\n` +
+        `• Log in with your Employee Number above\n` +
+        `• Visit "My Onboarding" to view your task tracker\n` +
+        `• Upload required documents (ID, certifications)\n` +
+        `• Complete tasks before deadlines\n\n` +
+        `If you have any questions, contact HR. Welcome aboard! 🚀`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(newHireId),
+        type: NotificationType.ONBOARDING_WELCOME,
+        message: message,
+        data: {
+          employeeName: welcomeDetails.employeeName,
+          employeeNumber: welcomeDetails.employeeNumber,
+          positionTitle: welcomeDetails.positionTitle,
+          startDate: welcomeDetails.startDate.toISOString(),
+          totalTasks: welcomeDetails.totalTasks,
+          onboardingId: welcomeDetails.onboardingId,
+          action: 'WELCOME',
+        },
+        isRead: false,
+      });
+
+      console.log(`[ONBOARDING_NOTIFICATION] Sent WELCOME notification to new hire: ${newHireId} (Employee Number: ${welcomeDetails.employeeNumber})`);
+
+      return {
+        success: true,
+        notification,
+      };
+    } catch (error) {
+      console.error(`[ONBOARDING_NOTIFICATION] Failed to send welcome notification:`, error);
+      return { success: false, error };
+    }
+  }
+
+  /**
+   * ONB-005: Send Task Reminder Notification
+   * 
+   * Purpose: Remind new hire or assigned department about pending/overdue tasks.
+   * 
+   * Called by: sendOnboardingReminders() in RecruitmentService
+   * 
+   * @param recipientId - MongoDB ObjectId of the recipient
+   * @param reminderDetails - Object containing task and deadline info
+   * @returns Object with success status and notification object
+   */
+  async notifyOnboardingTaskReminder(
+    recipientId: string,
+    reminderDetails: {
+      employeeName: string;
+      taskName: string;
+      taskDepartment: string;
+      deadline: Date;
+      isOverdue: boolean;
+      daysRemaining?: number;
+    },
+  ) {
+    if (!recipientId) {
+      return { success: false, message: 'No recipient ID provided' };
+    }
+
+    try {
+      const formattedDeadline = reminderDetails.deadline.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      const urgencyEmoji = reminderDetails.isOverdue ? '🚨' : '⏰';
+      const urgencyText = reminderDetails.isOverdue 
+        ? 'OVERDUE' 
+        : `Due in ${reminderDetails.daysRemaining} day(s)`;
+
+      const message = `${urgencyEmoji} Onboarding Task Reminder\n\n` +
+        `👤 Employee: ${reminderDetails.employeeName}\n` +
+        `📋 Task: ${reminderDetails.taskName}\n` +
+        `🏢 Department: ${reminderDetails.taskDepartment}\n` +
+        `📅 Deadline: ${formattedDeadline}\n` +
+        `⚠️ Status: ${urgencyText}\n\n` +
+        `Please complete this task as soon as possible.`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(recipientId),
+        type: NotificationType.ONBOARDING_TASK_REMINDER,
+        message: message,
+        data: {
+          employeeName: reminderDetails.employeeName,
+          taskName: reminderDetails.taskName,
+          taskDepartment: reminderDetails.taskDepartment,
+          deadline: reminderDetails.deadline.toISOString(),
+          isOverdue: reminderDetails.isOverdue,
+          daysRemaining: reminderDetails.daysRemaining,
+          action: 'TASK_REMINDER',
+        },
+        isRead: false,
+      });
+
+      return {
+        success: true,
+        notification,
+      };
+    } catch (error) {
+      console.error(`[ONBOARDING_NOTIFICATION] Failed to send task reminder:`, error);
+      return { success: false, error };
+    }
+  }
+
+  /**
+   * ONB-007: Notify HR about Document Upload
+   * 
+   * Purpose: Inform HR that a new hire has uploaded a compliance document.
+   * 
+   * Called by: uploadDocumentForTask() in RecruitmentService
+   * 
+   * @param hrUserIds - Array of HR user IDs to notify
+   * @param documentDetails - Object containing document and employee info
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyHRDocumentUploaded(
+    hrUserIds: string[],
+    documentDetails: {
+      employeeId: string;
+      employeeName: string;
+      documentType: string;
+      documentName: string;
+      taskName: string;
+      onboardingId: string;
+    },
+  ) {
+    if (!hrUserIds || hrUserIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const hrUserId of hrUserIds) {
+      try {
+        const message = `📄 Document Uploaded (ONB-007)\n\n` +
+          `A new hire has uploaded a compliance document.\n\n` +
+          `👤 Employee: ${documentDetails.employeeName}\n` +
+          `📋 Task: ${documentDetails.taskName}\n` +
+          `📁 Document Type: ${documentDetails.documentType}\n` +
+          `📎 File: ${documentDetails.documentName}\n\n` +
+          `📌 Action Required:\n` +
+          `• Review the document for compliance\n` +
+          `• Verify document authenticity\n` +
+          `• Mark task as verified if approved`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrUserId),
+          type: NotificationType.ONBOARDING_DOCUMENT_UPLOADED,
+          message: message,
+          data: {
+            employeeId: documentDetails.employeeId,
+            employeeName: documentDetails.employeeName,
+            documentType: documentDetails.documentType,
+            documentName: documentDetails.documentName,
+            taskName: documentDetails.taskName,
+            onboardingId: documentDetails.onboardingId,
+            action: 'DOCUMENT_UPLOADED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify HR user ${hrUserId}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  /**
+   * ONB-009, ONB-013: Notify about Access Provisioning
+   * 
+   * Purpose: Inform new hire and IT that system access has been provisioned.
+   * 
+   * Called by: provisionSystemAccess() in RecruitmentService
+   * 
+   * @param recipientIds - Array of recipient IDs (new hire, IT team)
+   * @param accessDetails - Object containing access provisioning info
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyAccessProvisioned(
+    recipientIds: string[],
+    accessDetails: {
+      employeeId: string;
+      employeeName: string;
+      accessType: string;
+      systemName: string;
+      provisionedBy: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `🔐 Access Provisioned (ONB-009)\n\n` +
+          `System access has been provisioned.\n\n` +
+          `👤 Employee: ${accessDetails.employeeName}\n` +
+          `🔑 Access Type: ${accessDetails.accessType}\n` +
+          `💻 System: ${accessDetails.systemName}\n` +
+          `👤 Provisioned By: ${accessDetails.provisionedBy}\n\n` +
+          `The employee can now access the system.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.ONBOARDING_ACCESS_PROVISIONED,
+          message: message,
+          data: {
+            employeeId: accessDetails.employeeId,
+            employeeName: accessDetails.employeeName,
+            accessType: accessDetails.accessType,
+            systemName: accessDetails.systemName,
+            provisionedBy: accessDetails.provisionedBy,
+            action: 'ACCESS_PROVISIONED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about access:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  /**
+   * ONB-012: Notify about Equipment/Workspace Reserved
+   * 
+   * Purpose: Inform new hire and Admin that equipment/workspace is ready.
+   * 
+   * Called by: reserveEquipmentAndResources() in RecruitmentService
+   * 
+   * @param recipientIds - Array of recipient IDs (new hire, Admin team)
+   * @param reservationDetails - Object containing reservation info
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyEquipmentReserved(
+    recipientIds: string[],
+    reservationDetails: {
+      employeeId: string;
+      employeeName: string;
+      equipmentList: string[];
+      workspaceDetails?: string;
+      reservedBy: string;
+      readyDate: Date;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedReadyDate = reservationDetails.readyDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    for (const recipientId of recipientIds) {
+      try {
+        const equipmentListText = reservationDetails.equipmentList.length > 0
+          ? reservationDetails.equipmentList.map(item => `  • ${item}`).join('\n')
+          : '  • No equipment specified';
+
+        const message = `🏢 Equipment & Workspace Reserved (ONB-012)\n\n` +
+          `Resources have been reserved for the new hire.\n\n` +
+          `👤 Employee: ${reservationDetails.employeeName}\n` +
+          `📅 Ready Date: ${formattedReadyDate}\n\n` +
+          `📦 Equipment:\n${equipmentListText}\n` +
+          (reservationDetails.workspaceDetails ? `\n🪑 Workspace: ${reservationDetails.workspaceDetails}\n` : '') +
+          `\n👤 Reserved By: ${reservationDetails.reservedBy}\n\n` +
+          `All resources will be ready on Day 1.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.ONBOARDING_EQUIPMENT_RESERVED,
+          message: message,
+          data: {
+            employeeId: reservationDetails.employeeId,
+            employeeName: reservationDetails.employeeName,
+            equipmentList: reservationDetails.equipmentList,
+            workspaceDetails: reservationDetails.workspaceDetails,
+            reservedBy: reservationDetails.reservedBy,
+            readyDate: reservationDetails.readyDate.toISOString(),
+            action: 'EQUIPMENT_RESERVED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about equipment:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  /**
+   * Notify about Onboarding Completion
+   * 
+   * Purpose: Inform new hire and HR that all onboarding tasks are completed.
+   * 
+   * @param recipientIds - Array of recipient IDs (new hire, HR)
+   * @param completionDetails - Object containing completion info
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyOnboardingCompleted(
+    recipientIds: string[],
+    completionDetails: {
+      employeeId: string;
+      employeeName: string;
+      positionTitle: string;
+      completedDate: Date;
+      totalTasks: number;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedDate = completionDetails.completedDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `🎉 Onboarding Completed!\n\n` +
+          `All onboarding tasks have been successfully completed.\n\n` +
+          `👤 Employee: ${completionDetails.employeeName}\n` +
+          `📋 Position: ${completionDetails.positionTitle}\n` +
+          `📅 Completion Date: ${formattedDate}\n` +
+          `✅ Tasks Completed: ${completionDetails.totalTasks}\n\n` +
+          `Welcome to the team! The employee is now fully onboarded.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.ONBOARDING_COMPLETED,
+          message: message,
+          data: {
+            employeeId: completionDetails.employeeId,
+            employeeName: completionDetails.employeeName,
+            positionTitle: completionDetails.positionTitle,
+            completedDate: completionDetails.completedDate.toISOString(),
+            totalTasks: completionDetails.totalTasks,
+            action: 'ONBOARDING_COMPLETED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about completion:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  /**
+   * Get all onboarding-related notifications for a user
+   * 
+   * @param userId - MongoDB ObjectId string of the user
+   * @returns Object with count and array of onboarding notifications
+   */
+  async getOnboardingNotifications(userId: string) {
+    const notifications = await this.notificationLogModel
+      .find({
+        to: new Types.ObjectId(userId),
+        type: {
+          $in: [
+            NotificationType.NEW_HIRE_PAYROLL_READY,
+            NotificationType.SIGNING_BONUS_PENDING_REVIEW,
+            NotificationType.ONBOARDING_PAYROLL_TASK_COMPLETED,
+            NotificationType.ONBOARDING_WELCOME,
+            NotificationType.ONBOARDING_TASK_REMINDER,
+            NotificationType.ONBOARDING_COMPLETED,
+            NotificationType.ONBOARDING_DOCUMENT_UPLOADED,
+            NotificationType.ONBOARDING_ACCESS_PROVISIONED,
+            NotificationType.ONBOARDING_EQUIPMENT_RESERVED,
+          ],
+        },
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return {
+      count: notifications.length,
+      notifications,
+    };
+  }
+
+  /**
+   * Get payroll-related notifications for Payroll team
+   * 
+   * @param userId - MongoDB ObjectId string of the payroll user
+   * @returns Object with counts and grouped notifications
+   */
+  async getPayrollNotifications(userId: string) {
+    const notifications = await this.notificationLogModel
+      .find({
+        to: new Types.ObjectId(userId),
+        type: {
+          $in: [
+            NotificationType.NEW_HIRE_PAYROLL_READY,
+            NotificationType.SIGNING_BONUS_PENDING_REVIEW,
+          ],
+        },
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    const newHireNotifications = notifications.filter(
+      n => n.type === NotificationType.NEW_HIRE_PAYROLL_READY
+    );
+    const signingBonusNotifications = notifications.filter(
+      n => n.type === NotificationType.SIGNING_BONUS_PENDING_REVIEW
+    );
+
+    return {
+      totalCount: notifications.length,
+      newHires: {
+        count: newHireNotifications.length,
+        notifications: newHireNotifications,
+      },
+      signingBonuses: {
+        count: signingBonusNotifications.length,
+        notifications: signingBonusNotifications,
+      },
+      all: notifications,
+    };
+  }
+
+  // =============================================================================
+  // OFFBOARDING NOTIFICATIONS (OFF-001 to OFF-019)
+  // =============================================================================
+
+  /**
+   * OFF-018: Notify HR and Manager when employee submits resignation
+   */
+  async notifyResignationSubmitted(
+    recipientIds: string[],
+    resignationDetails: {
+      employeeId: string;
+      employeeName: string;
+      reason: string;
+      requestedLastDay?: string;
+      department?: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `📝 Resignation Request Submitted (OFF-018)\n\n` +
+          `An employee has submitted a resignation request.\n\n` +
+          `👤 Employee: ${resignationDetails.employeeName}\n` +
+          `🏢 Department: ${resignationDetails.department || 'N/A'}\n` +
+          `📋 Reason: ${resignationDetails.reason}\n` +
+          (resignationDetails.requestedLastDay 
+            ? `📅 Requested Last Day: ${new Date(resignationDetails.requestedLastDay).toLocaleDateString()}\n` 
+            : '') +
+          `\nPlease review and process this resignation request.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.RESIGNATION_SUBMITTED,
+          message: message,
+          data: {
+            ...resignationDetails,
+            action: 'RESIGNATION_SUBMITTED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send resignation notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-019: Notify employee when resignation status is updated
+   */
+  async notifyResignationStatusUpdated(
+    employeeId: string,
+    statusDetails: {
+      employeeName: string;
+      newStatus: string;
+      effectiveDate?: string;
+      hrComments?: string;
+    },
+  ) {
+    if (!employeeId) {
+      return { success: false, message: 'No employee ID provided' };
+    }
+
+    try {
+      const statusEmoji = statusDetails.newStatus === 'approved' ? '✅' : 
+                         statusDetails.newStatus === 'rejected' ? '❌' : '⏳';
+      
+      const message = `${statusEmoji} Resignation Status Updated (OFF-019)\n\n` +
+        `Your resignation request has been ${statusDetails.newStatus.toUpperCase()}.\n\n` +
+        (statusDetails.effectiveDate 
+          ? `📅 Effective Date: ${new Date(statusDetails.effectiveDate).toLocaleDateString()}\n` 
+          : '') +
+        (statusDetails.hrComments ? `💬 HR Comments: ${statusDetails.hrComments}\n` : '') +
+        (statusDetails.newStatus === 'approved' 
+          ? `\nNext steps: Please complete the offboarding checklist and return company assets.`
+          : '');
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(employeeId),
+        type: NotificationType.RESIGNATION_STATUS_UPDATED,
+        message: message,
+        data: {
+          ...statusDetails,
+          action: 'RESIGNATION_STATUS_UPDATED',
+        },
+        isRead: false,
+      });
+
+      return { success: true, notification };
+    } catch (error) {
+      console.error(`Failed to send resignation status notification:`, error);
+      return { success: false, error };
+    }
+  }
+
+  /**
+   * OFF-001: Notify when termination is initiated based on performance
+   */
+  async notifyTerminationInitiated(
+    recipientIds: string[],
+    terminationDetails: {
+      employeeId: string;
+      employeeName: string;
+      reason: string;
+      performanceScore?: number;
+      initiatedBy: string;
+      terminationDate?: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `⚠️ Termination Initiated (OFF-001)\n\n` +
+          `A termination review has been initiated.\n\n` +
+          `👤 Employee: ${terminationDetails.employeeName}\n` +
+          `📋 Reason: ${terminationDetails.reason}\n` +
+          (terminationDetails.performanceScore !== undefined 
+            ? `📊 Performance Score: ${terminationDetails.performanceScore.toFixed(2)}\n` 
+            : '') +
+          `👤 Initiated By: ${terminationDetails.initiatedBy}\n` +
+          (terminationDetails.terminationDate 
+            ? `📅 Proposed Date: ${new Date(terminationDetails.terminationDate).toLocaleDateString()}\n` 
+            : '') +
+          `\nPlease review and take appropriate action.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.TERMINATION_INITIATED,
+          message: message,
+          data: {
+            ...terminationDetails,
+            action: 'TERMINATION_INITIATED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send termination notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-001: Notify when termination is approved
+   */
+  async notifyTerminationApproved(
+    recipientIds: string[],
+    terminationDetails: {
+      employeeId: string;
+      employeeName: string;
+      effectiveDate: string;
+      reason: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `🔴 Termination Approved (OFF-001)\n\n` +
+          `A termination has been approved.\n\n` +
+          `👤 Employee: ${terminationDetails.employeeName}\n` +
+          `📅 Effective Date: ${new Date(terminationDetails.effectiveDate).toLocaleDateString()}\n` +
+          `📋 Reason: ${terminationDetails.reason}\n\n` +
+          `Action Required:\n` +
+          `• IT: Prepare to revoke system access\n` +
+          `• HR: Create clearance checklist\n` +
+          `• Admin: Prepare asset return process`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.TERMINATION_APPROVED,
+          message: message,
+          data: {
+            ...terminationDetails,
+            action: 'TERMINATION_APPROVED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send termination approved notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-006: Notify departments when clearance checklist is created
+   */
+  async notifyClearanceChecklistCreated(
+    recipientIds: string[],
+    clearanceDetails: {
+      employeeId: string;
+      employeeName: string;
+      terminationDate: string;
+      departments: string[];
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `📋 Clearance Checklist Created (OFF-006)\n\n` +
+          `An offboarding checklist has been created.\n\n` +
+          `👤 Employee: ${clearanceDetails.employeeName}\n` +
+          `📅 Termination Date: ${new Date(clearanceDetails.terminationDate).toLocaleDateString()}\n` +
+          `🏢 Departments: ${clearanceDetails.departments.join(', ')}\n\n` +
+          `Please complete your department's clearance items before the termination date.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.CLEARANCE_CHECKLIST_CREATED,
+          message: message,
+          data: {
+            ...clearanceDetails,
+            action: 'CLEARANCE_CHECKLIST_CREATED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send clearance checklist notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-010: Notify HR when clearance item is updated
+   */
+  async notifyClearanceItemUpdated(
+    recipientIds: string[],
+    clearanceDetails: {
+      employeeName: string;
+      department: string;
+      newStatus: string;
+      updatedBy: string;
+      comments?: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const statusEmoji = clearanceDetails.newStatus === 'approved' ? '✅' : 
+                       clearanceDetails.newStatus === 'rejected' ? '❌' : '⏳';
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `${statusEmoji} Clearance Item Updated (OFF-010)\n\n` +
+          `A clearance item has been updated.\n\n` +
+          `👤 Employee: ${clearanceDetails.employeeName}\n` +
+          `🏢 Department: ${clearanceDetails.department}\n` +
+          `📊 Status: ${clearanceDetails.newStatus.toUpperCase()}\n` +
+          `👤 Updated By: ${clearanceDetails.updatedBy}\n` +
+          (clearanceDetails.comments ? `💬 Comments: ${clearanceDetails.comments}\n` : '');
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.CLEARANCE_ITEM_UPDATED,
+          message: message,
+          data: {
+            ...clearanceDetails,
+            action: 'CLEARANCE_ITEM_UPDATED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send clearance update notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-010: Notify when all clearances are approved
+   */
+  async notifyAllClearancesApproved(
+    recipientIds: string[],
+    clearanceDetails: {
+      employeeId: string;
+      employeeName: string;
+      completionDate: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `✅ All Clearances Approved (OFF-010)\n\n` +
+          `All department clearances have been approved.\n\n` +
+          `👤 Employee: ${clearanceDetails.employeeName}\n` +
+          `📅 Completion Date: ${new Date(clearanceDetails.completionDate).toLocaleDateString()}\n\n` +
+          `Next Step: Final settlement can now be triggered.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.CLEARANCE_ALL_APPROVED,
+          message: message,
+          data: {
+            ...clearanceDetails,
+            action: 'CLEARANCE_ALL_APPROVED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send all clearances approved notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-007: Notify when system access is revoked
+   */
+  async notifyAccessRevoked(
+    recipientIds: string[],
+    accessDetails: {
+      employeeId: string;
+      employeeName: string;
+      revokedSystems: string[];
+      effectiveDate: string;
+      revokedBy: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const systemsList = accessDetails.revokedSystems.length > 0
+          ? accessDetails.revokedSystems.map(s => `  • ${s}`).join('\n')
+          : '  • All system access';
+
+        const message = `🔒 System Access Revoked (OFF-007)\n\n` +
+          `System access has been revoked for security.\n\n` +
+          `👤 Employee: ${accessDetails.employeeName}\n` +
+          `📅 Effective: ${new Date(accessDetails.effectiveDate).toLocaleDateString()}\n` +
+          `👤 Revoked By: ${accessDetails.revokedBy}\n\n` +
+          `Systems Revoked:\n${systemsList}`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.ACCESS_REVOKED,
+          message: message,
+          data: {
+            ...accessDetails,
+            action: 'ACCESS_REVOKED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send access revoked notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-013: Notify when final settlement is triggered
+   */
+  async notifyFinalSettlementTriggered(
+    recipientIds: string[],
+    settlementDetails: {
+      employeeId: string;
+      employeeName: string;
+      leaveBalance?: number;
+      leaveEncashment?: number;
+      deductions?: number;
+      estimatedFinalAmount?: number;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `💰 Final Settlement Triggered (OFF-013)\n\n` +
+          `Final settlement calculation has been initiated.\n\n` +
+          `👤 Employee: ${settlementDetails.employeeName}\n` +
+          (settlementDetails.leaveBalance !== undefined 
+            ? `📅 Leave Balance: ${settlementDetails.leaveBalance} days\n` 
+            : '') +
+          (settlementDetails.leaveEncashment !== undefined 
+            ? `💵 Leave Encashment: $${settlementDetails.leaveEncashment.toFixed(2)}\n` 
+            : '') +
+          (settlementDetails.deductions !== undefined 
+            ? `📉 Deductions: $${settlementDetails.deductions.toFixed(2)}\n` 
+            : '') +
+          (settlementDetails.estimatedFinalAmount !== undefined 
+            ? `💰 Estimated Final: $${settlementDetails.estimatedFinalAmount.toFixed(2)}\n` 
+            : '') +
+          `\nPayroll team will process the final payment.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.FINAL_SETTLEMENT_TRIGGERED,
+          message: message,
+          data: {
+            ...settlementDetails,
+            action: 'FINAL_SETTLEMENT_TRIGGERED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send final settlement notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-013: Notify when final settlement is completed
+   */
+  async notifyFinalSettlementCompleted(
+    recipientIds: string[],
+    settlementDetails: {
+      employeeId: string;
+      employeeName: string;
+      finalAmount: number;
+      paymentDate: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `✅ Final Settlement Completed (OFF-013)\n\n` +
+          `Final settlement has been processed.\n\n` +
+          `👤 Employee: ${settlementDetails.employeeName}\n` +
+          `💰 Final Amount: $${settlementDetails.finalAmount.toFixed(2)}\n` +
+          `📅 Payment Date: ${new Date(settlementDetails.paymentDate).toLocaleDateString()}\n\n` +
+          `Offboarding process is now complete.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.FINAL_SETTLEMENT_COMPLETED,
+          message: message,
+          data: {
+            ...settlementDetails,
+            action: 'FINAL_SETTLEMENT_COMPLETED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send final settlement completed notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
 }

@@ -221,6 +221,17 @@ export const recruitmentApi = {
     return await api.post(`/recruitment/offer/${offerId}/create-employee`, data);
   },
 
+  // ✅ Accessible: HR_MANAGER, HR_EMPLOYEE, SYSTEM_ADMIN
+  // ONB-002: Get contract status to check if candidate uploaded signed contract
+  getContractStatus: async (offerId: string): Promise<{
+    hasContract: boolean;
+    hasSignedDocument: boolean;
+    contract: any | null;
+    message: string;
+  }> => {
+    return await api.get(`/recruitment/offer/${offerId}/contract-status`);
+  },
+
   // ✅ Accessible: JOB_CANDIDATE (included in allowed roles)
   uploadContractDocument: async (
     offerId: string,
@@ -344,6 +355,16 @@ export const recruitmentApi = {
     data: UpdateOnboardingTaskDto
   ): Promise<Onboarding> => {
     return await api.patch(`/recruitment/onboarding/${id}/task/${taskIndex}`, data);
+  },
+
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
+  // Simple wrapper to update just the task status
+  updateOnboardingTaskStatus: async (
+    onboardingId: string,
+    taskIndex: number,
+    status: string
+  ): Promise<Onboarding> => {
+    return await api.patch(`/recruitment/onboarding/${onboardingId}/task/${taskIndex}`, { status });
   },
 
   // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN
@@ -507,6 +528,11 @@ export const recruitmentApi = {
   // ✅ Accessible: No role restriction (any authenticated employee)
   getMyResignationRequests: async (): Promise<TerminationRequest[]> => {
     return await api.get("/recruitment/offboarding/my-resignation");
+  },
+
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN - Get ALL terminations (OFF-001, OFF-018, OFF-019)
+  getAllTerminationRequests: async (): Promise<TerminationRequest[]> => {
+    return await api.get("/recruitment/offboarding/terminations");
   },
 
   // ============================================

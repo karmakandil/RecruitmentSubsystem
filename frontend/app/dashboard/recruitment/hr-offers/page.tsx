@@ -86,7 +86,10 @@ export default function HROffersPage() {
       const forOffer = apps.filter(
         (app) => app.status === "in_process" || app.status === "offer"
       );
-      const withOffers = apps.filter((app) => app.status === "offer");
+      // Include "offer" and "hired" status - we need to see hired applications to create employee
+      const withOffers = apps.filter(
+        (app) => app.status === "offer" || app.status === "hired"
+      );
       
       setApplicationsForOffer(forOffer);
       setApplicationsWithOffers(withOffers);

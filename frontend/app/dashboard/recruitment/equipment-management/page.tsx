@@ -23,6 +23,19 @@ import { Textarea } from "@/components/leaves/Textarea";
 import { Select } from "@/components/leaves/Select";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
+import { AlertCircle, CheckCircle, Clock, User } from "lucide-react";
+
+// CHANGED - Interface for pending Admin tasks
+interface PendingAdminTask {
+  onboardingId: string;
+  taskIndex: number;
+  taskName: string;
+  taskStatus: string;
+  deadline?: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber: string;
+}
 
 // CHANGED - Equipment types (must match backend valid types: workspace, desk, access_card, badge)
 const EQUIPMENT_TYPES = [
@@ -48,9 +61,14 @@ export default function EquipmentManagementPage() {
     location: "",
     notes: "",
   });
+  // CHANGED - Add state for pending Admin tasks
+  const [pendingAdminTasks, setPendingAdminTasks] = useState<PendingAdminTask[]>([]);
+  const [loadingPendingTasks, setLoadingPendingTasks] = useState(true);
+  const [processingTask, setProcessingTask] = useState(false);
 
   useEffect(() => {
     loadOnboardings();
+    loadAllPendingAdminTasks();
   }, []);
 
   const loadOnboardings = async () => {
@@ -66,6 +84,68 @@ export default function EquipmentManagementPage() {
       showToast(error.message || "Failed to load onboardings", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // CHANGED - Load all pending Admin tasks from all onboardings (ONB-012)
+  const loadAllPendingAdminTasks = async () => {
+    try {
+      setLoadingPendingTasks(true);
+      const data = await recruitmentApi.getAllOnboardings();
+      const allPendingTasks: PendingAdminTask[] = [];
+
+      for (const onboarding of data) {
+        // FIXED - Use 'employee' field which contains the populated data from backend
+        const employee = onboarding.employee;
+        const employeeName = employee?.fullName || 
+          `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim() || 
+          'Unknown Employee';
+        const employeeNumber = employee?.employeeNumber || 'N/A';
+        // employeeId is now a string from the backend transformation
+        const employeeId = onboarding.employeeId || employee?._id;
+
+        // Find Admin department tasks that are not completed
+        onboarding.tasks?.forEach((task: any, index: number) => {
+          if (task.department === 'Admin' && task.status !== 'COMPLETED' && task.status !== 'completed') {
+            allPendingTasks.push({
+              onboardingId: onboarding._id,
+              taskIndex: index,
+              taskName: task.name,
+              taskStatus: task.status,
+              deadline: task.deadline,
+              employeeId: employeeId,
+              employeeName: employeeName,
+              employeeNumber: employeeNumber,
+            });
+          }
+        });
+      }
+
+      setPendingAdminTasks(allPendingTasks);
+    } catch (error: any) {
+      console.error("Failed to load pending Admin tasks:", error);
+    } finally {
+      setLoadingPendingTasks(false);
+    }
+  };
+
+  // CHANGED - Complete an Admin task directly from the pending list
+  const handleCompleteAdminTask = async (task: PendingAdminTask) => {
+    try {
+      setProcessingTask(true);
+      // Use lowercase 'completed' to match backend enum
+      await recruitmentApi.updateOnboardingTaskStatus(
+        task.onboardingId,
+        task.taskIndex,
+        'completed'
+      );
+      showToast(`Task "${task.taskName}" completed for ${task.employeeName}`, "success");
+      // Reload both lists
+      await Promise.all([loadAllPendingAdminTasks(), loadOnboardings()]);
+    } catch (error: any) {
+      showToast(error.message || "Failed to complete task", "error");
+    } finally {
+      setProcessingTask(false);
     }
   };
 
@@ -175,6 +255,71 @@ export default function EquipmentManagementPage() {
             Reserve and track equipment, desk, and access cards for new hires (ONB-012)
           </p>
         </div>
+
+        {/* CHANGED - Pending Admin Tasks Section (ONB-012) */}
+        <Card className="mb-8 border-2 border-purple-200 bg-purple-50">
+          <CardHeader>
+            <CardTitle className="text-purple-800 flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              My Pending Tasks ({pendingAdminTasks.length})
+            </CardTitle>
+            <CardDescription className="text-purple-700">
+              Equipment & access tasks that need your attention (ONB-012)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingPendingTasks ? (
+              <p className="text-gray-500 text-center py-4">Loading pending tasks...</p>
+            ) : pendingAdminTasks.length === 0 ? (
+              <div className="text-center py-6">
+                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                <p className="text-green-700 font-medium">All Admin tasks are completed!</p>
+                <p className="text-gray-500 text-sm">No pending equipment or access card tasks</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {pendingAdminTasks.map((task) => (
+                  <div
+                    key={`${task.onboardingId}-${task.taskIndex}`}
+                    className="flex items-center justify-between p-4 bg-white rounded-lg border border-purple-200 shadow-sm"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium text-gray-900">{task.employeeName}</span>
+                        <span className="text-sm text-gray-500">#{task.employeeNumber}</span>
+                      </div>
+                      <div className="mt-1">
+                        <span className="font-medium text-purple-800">{task.taskName}</span>
+                        <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
+                          task.taskStatus === 'PENDING' || task.taskStatus === 'pending'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {task.taskStatus}
+                        </span>
+                      </div>
+                      {task.deadline && (
+                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Deadline: {new Date(task.deadline).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleCompleteAdminTask(task)}
+                      disabled={processingTask}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {processingTask ? "..." : "Complete"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* CHANGED - Equipment Types Legend */}
         <Card className="mb-8 bg-blue-50 border-blue-200">
