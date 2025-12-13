@@ -15,6 +15,12 @@ export function ClockInOutButton() {
     const [isHydrated, setIsHydrated] = useState(false);
     const fetchStatusRef = useRef(false); // Prevent double fetching
     const clockInTimeRef = useRef<Date | null>(null); // Store original clock in time to prevent reference changes
+    const isClockedInRef = useRef(false); // Keep latest clocked-in state for async calls
+
+    const updateClockedInState = (value: boolean) => {
+        setIsClockedIn(value);
+        isClockedInRef.current = value;
+    };
 
     // Fetch current attendance status - Only run once when component mounts
     useEffect(() => {
@@ -27,11 +33,13 @@ export function ClockInOutButton() {
         if (savedState) {
             try {
                 const { isClockedIn: savedClockedIn, clockInTime: savedClockInTime } = JSON.parse(savedState);
-                setIsClockedIn(savedClockedIn);
+                updateClockedInState(savedClockedIn);
                 if (savedClockInTime) {
                     const clockIn = new Date(savedClockInTime);
                     setClockInTime(clockIn);
                     clockInTimeRef.current = clockIn;
+                    const elapsed = Math.floor((Date.now() - clockIn.getTime()) / 1000);
+                    setElapsedTime(elapsed > 0 ? elapsed : 0);
                 }
                 setIsHydrated(true);
                 setLoading(false);
@@ -51,23 +59,52 @@ export function ClockInOutButton() {
             try {
                 setLoading(true);
                 const status = await timeManagementApi.getAttendanceStatus(user.id);
-                const isClockedInNow = status.isClockedIn || false;
-                setIsClockedIn(isClockedInNow);
-                
-                if (status.lastPunchTime && isClockedInNow) {
-                    const clockIn = new Date(status.lastPunchTime);
-                    setClockInTime(clockIn);
-                    clockInTimeRef.current = clockIn;
+                const backendClockedIn = !!status.isClockedIn;
+                let nextClockedIn = backendClockedIn;
+                let nextClockInTime: Date | null = null;
+
+                if (backendClockedIn && status.lastPunchTime) {
+                    nextClockInTime = new Date(status.lastPunchTime);
                 }
-                
-                // Save to localStorage
-                localStorage.setItem(
-                    `clockInState_${user.id}`,
-                    JSON.stringify({
-                        isClockedIn: isClockedInNow,
-                        clockInTime: isClockedInNow ? status.lastPunchTime : null,
-                    })
-                );
+
+                // If backend says "out" but we have a local running session, keep it optimistic
+                if (!backendClockedIn && isClockedInRef.current && clockInTimeRef.current) {
+                    nextClockedIn = true;
+                    nextClockInTime = clockInTimeRef.current;
+                }
+
+                updateClockedInState(nextClockedIn);
+
+                if (nextClockInTime) {
+                    setClockInTime(nextClockInTime);
+                    clockInTimeRef.current = nextClockInTime;
+                    const elapsed = Math.floor((Date.now() - nextClockInTime.getTime()) / 1000);
+                    setElapsedTime(elapsed > 0 ? elapsed : 0);
+                } else {
+                    setClockInTime(null);
+                    clockInTimeRef.current = null;
+                    setElapsedTime(0);
+                }
+
+                // Save to localStorage only when backend confirms or we are not overriding optimistically
+                if (backendClockedIn) {
+                    localStorage.setItem(
+                        `clockInState_${user.id}`,
+                        JSON.stringify({
+                            isClockedIn: true,
+                            clockInTime: status.lastPunchTime,
+                        })
+                    );
+                } else if (!nextClockedIn) {
+                    // Persist a clean clock-out when both backend and state agree
+                    localStorage.setItem(
+                        `clockInState_${user.id}`,
+                        JSON.stringify({
+                            isClockedIn: false,
+                            clockInTime: null,
+                        })
+                    );
+                }
             } catch (err: any) {
                 console.error("Failed to fetch attendance status:", err);
                 setError(err.message || "Failed to load status");

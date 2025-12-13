@@ -480,6 +480,7 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
   )
   async getPendingCorrectionRequestsForManager(
     @Query('managerId') managerId?: string,
@@ -524,6 +525,7 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
   )
   async approveCorrectionRequest(
     @Param('requestId') requestId: string,
@@ -547,6 +549,7 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
   )
   async rejectCorrectionRequest(
     @Param('requestId') requestId: string,
@@ -711,6 +714,7 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
   )
   async approveTimeException(
     @Body() approveTimeExceptionDto: ApproveTimeExceptionDto,
@@ -726,6 +730,7 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
   )
   async rejectTimeException(
     @Body() rejectTimeExceptionDto: RejectTimeExceptionDto,
@@ -761,6 +766,8 @@ export class TimeManagementController {
   @Roles(
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_SPECIALIST,
   )
   async getAllTimeExceptions(
     @Query('status') status?: string,

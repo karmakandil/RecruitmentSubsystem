@@ -457,8 +457,11 @@ export class TimeManagementService {
   }
 
   /**
-   * Get employee's attendance status for today
-   * Returns current clock-in/out status and work summary
+   * Get employee's attendance status.
+   * Returns current clock-in/out status and work summary.
+   * Previously this only looked at "today" which broke long-running sessions
+   * (e.g., clock-in before midnight). We now use the latest record as the
+   * source of truth for open sessions, while still calculating today's totals.
    */
   async getEmployeeAttendanceStatus(employeeId: string, currentUserId: string) {
     const now = new Date();
@@ -466,42 +469,47 @@ export class TimeManagementService {
     const todayEnd = this.convertDateToUTCEnd(now);
     const { Types } = require('mongoose');
 
-    // Find today's attendance records
+    // Get today's records (for daily totals)
     const todayRecords = await this.attendanceRecordModel
       .find({
-        employeeId: new Types.ObjectId(employeeId), // Convert to ObjectId
+        employeeId: new Types.ObjectId(employeeId),
         createdAt: { $gte: todayStart, $lte: todayEnd },
       })
       .sort({ createdAt: -1 })
       .exec();
 
-    if (todayRecords.length === 0) {
+    // Get the latest record regardless of date (for open session status)
+    const latestRecord = await this.attendanceRecordModel
+      .findOne({ employeeId: new Types.ObjectId(employeeId) })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    if (!latestRecord) {
       return {
         status: 'NOT_CLOCKED_IN',
-        message: 'No attendance record for today',
+        message: 'No attendance record found',
         records: [],
       };
     }
 
-    const latestRecord = todayRecords[0];
     const lastPunch = latestRecord.punches[latestRecord.punches.length - 1];
     const isClockedIn = lastPunch?.type === PunchType.IN;
 
-    // Calculate total work time today
+    // Calculate total work time for today (if any records exist)
     let totalMinutesToday = 0;
     for (const record of todayRecords) {
       totalMinutesToday += record.totalWorkMinutes || 0;
     }
 
-    // If currently clocked in, add time since last punch
-    if (isClockedIn && lastPunch) {
+    // If currently clocked in, add time since last punch (even if punch was before today)
+    if (isClockedIn && lastPunch?.time) {
       const minutesSinceLastPunch = (now.getTime() - lastPunch.time.getTime()) / 60000;
       totalMinutesToday += minutesSinceLastPunch;
     }
 
     return {
       status: isClockedIn ? 'CLOCKED_IN' : 'CLOCKED_OUT',
-      isClockedIn: isClockedIn,
+      isClockedIn,
       lastPunchTime: lastPunch?.time,
       lastPunchType: lastPunch?.type,
       totalMinutesToday: Math.round(totalMinutesToday),

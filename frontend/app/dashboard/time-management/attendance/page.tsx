@@ -8,9 +8,13 @@ import { AttendanceRecordTable } from "@/components/time-management/AttendanceRe
 import { AttendanceSummaryCard } from "@/components/time-management/AttendanceSummaryCard";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { timeManagementApi } from "@/lib/api/time-management/time-management.api";
+import { SystemRole } from "@/types";
 
 export default function AttendancePage() {
   const { user } = useAuth();
+  const isAdmin =
+    user?.roles?.includes(SystemRole.HR_ADMIN) ||
+    user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
   const [loading, setLoading] = useState(true);
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -119,12 +123,21 @@ export default function AttendancePage() {
             >
               View Detailed Records
             </Link>
-            <Link
-              href="/dashboard/time-management/attendance/corrections"
-              className="block text-blue-600 hover:underline font-medium"
-            >
-              Correction Requests
-            </Link>
+                {isAdmin ? (
+                  <Link
+                    href="/dashboard/time-management/attendance/corrections"
+                    className="block text-blue-600 hover:underline font-medium"
+                  >
+                    Correction Requests
+                  </Link>
+                ) : (
+                  <Link
+                    href="/dashboard/employee-profile/time-management"
+                    className="block text-blue-600 hover:underline font-medium"
+                  >
+                    Correction Requests
+                  </Link>
+                )}
             <Link
               href="/dashboard/time-management"
               className="block text-blue-600 hover:underline font-medium"

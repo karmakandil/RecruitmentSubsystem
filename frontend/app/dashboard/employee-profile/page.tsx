@@ -139,6 +139,28 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
+          {/* Time Management Approvals - Show for Department Heads and HR Managers */}
+          {(isDepartmentHead || isHRManager) && (
+            <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+              <CardHeader>
+                <CardTitle>Time Management</CardTitle>
+                <CardDescription>
+                  {isDepartmentHead
+                    ? "Review and approve team time exceptions and view team reports"
+                    : "Review and approve time exceptions, view reports, and manage notifications"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/dashboard/time-management/approvals"
+                  className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+                >
+                  Approvals & Reports
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
           {/* My Profile - Show for all employees */}
           {isEmployee && (
             <Card className="hover:shadow-lg transition-shadow">

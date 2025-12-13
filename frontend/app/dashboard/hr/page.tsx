@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
@@ -11,9 +12,11 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/shared/ui/Card";
+import { Button } from "@/components/shared/ui/Button";
 
 export default function HRManagerDashboardPage() {
   const { user } = useAuth();
+  const router = useRouter();
   useRequireAuth(SystemRole.HR_MANAGER);
 
   return (
@@ -101,7 +104,69 @@ export default function HRManagerDashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Leave Management Section */}
+      <div className="mb-10">
+        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardHeader>
+            <CardTitle className="text-xl">Leave Management</CardTitle>
+            <CardDescription>
+              Manage leave requests: finalize approved requests, override decisions, process in bulk, and verify medical documents
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={() => router.push("/dashboard/leaves/hr-manager")}
+              variant="primary"
+              className="w-full text-lg py-3"
+            >
+              Manage Leave Requests
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Time Management Section */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Time Management
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <CardTitle>Approvals & Reporting</CardTitle>
+              <CardDescription>
+                Review and approve time exceptions, view lateness reports, overtime reports, and manage notifications
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/time-management/approvals"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                Manage Approvals →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Time Management</CardTitle>
+              <CardDescription>
+                Manage attendance, schedules, shifts, and time tracking
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/time-management"
+                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+              >
+                Time Management →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
-
