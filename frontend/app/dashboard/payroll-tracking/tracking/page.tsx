@@ -70,9 +70,14 @@ export default function TrackingPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "claims" | "disputes" | "refunds">("all");
 
-  // Allow both employees and finance staff to access this page
+  // Allow employees, finance staff, and payroll specialists to access this page
   const hasAccess = user?.roles?.some(
-    (role) => role === SystemRole.DEPARTMENT_EMPLOYEE || role === SystemRole.FINANCE_STAFF || role === SystemRole.SYSTEM_ADMIN
+    (role) => 
+      role === SystemRole.DEPARTMENT_EMPLOYEE || 
+      role === SystemRole.FINANCE_STAFF || 
+      role === SystemRole.PAYROLL_SPECIALIST ||
+      role === SystemRole.PAYROLL_MANAGER ||
+      role === SystemRole.SYSTEM_ADMIN
   );
 
   useEffect(() => {
@@ -89,13 +94,15 @@ export default function TrackingPage() {
       }
 
       const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF);
+      const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+      const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER);
 
       try {
         let claims, disputes, refunds;
 
-        if (isFinanceStaff) {
-          // Finance staff should see ALL claims, disputes, and refunds
-          console.log("Fetching ALL tracking data for Finance Staff");
+        if (isFinanceStaff || isPayrollSpecialist || isPayrollManager) {
+          // Finance staff, Payroll Specialists, and Payroll Managers should see ALL claims, disputes, and refunds
+          console.log("Fetching ALL tracking data for Staff");
           const [allClaims, allDisputes, allRefunds] = await Promise.all([
             payslipsApi.getAllClaims(),
             payslipsApi.getAllDisputes(),

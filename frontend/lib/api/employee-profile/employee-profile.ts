@@ -102,6 +102,17 @@ export const employeeProfileApi = {
     return extractData<EmployeeProfile>(response) || response;
   },
 
+  // Get employee roles
+  getEmployeeRoles: async (employeeId: string) => {
+    try {
+      const response = await api.get(`/employee-profile/${employeeId}/roles`);
+      return extractData<any>(response) || response;
+    } catch (error: any) {
+      console.warn(`Could not fetch roles for employee ${employeeId}:`, error);
+      return null;
+    }
+  },
+
   // Submit a change request
   submitChangeRequest: (data: {
     requestDescription: string;

@@ -373,10 +373,10 @@ export class PayrollExecutionController {
     @Body() applyStatutoryRulesDto: ApplyStatutoryRulesDto,
     @CurrentUser() user: any,
   ) {
-    return this.payrollService.applyStatutoryRules(
+    // Return breakdown for better frontend display
+    return this.payrollService.applyStatutoryRulesWithBreakdown(
       applyStatutoryRulesDto.baseSalary,
       applyStatutoryRulesDto.employeeId,
-      user.userId,
     );
   }
 
@@ -494,11 +494,44 @@ export class PayrollExecutionController {
     @Body() generateAndDistributePayslipsDto: GenerateAndDistributePayslipsDto,
     @CurrentUser() user: any,
   ) {
-    return this.payrollService.generateAndDistributePayslips(
-      generateAndDistributePayslipsDto.payrollRunId,
-      generateAndDistributePayslipsDto.distributionMethod || PayslipDistributionMethod.PORTAL,
-      user.userId,
-    );
+    try {
+      const result = await this.payrollService.generateAndDistributePayslips(
+        generateAndDistributePayslipsDto.payrollRunId,
+        generateAndDistributePayslipsDto.distributionMethod || PayslipDistributionMethod.PORTAL,
+        user.userId,
+      );
+      
+      // Log the result for debugging
+      console.log(`[Controller] Payslip generation result:`, {
+        successful: result.successful,
+        failed: result.failed,
+        verifiedPayslips: result.verifiedPayslips,
+        actualDatabaseCount: result.actualDatabaseCount,
+        totalEmployees: result.totalEmployees,
+      });
+      
+      // Return success even if some payslips failed, as long as at least one succeeded
+      if (result.successful > 0) {
+        return result;
+      } else {
+        // Only throw error if no payslips were generated at all
+        throw new Error(
+          result.warnings?.join('; ') || 'Failed to generate any payslips. Check the logs for validation errors.'
+        );
+      }
+    } catch (error: any) {
+      // Log full error details for debugging
+      console.error(`[Controller] Error generating payslips:`, {
+        message: error?.message,
+        stack: error?.stack,
+        payrollRunId: generateAndDistributePayslipsDto.payrollRunId,
+      });
+      
+      // Re-throw with proper error message for better frontend handling
+      throw new Error(
+        error?.message || 'Failed to generate and distribute payslips. Please check that the payroll run is locked and payment status is PAID.'
+      );
+    }
   }
 
   // REQ-PY-12: Send payroll run for approval to Manager and Finance
@@ -529,6 +562,46 @@ export class PayrollExecutionController {
       financeDecisionDto,
       user.userId,
     );
+  }
+
+  // Get all payslips for a payroll run (for Payroll Specialists to view)
+  @Get('payslips/payroll-run/:payrollRunId')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getPayslipsByPayrollRun(
+    @Param('payrollRunId') payrollRunId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.payrollService.getPayslipsByPayrollRun(payrollRunId, user.userId);
+  }
+
+  // Get a specific payslip by ID (for Payroll Specialists to view)
+  @Get('payslips/:payslipId')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getPayslipById(
+    @Param('payslipId') payslipId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.payrollService.getPayslipById(payslipId, user.userId);
+  }
+
+  // Get all payslips with filters (for Payroll Specialists to view all payslips)
+  @Get('payslips')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getAllPayslips(
+    @Query('payrollRunId') payrollRunId?: string,
+    @Query('employeeId') employeeId?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @CurrentUser() user?: any,
+  ) {
+    return this.payrollService.getAllPayslips(user.userId, {
+      payrollRunId,
+      employeeId,
+      paymentStatus,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   // REQ-PY-20: Payroll Manager resolve escalated irregularities
@@ -590,5 +663,32 @@ export class PayrollExecutionController {
       managerApprovalDto,
       user.userId,
     );
+  }
+
+  // Get all payroll runs with optional filtering
+  @Get('runs')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getAllPayrollRuns(
+    @CurrentUser() user: any,
+    @Query('status') status?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.payrollService.getAllPayrollRuns(
+      status,
+      page || 1,
+      limit || 100,
+      user.userId,
+    );
+  }
+
+  // Get payroll run by ID
+  @Get('runs/:runId')
+  @Roles(SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER, SystemRole.FINANCE_STAFF, SystemRole.SYSTEM_ADMIN)
+  async getPayrollRunById(
+    @Param('runId') runId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.payrollService.getPayrollRunByRunId(runId, user.userId);
   }
 }

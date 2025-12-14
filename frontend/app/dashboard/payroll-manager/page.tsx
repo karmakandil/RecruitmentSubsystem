@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -11,39 +12,258 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/shared/ui/Card";
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
+  BarChart3,
+  FileCheck,
+  TrendingUp,
+  Lock,
+  AlertCircle,
+  Settings,
+  Eye,
+  Shield,
+  Edit,
+  Trash2,
+} from "lucide-react";
+import { statsApi, ConfigurationStats } from "@/lib/api/payroll-configuration/stats";
+import { approvalsApi } from "@/lib/api/payroll-configuration/approvals";
 
 export default function PayrollManagerDashboardPage() {
   const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
+
+  const [stats, setStats] = useState<ConfigurationStats | null>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setIsLoading(true);
+
+      // Load stats
+      try {
+        const statsData = await statsApi.getStats();
+        console.log("Stats data loaded:", statsData);
+        setStats({
+          total: statsData?.total ?? 0,
+          pending: statsData?.pending ?? 0,
+          approved: statsData?.approved ?? 0,
+          rejected: statsData?.rejected ?? 0,
+        });
+      } catch (err: any) {
+        console.error("Error loading stats:", err);
+        setStats({
+          total: 0,
+          pending: 0,
+          approved: 0,
+          rejected: 0,
+        });
+      }
+
+      // Load pending approvals count
+      try {
+        const approvals = await approvalsApi.getPendingApprovals();
+        const count = Array.isArray(approvals)
+          ? approvals.length
+          : (approvals && typeof approvals === 'object' && 'data' in approvals && Array.isArray((approvals as any).data)
+            ? (approvals as any).data.length
+            : 0);
+        setPendingCount(count);
+        console.log("Pending approvals count:", count);
+      } catch (err: any) {
+        console.error("Error loading pending approvals:", err);
+        setPendingCount(0);
+      }
+    } catch (err) {
+      console.error("Error loading dashboard data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Payroll Manager Dashboard</h1>
         <p className="text-gray-600 mt-1">
-          Welcome, {user?.fullName || "Manager"}. Review and approve payroll runs, resolve exceptions, and manage payroll execution.
+          Welcome, {user?.fullName || "Manager"}. Manage payroll configurations, approvals, and oversight.
         </p>
       </div>
 
-      {/* Approval Queue */}
+      {/* ========== PAYROLL CONFIGURATION MANAGEMENT SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-          Approval Queue
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Settings className="h-6 w-6 text-blue-600" />
+          Payroll Configuration Management
         </h2>
         <p className="text-gray-600 mb-4">
-          Review and approve payroll runs pending your approval
+          REQ-PY-18: Approve payroll module configuration changes (edit and approve any configuration, delete except insurance)
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Approval Dashboard - Primary Action */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <FileCheck className="h-7 w-7 text-blue-600" />
+                <CardTitle className="text-2xl font-bold">Approval Dashboard</CardTitle>
+              </div>
+              <CardDescription className="text-base text-gray-700 font-medium">
+                REQ-PY-18: Review and approve pending payroll configurations
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link
+                href="/dashboard/payroll-configuration/approvals"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-semibold text-base"
+              >
+                View Pending Approvals →
+              </Link>
+              <p className="text-sm text-gray-800 text-center mt-2 font-medium">
+                Approve or reject draft configurations (edit and delete except insurance)
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Configuration Statistics */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-7 w-7 text-green-600" />
+                <CardTitle className="text-2xl font-bold">Configuration Statistics</CardTitle>
+              </div>
+              <CardDescription className="text-base text-gray-700 font-medium">
+                View overview and statistics of all configurations
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link
+                href="/dashboard/payroll-configuration/stats"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-semibold text-base"
+              >
+                View Statistics →
+              </Link>
+              <p className="text-sm text-gray-800 text-center mt-2 font-medium">
+                Track configuration status and trends
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Quick Stats Section */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Quick Access
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-blue-700 mb-2">Pending Approvals</p>
+                  <p className="text-4xl font-bold text-blue-900">
+                    {isLoading ? "..." : pendingCount}
+                  </p>
+                </div>
+                <Clock className="h-10 w-10 text-blue-500" />
+              </div>
+              <Link
+                href="/dashboard/payroll-configuration/approvals?filter=pending"
+                className="text-sm font-medium text-blue-700 hover:underline mt-3 inline-block"
+              >
+                View all →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-green-50 border-green-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-green-700 mb-2">Approved</p>
+                  <p className="text-4xl font-bold text-green-900">
+                    {isLoading ? "..." : (stats?.approved || 0)}
+                  </p>
+                </div>
+                <CheckCircle2 className="h-10 w-10 text-green-500" />
+              </div>
+              <Link
+                href="/dashboard/payroll-configuration/stats"
+                className="text-sm font-medium text-green-700 hover:underline mt-3 inline-block"
+              >
+                View stats →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-red-50 border-red-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-red-700 mb-2">Rejected</p>
+                  <p className="text-4xl font-bold text-red-900">
+                    {isLoading ? "..." : (stats?.rejected || 0)}
+                  </p>
+                </div>
+                <XCircle className="h-10 w-10 text-red-500" />
+              </div>
+              <Link
+                href="/dashboard/payroll-configuration/stats"
+                className="text-sm font-medium text-red-700 hover:underline mt-3 inline-block"
+              >
+                View stats →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-purple-50 border-purple-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-purple-700 mb-2">Total Configs</p>
+                  <p className="text-4xl font-bold text-purple-900">
+                    {isLoading ? "..." : (stats?.total || 0)}
+                  </p>
+                </div>
+                <TrendingUp className="h-10 w-10 text-purple-500" />
+              </div>
+              <Link
+                href="/dashboard/payroll-configuration/stats"
+                className="text-sm font-medium text-purple-700 hover:underline mt-3 inline-block"
+              >
+                View stats →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* ========== PAYROLL EXECUTION APPROVAL SECTION ========== */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <CheckCircle2 className="h-6 w-6 text-green-600" />
+          Payroll Execution Approval
+        </h2>
+        <p className="text-gray-600 mb-4">
+          REQ-PY-22: Approve payroll runs so that validation is ensured at the managerial level prior to distribution
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
             <CardHeader>
               <CardTitle>Pending Approvals</CardTitle>
               <CardDescription>
-                Review payroll runs awaiting manager approval
+                REQ-PY-22: Review payroll runs awaiting manager approval
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/approval/manager"
+                href="/dashboard/payroll-execution/manager-approval"
                 className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
               >
                 View Pending Approvals →
@@ -60,7 +280,7 @@ export default function PayrollManagerDashboardPage() {
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/approval/manager/review"
+                href="/dashboard/payroll-execution/manager-approval"
                 className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
               >
                 Review & Approve →
@@ -87,25 +307,26 @@ export default function PayrollManagerDashboardPage() {
         </div>
       </div>
 
-      {/* Exception Resolution */}
+      {/* ========== EXCEPTION RESOLUTION SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <AlertCircle className="h-6 w-6 text-red-600" />
           Exception Resolution
         </h2>
         <p className="text-gray-600 mb-4">
-          Resolve escalated irregularities and exceptions in payroll runs
+          REQ-PY-20: Resolve escalated irregularities reported by Payroll Specialists so that payroll exceptions are addressed at a higher decision level
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
             <CardHeader>
               <CardTitle>Resolve Irregularities</CardTitle>
               <CardDescription>
-                Resolve escalated irregularities flagged by specialists
+                REQ-PY-20: Resolve escalated irregularities flagged by specialists
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/approval/manager/resolve"
+                href="/dashboard/payroll-execution/resolve-irregularities"
                 className="block w-full text-center bg-red-600 text-white py-3 px-4 rounded-md hover:bg-red-700 transition font-medium"
               >
                 Resolve Issues →
@@ -149,71 +370,42 @@ export default function PayrollManagerDashboardPage() {
         </div>
       </div>
 
-      {/* Payroll Lock Management */}
+      {/* ========== PAYROLL LOCK MANAGEMENT SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Lock className="h-6 w-6 text-red-600" />
           Payroll Lock Management
         </h2>
         <p className="text-gray-600 mb-4">
-          Lock or unlock payroll runs after finance approval
+          REQ-PY-7: Lock or freeze finalized payroll runs to prevent unauthorized retroactive changes. REQ-PY-19: Unfreeze payrolls under exceptional circumstances with reason.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow border-2 border-yellow-200">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
             <CardHeader>
-              <CardTitle>Lock Payroll</CardTitle>
+              <div className="flex items-center gap-2">
+                <Lock className="h-6 w-6 text-red-600" />
+                <CardTitle>Lock Management</CardTitle>
+              </div>
               <CardDescription>
-                Lock finalized payroll runs after finance approval
+                REQ-PY-7 & PY-19: Lock, freeze, unlock, or unfreeze payroll runs (unfreeze requires detailed reason for exceptional circumstances)
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/approval/manager/lock"
-                className="block w-full text-center bg-yellow-600 text-white py-3 px-4 rounded-md hover:bg-yellow-700 transition font-medium"
+                href="/dashboard/payroll-execution/lock-management"
+                className="block w-full text-center bg-red-600 text-white py-3 px-4 rounded-md hover:bg-red-700 transition font-medium"
               >
-                Lock Payroll →
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200">
-            <CardHeader>
-              <CardTitle>Unlock Payroll</CardTitle>
-              <CardDescription>
-                Unlock payroll runs with reason if modifications needed
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/payroll-execution/approval/manager/unlock"
-                className="block w-full text-center bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition font-medium"
-              >
-                Unlock Payroll →
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>Locked Payrolls</CardTitle>
-              <CardDescription>
-                View all locked payroll runs
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/payroll-execution/approval/manager/locked"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                View Locked →
+                Manage Locks →
               </Link>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Review & Preview */}
+      {/* ========== REVIEW & PREVIEW SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Eye className="h-6 w-6 text-purple-600" />
           Review & Preview
         </h2>
         <p className="text-gray-600 mb-4">
@@ -229,7 +421,7 @@ export default function PayrollManagerDashboardPage() {
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/review"
+                href="/dashboard/payroll-execution/preview"
                 className="block w-full text-center bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition font-medium"
               >
                 View Preview →
@@ -267,6 +459,90 @@ export default function PayrollManagerDashboardPage() {
                 className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
               >
                 View Status →
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* ========== PAYROLL TRACKING SECTION ========== */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <BarChart3 className="h-6 w-6 text-blue-600" />
+          Payroll Tracking
+        </h2>
+        <p className="text-gray-600 mb-4">
+          Review and approve employee disputes and claims (REQ-PY-40, PY-43)
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-7 w-7 text-red-600" />
+                <CardTitle className="text-xl font-bold">Pending Disputes</CardTitle>
+              </div>
+              <CardDescription>REQ-PY-40: Confirm approval of disputes so that finance staff can be notified (multi-step approval)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-tracking/manager-disputes"
+                className="block w-full text-center bg-red-600 text-white py-3 px-4 rounded-md hover:bg-red-700 transition font-medium"
+              >
+                Review Disputes →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <FileCheck className="h-7 w-7 text-orange-600" />
+                <CardTitle className="text-xl font-bold">Pending Claims</CardTitle>
+              </div>
+              <CardDescription>REQ-PY-43: Confirm approval of expense claims so that finance staff can be notified (multi-step approval)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-tracking/manager-claims"
+                className="block w-full text-center bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition font-medium"
+              >
+                Review Claims →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-7 w-7 text-blue-600" />
+                <CardTitle className="text-xl font-bold">Department Reports</CardTitle>
+              </div>
+              <CardDescription>Generate payroll reports by department</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-tracking/department-reports"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                View Reports →
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-7 w-7 text-green-600" />
+                <CardTitle className="text-xl font-bold">Track Status</CardTitle>
+              </div>
+              <CardDescription>Track claims, disputes, and refunds status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/payroll-tracking/tracking"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Track Status →
               </Link>
             </CardContent>
           </Card>
@@ -312,43 +588,8 @@ export default function PayrollManagerDashboardPage() {
               </Link>
             </CardContent>
           </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>My Profile</CardTitle>
-              <CardDescription>
-                View and manage your personal information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/employee-profile/my-profile"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                My Profile →
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>Team</CardTitle>
-              <CardDescription>
-                View team members and organization structure
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/employee-profile/team"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                View Team →
-              </Link>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
   );
 }
-

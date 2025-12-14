@@ -86,7 +86,10 @@ export default function PreInitiationDashboard() {
   }
   
       // Payroll period is complete if approved
-      if (status.payrollPeriod.status === "approved") {
+      // Check both backend status and frontend localStorage
+      const storedPeriod = localStorage.getItem("approved_payroll_period");
+      const periodApproved = status.payrollPeriod.status === "approved" || !!storedPeriod;
+      if (periodApproved) {
         completedCategories++;
       }
   
@@ -155,11 +158,18 @@ export default function PreInitiationDashboard() {
               <span className="font-medium">{status.signingBonuses.total}</span>
             </div>
           </div>
-          <Link href="/dashboard/payroll-execution/pre-initiation/signing-bonuses">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700">
-              Review Signing Bonuses
-            </Button>
-          </Link>
+          <div className="space-y-2">
+            <Link href="/dashboard/payroll-execution/process-signing-bonuses">
+              <Button className="w-full bg-purple-600 hover:bg-purple-700 mb-2">
+                Process Signing Bonuses
+              </Button>
+            </Link>
+            <Link href="/dashboard/payroll-execution/pre-initiation/signing-bonuses">
+              <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                Review Signing Bonuses
+              </Button>
+            </Link>
+          </div>
         </Card>
 
         {/* Termination Benefits Card */}
@@ -192,11 +202,18 @@ export default function PreInitiationDashboard() {
               <span className="font-medium">{status.terminationBenefits.total}</span>
             </div>
           </div>
-          <Link href="/dashboard/payroll-execution/pre-initiation/termination-benefits">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700">
-              Review Termination Benefits
-            </Button>
-          </Link>
+          <div className="space-y-2">
+            <Link href="/dashboard/payroll-execution/process-termination-benefits">
+              <Button className="w-full bg-purple-600 hover:bg-purple-700 mb-2">
+                Process Termination Benefits
+              </Button>
+            </Link>
+            <Link href="/dashboard/payroll-execution/pre-initiation/termination-benefits">
+              <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                Review Termination Benefits
+              </Button>
+            </Link>
+          </div>
         </Card>
 
         {/* Payroll Period Card */}
@@ -205,23 +222,53 @@ export default function PreInitiationDashboard() {
             <h2 className="text-xl font-semibold">Payroll Period</h2>
             <span
               className={`px-3 py-1 rounded-full text-sm ${
-                status.payrollPeriod.status === "pending"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : status.payrollPeriod.status === "approved"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-red-100 text-red-800"
+                (() => {
+                  if (typeof window !== "undefined") {
+                    const storedPeriod = localStorage.getItem("approved_payroll_period");
+                    const isApproved = status.payrollPeriod.status === "approved" || !!storedPeriod;
+                    if (isApproved) return "bg-green-100 text-green-800";
+                    if (status.payrollPeriod.status === "rejected") return "bg-red-100 text-red-800";
+                  }
+                  return "bg-yellow-100 text-yellow-800";
+                })()
               }`}
             >
-              {status.payrollPeriod.status}
+              {(() => {
+                if (typeof window !== "undefined") {
+                  const storedPeriod = localStorage.getItem("approved_payroll_period");
+                  if (storedPeriod) return "approved";
+                }
+                return status.payrollPeriod.status;
+              })()}
             </span>
           </div>
           <div className="space-y-2 mb-4">
-            {status.payrollPeriod.period && (
-              <div>
-                <span className="text-gray-600">Period: </span>
-                <span className="font-medium">{status.payrollPeriod.period}</span>
-              </div>
-            )}
+            {(() => {
+              if (typeof window !== "undefined") {
+                const storedPeriod = localStorage.getItem("approved_payroll_period");
+                let periodToShow = status.payrollPeriod.period;
+                if (storedPeriod) {
+                  try {
+                    const parsed = JSON.parse(storedPeriod);
+                    periodToShow = parsed.period;
+                  } catch (e) {
+                    // Use backend period if parsing fails
+                  }
+                }
+                return periodToShow ? (
+                  <div>
+                    <span className="text-gray-600">Period: </span>
+                    <span className="font-medium">{periodToShow}</span>
+                  </div>
+                ) : null;
+              }
+              return status.payrollPeriod.period ? (
+                <div>
+                  <span className="text-gray-600">Period: </span>
+                  <span className="font-medium">{status.payrollPeriod.period}</span>
+                </div>
+              ) : null;
+            })()}
             {status.payrollPeriod.payrollRunId && (
               <div>
                 <span className="text-gray-600">Run ID: </span>
@@ -233,7 +280,13 @@ export default function PreInitiationDashboard() {
           </div>
           <Link href="/dashboard/payroll-execution/pre-initiation/payroll-period">
             <Button className="w-full bg-blue-600 hover:bg-blue-700">
-              Review Payroll Period
+              {(() => {
+                if (typeof window !== "undefined") {
+                  const storedPeriod = localStorage.getItem("approved_payroll_period");
+                  return storedPeriod ? "View/Edit Payroll Period" : "Review Payroll Period";
+                }
+                return "Review Payroll Period";
+              })()}
             </Button>
           </Link>
         </Card>

@@ -164,8 +164,54 @@ export class EmployeeProfileService {
       this.employeeModel.countDocuments(filter).exec(),
     ]);
 
+    // Fetch system roles for all employees and attach them
+    const employeeIds = employees.map((emp: any) => {
+      // Handle both ObjectId and string formats
+      return emp._id instanceof Types.ObjectId ? emp._id : new Types.ObjectId(emp._id);
+    });
+    
+    const systemRoles = await this.systemRoleModel
+      .find({
+        employeeProfileId: { $in: employeeIds },
+        isActive: true,
+      })
+      .lean()
+      .exec();
+
+    // Create a map of employeeId -> system roles for quick lookup
+    const rolesMap = new Map<string, { roles: SystemRole[]; permissions: string[]; isActive: boolean }>();
+    systemRoles.forEach((role: any) => {
+      const empId = role.employeeProfileId 
+        ? (role.employeeProfileId instanceof Types.ObjectId 
+            ? role.employeeProfileId.toString() 
+            : String(role.employeeProfileId))
+        : null;
+      if (empId) {
+        rolesMap.set(empId, {
+          roles: role.roles || [],
+          permissions: role.permissions || [],
+          isActive: role.isActive,
+        });
+      }
+    });
+
+    // Attach system roles to each employee
+    const employeesWithRoles = employees.map((emp: any) => {
+      const empId = emp._id instanceof Types.ObjectId 
+        ? emp._id.toString() 
+        : String(emp._id);
+      const systemRole = rolesMap.get(empId);
+      return {
+        ...emp,
+        systemRoles: systemRole
+          ? systemRole.roles.map((role: SystemRole) => ({ role }))
+          : [],
+        roles: systemRole ? systemRole.roles : [],
+      };
+    });
+
     return {
-      data: employees,
+      data: employeesWithRoles,
       meta: {
         total,
         page,

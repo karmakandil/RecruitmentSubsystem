@@ -720,9 +720,35 @@ export class PayrollExecutionService {
 
     payrollRun.status = PayRollStatus.LOCKED;
     (payrollRun as any).updatedBy = currentUserId;
-    return await payrollRun.save();
+    const savedPayrollRun = await payrollRun.save();
+
+    // REQ-PY-8: Automatically generate and distribute payslips after locking (REQ-PY-7)
+    // Check if payment status is PAID (Finance approved) - if yes, auto-generate payslips
+    if (savedPayrollRun.paymentStatus === PayRollPaymentStatus.PAID) {
+      console.log(`[Auto-Generate Payslips] Payroll run ${savedPayrollRun._id} is locked and payment status is PAID. Auto-generating payslips...`);
+      try {
+        // Auto-generate payslips via Portal (default distribution method)
+        await this.generateAndDistributePayslips(
+          savedPayrollRun._id.toString(),
+          'PORTAL',
+          currentUserId,
+        );
+        console.log(`[Auto-Generate Payslips] Successfully auto-generated payslips for payroll run ${savedPayrollRun._id}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[Auto-Generate Payslips] Failed to auto-generate payslips for payroll run ${savedPayrollRun._id}: ${errorMessage}`);
+        // Don't fail the lock if payslip generation fails - log and continue
+      }
+    } else {
+      console.log(`[Auto-Generate Payslips] Payroll run ${savedPayrollRun._id} is locked but payment status is not PAID yet. Payslips will be auto-generated when Finance approves.`);
+    }
+
+    return savedPayrollRun;
   }
 
+  // REQ-PY-19: Payroll Manager unlock payrolls with reason under exceptional circumstances
+  // BR: Allow legitimate corrections even after payroll has been locked
+  // BR: Require reason to document exceptional circumstances
   async unlockPayroll(
     runId: string,
     unlockReason: string,
@@ -731,15 +757,28 @@ export class PayrollExecutionService {
     const payrollRun = await this.payrollRunModel.findById(runId);
     if (!payrollRun) throw new Error('Payroll run not found');
 
-    // Validate status transition
+    // Validate status transition (LOCKED → UNLOCKED)
     this.validateStatusTransition(payrollRun.status, PayRollStatus.UNLOCKED);
 
+    // Validate that unlock reason is provided and not empty
+    // This ensures exceptional circumstances are documented
     if (!unlockReason || unlockReason.trim().length === 0) {
-      throw new Error('Unlock reason is required when unlocking a payroll run');
+      throw new Error(
+        'Unlock reason is required when unlocking a payroll run. Please provide a reason documenting the exceptional circumstances that require this action.',
+      );
     }
 
+    // Minimum length validation to ensure meaningful reason
+    if (unlockReason.trim().length < 10) {
+      throw new Error(
+        'Unlock reason must be at least 10 characters long. Please provide a detailed explanation of the exceptional circumstances.',
+      );
+    }
+
+    // Update payroll run status to UNLOCKED and store the reason
+    // This allows legitimate corrections to be made
     payrollRun.status = PayRollStatus.UNLOCKED;
-    payrollRun.unlockReason = unlockReason;
+    payrollRun.unlockReason = unlockReason.trim();
     (payrollRun as any).updatedBy = currentUserId;
     return await payrollRun.save();
   }
@@ -755,7 +794,9 @@ export class PayrollExecutionService {
     return this.lockPayroll(runId, currentUserId);
   }
 
-  // REQ-PY-19: Unfreeze payrolls with reason (alias for unlockPayroll to match requirement terminology)
+  // REQ-PY-19: Payroll Manager unfreeze payrolls with reason under exceptional circumstances
+  // BR: Allow legitimate corrections even after payroll has been frozen/locked
+  // BR: Require reason to document exceptional circumstances
   // Note: Unfreeze and Unlock are functionally the same - both set status to UNLOCKED
   // This method provides the "unfreeze" terminology as mentioned in requirements
   async unfreezePayroll(
@@ -764,6 +805,7 @@ export class PayrollExecutionService {
     currentUserId: string,
   ): Promise<payrollRuns> {
     // Unfreeze is functionally the same as unlock - both allow modifications with reason
+    // Used for exceptional circumstances where legitimate corrections are needed
     return this.unlockPayroll(runId, unfreezeReason, currentUserId);
   }
 
@@ -3224,7 +3266,7 @@ export class PayrollExecutionService {
   // Helper: Apply statutory rules with breakdown (BR 31: Store all calculation elements for auditability)
   // BR 35: Taxes = % of Base Salary, Social/Health Insurance
   // Note: All calculations are based on baseSalary per BR 35
-  private async applyStatutoryRulesWithBreakdown(
+  async applyStatutoryRulesWithBreakdown(
     baseSalary: number,
     employeeId: string,
   ): Promise<{
@@ -4102,8 +4144,14 @@ export class PayrollExecutionService {
       const totalPenaltiesAmount = penalties
         ? (penalties as any).amount || 0
         : 0;
-      const totaDeductions =
+      let totaDeductions =
         totalTaxAmount + totalInsuranceAmount + totalPenaltiesAmount;
+
+      // Validate and fix totaDeductions if needed
+      if (totaDeductions === undefined || totaDeductions === null || totaDeductions < 0) {
+        console.warn(`[Generate Payslips] Warning: totaDeductions is ${totaDeductions} for employee ${employeeId}, setting to 0`);
+        totaDeductions = 0;
+      }
 
       // Check if payslip already exists for this employee and payroll run to avoid duplicates
       const existingPayslip = await this.paySlipModel.findOne({
@@ -4112,9 +4160,16 @@ export class PayrollExecutionService {
       });
 
       if (existingPayslip) {
-        console.log(`[Generate Payslips] Payslip already exists for employee ${employeeId} in payroll run ${payrollRunId}. Skipping creation.`);
-        generatedPayslips.push(existingPayslip as any);
-        continue;
+        console.log(`[Generate Payslips] Payslip already exists for employee ${employeeId} in payroll run ${payrollRunId} (ID: ${existingPayslip._id}). Skipping creation.`);
+        // Verify the existing payslip is actually in the database
+        const verifiedExisting = await this.paySlipModel.findById(existingPayslip._id);
+        if (!verifiedExisting) {
+          console.warn(`[Generate Payslips] WARNING: Existing payslip ${existingPayslip._id} was not found in database. Will create new one.`);
+          // Don't skip - continue to create a new payslip
+        } else {
+          generatedPayslips.push(existingPayslip as any);
+          continue;
+        }
       }
 
       // Create payslip with proper structure matching schema
@@ -4124,48 +4179,187 @@ export class PayrollExecutionService {
         
         const payrollRunObjectId = new mongoose.Types.ObjectId(payrollRunId);
         
+        // Validate required fields before creating payslip
+        if (!baseSalary || baseSalary < 0) {
+          throw new Error(`Invalid baseSalary: ${baseSalary} for employee ${employeeId}`);
+        }
+        if (!totalGrossSalary || totalGrossSalary < 0) {
+          throw new Error(`Invalid totalGrossSalary: ${totalGrossSalary} for employee ${employeeId}`);
+        }
+        if (detail.netPay === undefined || detail.netPay === null) {
+          throw new Error(`Invalid netPay: ${detail.netPay} for employee ${employeeId}`);
+        }
+        
         // Ensure arrays are always arrays (not undefined) to match schema requirements
+        // Convert nested objects to plain objects to ensure schema compatibility
+        const earningsDetails = {
+          baseSalary: baseSalary,
+          allowances: Array.isArray(applicableAllowances) 
+            ? applicableAllowances.map((a: any) => a.toObject ? a.toObject() : a)
+            : [],
+          ...(Array.isArray(signingBonusConfigs) && signingBonusConfigs.length > 0 && {
+            bonuses: signingBonusConfigs.map((b: any) => b.toObject ? b.toObject() : b)
+          }),
+          ...(Array.isArray(terminationBenefitConfigs) && terminationBenefitConfigs.length > 0 && {
+            benefits: terminationBenefitConfigs.map((b: any) => b.toObject ? b.toObject() : b)
+          }),
+          ...(Array.isArray(refundDetailsList) && refundDetailsList.length > 0 && {
+            refunds: refundDetailsList.map((r: any) => r.toObject ? r.toObject() : r)
+          }),
+        };
+
+        const deductionsDetails = {
+          taxes: Array.isArray(applicableTaxRules) 
+            ? applicableTaxRules.map((t: any) => t.toObject ? t.toObject() : t)
+            : [],
+          ...(Array.isArray(applicableInsuranceBrackets) && applicableInsuranceBrackets.length > 0 && {
+            insurances: applicableInsuranceBrackets.map((i: any) => i.toObject ? i.toObject() : i)
+          }),
+          ...(penalties && {
+            penalties: penalties.toObject ? penalties.toObject() : penalties
+          }),
+        };
+
         const payslipData = {
           employeeId: employeeObjectId,
           payrollRunId: payrollRunObjectId,
-          earningsDetails: {
-            baseSalary: baseSalary,
-            allowances: Array.isArray(applicableAllowances) ? applicableAllowances : [],
-            bonuses: Array.isArray(signingBonusConfigs) && signingBonusConfigs.length > 0 
-              ? signingBonusConfigs 
-              : undefined,
-            benefits: Array.isArray(terminationBenefitConfigs) && terminationBenefitConfigs.length > 0
-              ? terminationBenefitConfigs
-              : undefined,
-            refunds: Array.isArray(refundDetailsList) && refundDetailsList.length > 0 
-              ? refundDetailsList 
-              : undefined,
-          },
-          deductionsDetails: {
-            taxes: Array.isArray(applicableTaxRules) ? applicableTaxRules : [],
-            insurances: Array.isArray(applicableInsuranceBrackets) && applicableInsuranceBrackets.length > 0
-              ? applicableInsuranceBrackets
-              : undefined,
-            penalties: penalties ? penalties : undefined,
-          },
+          earningsDetails: earningsDetails,
+          deductionsDetails: deductionsDetails,
           totalGrossSalary: totalGrossSalary,
-          totaDeductions: totaDeductions,
+          totaDeductions: totaDeductions || 0, // Ensure it's never undefined
           netPay: detail.netPay,
           paymentStatus: PaySlipPaymentStatus.PENDING, // Default status
         };
 
+        // Validate required fields before creating
+        if (!payslipData.earningsDetails || !payslipData.earningsDetails.baseSalary) {
+          throw new Error(`Invalid earningsDetails for employee ${employeeId}`);
+        }
+        if (!payslipData.deductionsDetails || !Array.isArray(payslipData.deductionsDetails.taxes)) {
+          throw new Error(`Invalid deductionsDetails for employee ${employeeId}`);
+        }
+
         payslip = new this.paySlipModel(payslipData);
+        
+        // Validate the document before saving
+        const validationError = payslip.validateSync();
+        if (validationError) {
+          console.error(`[Generate Payslips] Validation error for employee ${employeeId}:`, validationError);
+          throw new Error(`Payslip validation failed: ${validationError.message}`);
+        }
 
         console.log(`[Generate Payslips] Saving payslip for employee ${employeeId}...`);
-        const savedPayslip = await payslip.save();
-        console.log(`[Generate Payslips] Successfully saved payslip ${savedPayslip._id} for employee ${employeeId} in MongoDB`);
+        console.log(`[Generate Payslips] Payslip data before save:`, JSON.stringify({
+          employeeId: employeeObjectId.toString(),
+          payrollRunId: payrollRunObjectId.toString(),
+          totalGrossSalary,
+          totaDeductions,
+          netPay: detail.netPay,
+          hasEarningsDetails: !!payslipData.earningsDetails,
+          hasDeductionsDetails: !!payslipData.deductionsDetails,
+          allowancesCount: payslipData.earningsDetails.allowances?.length || 0,
+          taxesCount: payslipData.deductionsDetails.taxes?.length || 0,
+        }, null, 2));
         
-        // Verify the payslip was actually saved by querying it back
-        const verifiedPayslip = await this.paySlipModel.findById(savedPayslip._id);
-        if (!verifiedPayslip) {
-          throw new Error(`Payslip was not found in database after save. Save operation may have failed.`);
+        let savedPayslip;
+        try {
+          // Explicitly save the payslip with error handling
+          savedPayslip = await payslip.save();
+          
+          if (!savedPayslip || !savedPayslip._id) {
+            throw new Error('Payslip save returned null or missing _id');
+          }
+          
+          console.log(`[Generate Payslips] Successfully saved payslip ${savedPayslip._id} for employee ${employeeId} in MongoDB`);
+          
+          // Immediately verify the save by checking if the document exists
+          const immediateCheck = await this.paySlipModel.findById(savedPayslip._id);
+          if (!immediateCheck) {
+            console.error(`[Generate Payslips] CRITICAL: Payslip ${savedPayslip._id} was not found immediately after save!`);
+            // Try to save again as a last resort
+            try {
+              // Create a fresh instance to avoid any state issues
+              const retryPayslip = new this.paySlipModel(payslipData);
+              savedPayslip = await retryPayslip.save();
+              console.log(`[Generate Payslips] Re-saved payslip ${savedPayslip._id} for employee ${employeeId}`);
+              
+              // Verify again
+              const retryCheck = await this.paySlipModel.findById(savedPayslip._id);
+              if (!retryCheck) {
+                throw new Error('Payslip still not found after retry save');
+              }
+            } catch (retryError: any) {
+              console.error(`[Generate Payslips] Re-save also failed:`, retryError);
+              throw new Error(`Payslip save failed and could not be recovered: ${retryError.message || String(retryError)}`);
+            }
+          } else {
+            console.log(`[Generate Payslips] Verified payslip ${savedPayslip._id} exists immediately after save for employee ${employeeId}`);
+          }
+        } catch (saveError: any) {
+          console.error(`[Generate Payslips] Save error for employee ${employeeId}:`, saveError);
+          if (saveError.errors) {
+            console.error(`[Generate Payslips] Validation errors:`, JSON.stringify(saveError.errors, null, 2));
+            // Log each validation error
+            Object.keys(saveError.errors).forEach((key) => {
+              console.error(`[Generate Payslips] Validation error for ${key}:`, saveError.errors[key].message);
+            });
+          }
+          if (saveError.message) {
+            console.error(`[Generate Payslips] Error message:`, saveError.message);
+          }
+          if (saveError.stack) {
+            console.error(`[Generate Payslips] Error stack:`, saveError.stack);
+          }
+          
+          // Provide more detailed error message
+          let errorMessage = `Failed to save payslip for employee ${employeeId}`;
+          if (saveError.errors) {
+            const errorDetails = Object.keys(saveError.errors)
+              .map((key) => `${key}: ${saveError.errors[key].message}`)
+              .join('; ');
+            errorMessage += ` - Validation errors: ${errorDetails}`;
+          } else {
+            errorMessage += `: ${saveError.message || String(saveError)}`;
+          }
+          
+          throw new Error(errorMessage);
         }
         
+        // Additional verification: Query by employeeId and payrollRunId to ensure it's findable
+        try {
+          // Wait a brief moment to ensure database write is committed
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const queryCheck = await this.paySlipModel.findOne({
+            employeeId: employeeObjectId,
+            payrollRunId: new mongoose.Types.ObjectId(payrollRunId) as any,
+          });
+          
+          if (!queryCheck) {
+            console.error(`[Generate Payslips] WARNING: Payslip not found by query for employee ${employeeId} and payroll run ${payrollRunId}`);
+            console.error(`[Generate Payslips] Attempting to find by ID: ${savedPayslip._id}`);
+            
+            // Try finding by ID as fallback
+            const idCheck = await this.paySlipModel.findById(savedPayslip._id);
+            if (!idCheck) {
+              throw new Error(`Payslip ${savedPayslip._id} was saved but cannot be queried from database`);
+            } else {
+              console.log(`[Generate Payslips] Payslip found by ID but not by query - possible indexing issue`);
+            }
+          } else {
+            console.log(`[Generate Payslips] Confirmed payslip ${queryCheck._id} is queryable in database`);
+            // Update savedPayslip to use the queried version to ensure it's the latest
+            savedPayslip = queryCheck;
+          }
+        } catch (queryError) {
+          console.error(`[Generate Payslips] Error querying payslip:`, queryError);
+          // If query fails but save succeeded, log warning but continue
+          // The payslip might still be saved but not immediately queryable (eventual consistency)
+          console.warn(`[Generate Payslips] Payslip may be saved but not immediately queryable - this could be a database consistency issue`);
+        }
+        
+        // Update payslip variable to the saved document for use in distribution
+        payslip = savedPayslip;
         generatedPayslips.push(savedPayslip as any);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -4185,8 +4379,8 @@ export class PayrollExecutionService {
         continue;
       }
 
-      // Only process refunds and distribute if payslip was successfully created
-      if (!payslip) {
+      // Only process refunds and distribute if payslip was successfully created and saved
+      if (!payslip || !payslip._id) {
         console.warn(`[Generate Payslips] Skipping refund processing and distribution for employee ${employeeId} - payslip creation failed`);
         continue;
       }
@@ -4248,19 +4442,244 @@ export class PayrollExecutionService {
 
     console.log(`[Generate Payslips] Completed. Generated ${generatedPayslips.length} payslips out of ${payrollDetails.length} employees via ${distributionMethod}`);
 
-    if (generatedPayslips.length === 0) {
+    // Verify payslips were actually saved to database and re-fetch them to ensure they're persisted
+    const verifiedPayslipIds = [];
+    const failedVerificationIds = [];
+    const verifiedPayslips: any[] = [];
+    
+    try {
+      for (const payslip of generatedPayslips) {
+        try {
+          if (!payslip || !payslip._id) {
+            console.error(`[Generate Payslips] Invalid payslip object in generatedPayslips array`);
+            continue;
+          }
+          
+          const payslipId = payslip._id?.toString() || payslip.toString();
+          if (!payslipId || payslipId === 'unknown') {
+            console.error(`[Generate Payslips] Invalid payslip ID: ${payslipId}`);
+            continue;
+          }
+          
+          // Re-fetch from database to ensure it's actually persisted
+          const verified = await this.paySlipModel.findById(payslipId);
+          if (verified) {
+            verifiedPayslipIds.push(payslipId);
+            verifiedPayslips.push(verified);
+            console.log(`[Generate Payslips] Verified payslip ${payslipId} exists in database`);
+          } else {
+            console.error(`[Generate Payslips] WARNING: Payslip ${payslipId} was not found in database after generation`);
+            failedVerificationIds.push(payslipId);
+            // Still add the original payslip to verifiedPayslips if it has an _id
+            // This ensures we return what was generated even if verification fails
+            if (payslip._id) {
+              verifiedPayslips.push(payslip);
+            }
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.error(`[Generate Payslips] Error verifying payslip ${payslip?._id}: ${errorMsg}`);
+          failedVerificationIds.push(payslip?._id?.toString() || 'unknown');
+          // Still add the original payslip if it exists
+          if (payslip && payslip._id) {
+            verifiedPayslips.push(payslip);
+          }
+        }
+      }
+    } catch (verificationError) {
+      console.error(`[Generate Payslips] Error during verification loop:`, verificationError);
+      // If verification fails entirely, use the generated payslips
+      if (verifiedPayslips.length === 0 && generatedPayslips.length > 0) {
+        console.warn(`[Generate Payslips] Verification failed, using generated payslips as fallback`);
+        verifiedPayslips.push(...generatedPayslips);
+      }
+    }
+    
+    if (failedVerificationIds.length > 0) {
+      console.warn(`[Generate Payslips] ${failedVerificationIds.length} payslips failed verification:`, failedVerificationIds);
+    }
+
+    // Final verification: Count actual payslips in database for this payroll run
+    let actualPayslipCount = 0;
+    try {
+      actualPayslipCount = await this.paySlipModel.countDocuments({
+        payrollRunId: new mongoose.Types.ObjectId(payrollRunId),
+      });
+      console.log(`[Generate Payslips] Final database count for payroll run ${payrollRunId}: ${actualPayslipCount} payslips`);
+    } catch (countError) {
+      console.error(`[Generate Payslips] Error counting payslips in database:`, countError);
+      // Don't fail the entire operation if count fails
+    }
+
+    // If no payslips were generated at all, throw an error
+    // But allow partial success if some were generated
+    if (generatedPayslips.length === 0 && verifiedPayslips.length === 0) {
       throw new Error(
         `Failed to generate any payslips. Check the logs for validation errors.`,
       );
     }
 
+    // If no payslips were verified but some were generated, use the generated ones
+    // This handles cases where verification fails but payslips are actually saved
+    const payslipsToReturn = verifiedPayslips.length > 0 ? verifiedPayslips : generatedPayslips;
+    const successfulCount = verifiedPayslips.length > 0 ? verifiedPayslips.length : generatedPayslips.length;
+
+    // Warn if some payslips weren't verified in database
+    if (verifiedPayslipIds.length < generatedPayslips.length) {
+      const missingCount = generatedPayslips.length - verifiedPayslipIds.length;
+      console.error(
+        `[Generate Payslips] WARNING: Only ${verifiedPayslipIds.length} out of ${generatedPayslips.length} payslips were verified in database. ${missingCount} payslips may need manual verification.`
+      );
+    }
+
+    if (actualPayslipCount < verifiedPayslipIds.length && verifiedPayslipIds.length > 0) {
+      console.error(
+        `[Generate Payslips] WARNING: Database count (${actualPayslipCount}) is less than verified count (${verifiedPayslipIds.length})!`
+      );
+    }
+
+    // Return payslips - prefer verified ones, but fall back to generated ones if verification failed
     return {
-      message: `Generated ${generatedPayslips.length} payslips via ${distributionMethod}`,
-      payslips: generatedPayslips,
+      message: `Generated ${successfulCount} payslip${successfulCount !== 1 ? 's' : ''} via ${distributionMethod}`,
+      payslips: payslipsToReturn,
+      verifiedPayslips: verifiedPayslipIds.length,
+      actualDatabaseCount: actualPayslipCount,
       distributionMethod,
       totalEmployees: payrollDetails.length,
-      successful: generatedPayslips.length,
-      failed: payrollDetails.length - generatedPayslips.length,
+      successful: successfulCount,
+      failed: payrollDetails.length - successfulCount,
+      warnings: verifiedPayslipIds.length < generatedPayslips.length 
+        ? [`Only ${verifiedPayslipIds.length} out of ${generatedPayslips.length} payslips were verified in database`]
+        : [],
+    };
+  }
+
+  // ====================================================================================
+  // PAYSLIP VIEWING - For Payroll Specialists
+  // ====================================================================================
+  
+  // Get all payslips for a payroll run (for Payroll Specialists to view)
+  async getPayslipsByPayrollRun(
+    payrollRunId: string,
+    currentUserId: string,
+  ): Promise<any[]> {
+    const payslips = await this.paySlipModel
+      .find({
+        payrollRunId: new mongoose.Types.ObjectId(payrollRunId),
+      })
+      .populate('employeeId', 'firstName lastName employeeId email')
+      .populate('payrollRunId', 'runId payrollPeriod status')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return payslips.map((payslip: any) => ({
+      _id: payslip._id,
+      employeeId: payslip.employeeId,
+      payrollRunId: payslip.payrollRunId,
+      earningsDetails: payslip.earningsDetails,
+      deductionsDetails: payslip.deductionsDetails,
+      totalGrossSalary: payslip.totalGrossSalary,
+      totaDeductions: payslip.totaDeductions,
+      netPay: payslip.netPay,
+      paymentStatus: payslip.paymentStatus,
+      createdAt: payslip.createdAt,
+      updatedAt: payslip.updatedAt,
+    }));
+  }
+
+  // Get a specific payslip by ID (for Payroll Specialists to view)
+  async getPayslipById(
+    payslipId: string,
+    currentUserId: string,
+  ): Promise<any> {
+    const payslip = await this.paySlipModel
+      .findById(payslipId)
+      .populate('employeeId', 'firstName lastName employeeId email')
+      .populate('payrollRunId', 'runId payrollPeriod status')
+      .exec();
+
+    if (!payslip) {
+      throw new Error('Payslip not found');
+    }
+
+    return {
+      _id: payslip._id,
+      employeeId: payslip.employeeId,
+      payrollRunId: payslip.payrollRunId,
+      earningsDetails: payslip.earningsDetails,
+      deductionsDetails: payslip.deductionsDetails,
+      totalGrossSalary: payslip.totalGrossSalary,
+      totaDeductions: payslip.totaDeductions,
+      netPay: payslip.netPay,
+      paymentStatus: payslip.paymentStatus,
+      createdAt: (payslip as any).createdAt,
+      updatedAt: (payslip as any).updatedAt,
+    };
+  }
+
+  // Get all payslips (for Payroll Specialists to view all payslips)
+  async getAllPayslips(
+    currentUserId: string,
+    filters?: {
+      payrollRunId?: string;
+      employeeId?: string;
+      paymentStatus?: string;
+      page?: number;
+      limit?: number;
+    },
+  ): Promise<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
+    const query: any = {};
+
+    if (filters?.payrollRunId) {
+      query.payrollRunId = new mongoose.Types.ObjectId(filters.payrollRunId);
+    }
+
+    if (filters?.employeeId) {
+      query.employeeId = new mongoose.Types.ObjectId(filters.employeeId);
+    }
+
+    if (filters?.paymentStatus) {
+      query.paymentStatus = filters.paymentStatus;
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [payslips, total] = await Promise.all([
+      this.paySlipModel
+        .find(query)
+        .populate('employeeId', 'firstName lastName employeeId email')
+        .populate('payrollRunId', 'runId payrollPeriod status')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.paySlipModel.countDocuments(query),
+    ]);
+
+    return {
+      data: payslips.map((payslip: any) => ({
+        _id: payslip._id,
+        employeeId: payslip.employeeId,
+        payrollRunId: payslip.payrollRunId,
+        earningsDetails: payslip.earningsDetails,
+        deductionsDetails: payslip.deductionsDetails,
+        totalGrossSalary: payslip.totalGrossSalary,
+        totaDeductions: payslip.totaDeductions,
+        netPay: payslip.netPay,
+        paymentStatus: payslip.paymentStatus,
+        createdAt: payslip.createdAt,
+        updatedAt: payslip.updatedAt,
+      })),
+      total,
+      page,
+      limit,
     };
   }
 
@@ -4682,6 +5101,9 @@ export class PayrollExecutionService {
   // ====================================================================================
   // REQ-PY-12: Send payroll run for approval to Manager and Finance
   // BR: Enforce proper workflow sequence
+  // BR: Validate that manager has PAYROLL_MANAGER role
+  // BR: Validate that finance staff has FINANCE_STAFF role
+  // BR: Ensure payments cannot be made without validation (status must be DRAFT)
   async sendForApproval(
     payrollRunId: string,
     managerId: string,
@@ -4689,7 +5111,16 @@ export class PayrollExecutionService {
     currentUserId: string,
   ): Promise<payrollRuns> {
     const payrollRun = await this.payrollRunModel.findById(payrollRunId);
-    if (!payrollRun) throw new Error('Payroll run not found');
+    if (!payrollRun) {
+      throw new Error('Payroll run not found');
+    }
+
+    // Validate that payroll run is in DRAFT status (cannot send for approval if already approved/rejected)
+    if (payrollRun.status !== PayRollStatus.DRAFT) {
+      throw new Error(
+        `Cannot send payroll run for approval. Current status is '${payrollRun.status}'. Only payroll runs with 'DRAFT' status can be sent for approval.`,
+      );
+    }
 
     // Validate status transition (DRAFT → UNDER_REVIEW)
     this.validateStatusTransition(
@@ -4697,6 +5128,28 @@ export class PayrollExecutionService {
       PayRollStatus.UNDER_REVIEW,
     );
 
+    // Validate that managerId has PAYROLL_MANAGER role
+    await this.validateEmployeeHasRole(
+      managerId,
+      SystemRole.PAYROLL_MANAGER,
+      'Payroll Manager',
+    );
+
+    // Validate that financeStaffId has FINANCE_STAFF role
+    await this.validateEmployeeHasRole(
+      financeStaffId,
+      SystemRole.FINANCE_STAFF,
+      'Finance Staff',
+    );
+
+    // Ensure manager and finance staff are different people
+    if (managerId === financeStaffId) {
+      throw new Error(
+        'Payroll Manager and Finance Staff must be different employees.',
+      );
+    }
+
+    // Update payroll run: change status to UNDER_REVIEW and assign approvers
     payrollRun.status = PayRollStatus.UNDER_REVIEW;
     payrollRun.payrollManagerId = new mongoose.Types.ObjectId(managerId) as any;
     payrollRun.financeStaffId = new mongoose.Types.ObjectId(
@@ -4707,8 +5160,56 @@ export class PayrollExecutionService {
     return await payrollRun.save();
   }
 
+  // Helper: Validate that an employee has a specific system role
+  private async validateEmployeeHasRole(
+    employeeId: string,
+    requiredRole: SystemRole,
+    roleDisplayName: string,
+  ): Promise<void> {
+    try {
+      // Check if employee exists
+      const employee = await this.employeeProfileModel.findById(employeeId);
+      if (!employee) {
+        throw new Error(
+          `Employee with ID ${employeeId} not found. Please provide a valid employee ID.`,
+        );
+      }
+
+      // Check if employee has the required system role
+      const systemRole = await this.employeeSystemRoleModel
+        .findOne({
+          employeeProfileId: new mongoose.Types.ObjectId(employeeId),
+          roles: { $in: [requiredRole] },
+          isActive: true,
+        })
+        .exec();
+
+      if (!systemRole) {
+        throw new Error(
+          `Employee ${employee.firstName} ${employee.lastName} (ID: ${employeeId}) does not have the ${roleDisplayName} role. Please select an employee with the ${roleDisplayName} role.`,
+        );
+      }
+    } catch (error) {
+      // Re-throw validation errors as-is
+      if (error instanceof Error && error.message.includes('does not have')) {
+        throw error;
+      }
+      if (error instanceof Error && error.message.includes('not found')) {
+        throw error;
+      }
+      // For other errors, wrap in a more descriptive error
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to validate ${roleDisplayName} role: ${errorMessage}`,
+      );
+    }
+  }
+
   // REQ-PY-15: Finance Staff approve payroll disbursements before execution
   // BR: Enforce proper workflow sequence
+  // BR: Only assigned finance staff can approve
+  // BR: Ensure no incorrect payments are made (validation before approval)
   async approvePayrollDisbursement(
     financeDecisionDto: FinanceDecisionDto,
     currentUserId: string,
@@ -4717,6 +5218,30 @@ export class PayrollExecutionService {
       financeDecisionDto.payrollRunId,
     );
     if (!payrollRun) throw new Error('Payroll run not found');
+
+    // Validate that payroll run is in PENDING_FINANCE_APPROVAL status
+    if (payrollRun.status !== PayRollStatus.PENDING_FINANCE_APPROVAL) {
+      throw new Error(
+        `Cannot process finance approval. Current status is '${payrollRun.status}'. Only payroll runs with 'PENDING_FINANCE_APPROVAL' status can be approved by Finance.`,
+      );
+    }
+
+    // Validate that the current user is the assigned finance staff (if financeStaffId is set)
+    if (payrollRun.financeStaffId) {
+      const assignedFinanceStaffId = payrollRun.financeStaffId.toString();
+      if (assignedFinanceStaffId !== currentUserId) {
+        throw new Error(
+          'Only the assigned Finance Staff member can approve this payroll run. Please contact the assigned Finance Staff member.',
+        );
+      }
+    } else {
+      // If no finance staff was assigned, validate that current user has FINANCE_STAFF role
+      await this.validateEmployeeHasRole(
+        currentUserId,
+        SystemRole.FINANCE_STAFF,
+        'Finance Staff',
+      );
+    }
 
     if (financeDecisionDto.decision === 'approve') {
       // Validate status transition (PENDING_FINANCE_APPROVAL → APPROVED)
@@ -4744,6 +5269,33 @@ export class PayrollExecutionService {
           financeDecisionDto.financeStaffId,
         ) as any;
       }
+
+      // Save the payroll run first
+      (payrollRun as any).updatedBy = currentUserId;
+      const savedPayrollRun = await payrollRun.save();
+
+      // REQ-PY-8: Automatically generate and distribute payslips after Finance approval (REQ-PY-15)
+      // Check if payroll is already locked - if yes, auto-generate payslips
+      if (savedPayrollRun.status === PayRollStatus.LOCKED) {
+        console.log(`[Auto-Generate Payslips] Finance approved payroll run ${savedPayrollRun._id}. Payroll is locked. Auto-generating payslips...`);
+        try {
+          // Auto-generate payslips via Portal (default distribution method)
+          await this.generateAndDistributePayslips(
+            savedPayrollRun._id.toString(),
+            'PORTAL',
+            currentUserId,
+          );
+          console.log(`[Auto-Generate Payslips] Successfully auto-generated payslips for payroll run ${savedPayrollRun._id}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[Auto-Generate Payslips] Failed to auto-generate payslips for payroll run ${savedPayrollRun._id}: ${errorMessage}`);
+          // Don't fail the approval if payslip generation fails - log and continue
+        }
+      } else {
+        console.log(`[Auto-Generate Payslips] Finance approved payroll run ${savedPayrollRun._id}. Payroll is not locked yet. Payslips will be auto-generated when payroll is locked.`);
+      }
+
+      return savedPayrollRun;
     } else {
       // Validate status transition (PENDING_FINANCE_APPROVAL → REJECTED)
       this.validateStatusTransition(payrollRun.status, PayRollStatus.REJECTED);
@@ -4751,10 +5303,10 @@ export class PayrollExecutionService {
       payrollRun.status = PayRollStatus.REJECTED;
       payrollRun.rejectionReason =
         financeDecisionDto.reason || 'Rejected by Finance';
+      
+      (payrollRun as any).updatedBy = currentUserId;
+      return await payrollRun.save();
     }
-
-    (payrollRun as any).updatedBy = currentUserId;
-    return await payrollRun.save();
   }
 
   // REQ-PY-20: Payroll Manager resolve escalated irregularities
@@ -5119,5 +5671,72 @@ export class PayrollExecutionService {
 
     (payrollRun as any).updatedBy = currentUserId;
     return await payrollRun.save();
+  }
+
+  // Get all payroll runs with optional filtering
+  async getAllPayrollRuns(
+    status: string | undefined,
+    page: number,
+    limit: number,
+    currentUserId: string,
+  ): Promise<{ data: payrollRuns[]; total: number; page: number; limit: number }> {
+    try {
+      const query: any = {};
+      
+      if (status) {
+        query.status = status;
+      }
+
+      const skip = (page - 1) * limit;
+      
+      const [payrollRuns, total] = await Promise.all([
+        this.payrollRunModel
+          .find(query)
+          .populate('payrollSpecialistId', 'firstName lastName')
+          .populate('payrollManagerId', 'firstName lastName')
+          .populate('financeStaffId', 'firstName lastName')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.payrollRunModel.countDocuments(query).exec(),
+      ]);
+
+      return {
+        data: payrollRuns,
+        total,
+        page,
+        limit,
+      };
+    } catch (error: any) {
+      throw new Error(
+        `Failed to retrieve payroll runs: ${error?.message || 'Unknown error'}`,
+      );
+    }
+  }
+
+  // Get payroll run by runId
+  async getPayrollRunByRunId(runId: string, currentUserId: string): Promise<payrollRuns> {
+    try {
+      const payrollRun = await this.payrollRunModel
+        .findOne({ runId })
+        .populate('payrollSpecialistId', 'firstName lastName')
+        .populate('payrollManagerId', 'firstName lastName')
+        .populate('financeStaffId', 'firstName lastName')
+        .exec();
+
+      if (!payrollRun) {
+        throw new Error(`Payroll run with runId ${runId} not found`);
+      }
+
+      return payrollRun;
+    } catch (error: any) {
+      if (error.message && error.message.includes('not found')) {
+        throw error;
+      }
+      throw new Error(
+        `Failed to retrieve payroll run: ${error?.message || 'Unknown error'}`,
+      );
+    }
   }
 }
