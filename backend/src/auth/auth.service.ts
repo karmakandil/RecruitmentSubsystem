@@ -70,6 +70,23 @@ export class AuthService {
     employee: EmployeeProfileDocument,
     password: string,
   ): Promise<any> {
+    // ========================================================================
+    // RECRUITMENT SYSTEM - OFF-007: System Access Revocation Check
+    // ========================================================================
+    // When an employee is offboarded (resignation/termination), the System Admin
+    // revokes their system access via the Access Management page. This sets the
+    // employee status to 'INACTIVE'. This check prevents INACTIVE employees from
+    // logging into the system, enforcing the access revocation.
+    // 
+    // Related User Story: OFF-007 - "As a System Admin, I want to revoke system
+    // and account access upon termination, so security is maintained."
+    // ========================================================================
+    if (employee.status === 'INACTIVE') {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. System access has been revoked. Please contact HR for assistance.',
+      );
+    }
+
     const isPasswordValid = await bcrypt.compare(password, employee.password);
 
     if (!isPasswordValid) {

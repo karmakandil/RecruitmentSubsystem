@@ -692,8 +692,8 @@ export class RecruitmentController {
   // ============================================================================
   /**
    * POST /recruitment/offboarding/terminate
-   * Allows HR Manager to terminate an employee based on poor performance.
-   * Requires performance score < 2.5.
+   * OFF-001: Only HR Manager can terminate an employee based on poor performance.
+   * Requires performance score < 2.5 from appraisal records.
    */
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(SystemRole.HR_MANAGER)
@@ -729,12 +729,29 @@ export class RecruitmentController {
     return this.service.getMyResignationRequests(req.user);
   }
 
-  // NEW: HR Manager gets ALL termination/resignation requests (OFF-001, OFF-018, OFF-019)
+  // OFF-001: HR Manager gets ALL termination/resignation requests - HR MANAGER ONLY
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/terminations')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER)
   getAllTerminationRequests() {
     return this.service.getAllTerminationRequests();
+  }
+
+  // OFF-010: Get ALL clearance checklists - All department roles can view to complete their items
+  // This endpoint does NOT expose termination details, only checklists with employee info
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('offboarding/clearance-checklists')
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.PAYROLL_SPECIALIST,
+  )
+  getAllClearanceChecklists() {
+    return this.service.getAllClearanceChecklists();
   }
 
   // changed - added JwtAuthGuard
@@ -825,7 +842,7 @@ export class RecruitmentController {
   }
 
   // 3) Appraisal view for offboarding (latest appraisal of employee)
-  // changed - added JwtAuthGuard
+  // OFF-001: HR Manager views employee performance for termination decisions
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('offboarding/appraisal/:employeeId')
   @Roles(SystemRole.HR_MANAGER)

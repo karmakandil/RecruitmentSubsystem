@@ -21,6 +21,7 @@ export default function DepartmentHeadClearancePage() {
   const [loading, setLoading] = useState(true);
   const [selectedChecklist, setSelectedChecklist] = useState<ClearanceChecklist | null>(null);
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [status, setStatus] = useState<string>("pending");
   const [notes, setNotes] = useState<string>("");
@@ -47,20 +48,21 @@ export default function DepartmentHeadClearancePage() {
     setSelectedChecklist(checklist);
     setSelectedItemIndex(itemIndex);
     const item = checklist.items[itemIndex];
+    setSelectedDepartment(item.department || "");
     setStatus(item.status);
-    setNotes(item.notes || "");
+    setNotes(item.notes || (item as any).comments || "");
     setIsModalOpen(true);
   };
 
   const handleUpdateStatus = async () => {
-    if (!selectedChecklist || selectedItemIndex === null) return;
+    if (!selectedChecklist || !selectedDepartment) return;
 
     try {
       setUpdating(true);
       const updateData: UpdateClearanceItemStatusDto = {
-        itemIndex: selectedItemIndex,
+        department: selectedDepartment,
         status: status,
-        notes: notes.trim() || undefined,
+        comments: notes.trim() || undefined,
       };
 
       await recruitmentApi.updateClearanceItemStatus(selectedChecklist._id, updateData);
@@ -68,6 +70,7 @@ export default function DepartmentHeadClearancePage() {
       setIsModalOpen(false);
       setSelectedChecklist(null);
       setSelectedItemIndex(null);
+      setSelectedDepartment("");
       setStatus("pending");
       setNotes("");
       loadChecklists();

@@ -1,7 +1,8 @@
 "use client";
 
-// CHANGED - New Offboarding Checklists page for HR Manager
-// Implements: HR Manager creates offboarding checklist (IT assets, ID cards, equipment)
+// CHANGED - Offboarding Checklists page with detailed sub-items per department
+// Implements OFF-006, OFF-010: Multi-department clearance sign-offs
+// Sub-items displayed in frontend (like onboarding tasks), department marked complete when all checked
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -22,258 +23,353 @@ import {
   CardContent,
 } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
-import { Input } from "@/components/shared/ui/Input";
-import { Select } from "@/components/leaves/Select";
 import { Textarea } from "@/components/leaves/Textarea";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
+
+// ============================================================================
+// DEPARTMENT CLEARANCE ITEMS - Aligned with User Stories OFF-006, OFF-007, OFF-010
+// ============================================================================
+// OFF-006: HR Manager uses offboarding checklist (IT assets, ID cards, equipment)
+// OFF-007: System Admin revokes system and account access
+// OFF-010: Multi-department exit clearance sign-offs
+// BR 13(a,b,c): Clearance checklist required across departments
+// ============================================================================
+const DEPARTMENT_ITEMS: { [key: string]: string[] } = {
+  // LINE_MANAGER (Department Head) - Work transition & handover
+  LINE_MANAGER: [
+    "Work handover completed",
+    "Projects transferred to team members",
+    "Knowledge transfer documentation done",
+    "Pending tasks reassigned",
+    "Team notified of departure",
+  ],
+  
+  // IT (System Admin) - OFF-007: System access revocation
+  IT: [
+    "Email account disabled",
+    "VPN/Remote access revoked",
+    "System login credentials deactivated",
+    "Software licenses recovered",
+    "Shared drive access removed",
+    "Company laptop collected",
+    "Mobile phone/device collected",
+  ],
+  
+  // FINANCE (Finance Staff/Payroll) - Financial clearance
+  FINANCE: [
+    "Expense reports submitted and cleared",
+    "Company credit card returned",
+    "Outstanding loans/advances settled",
+    "Petty cash accounted for",
+    "Travel advances cleared",
+    "Final salary calculation prepared",
+  ],
+  
+  // FACILITIES (HR Employee) - Physical workspace clearance
+  FACILITIES: [
+    "Desk/Workspace cleared and cleaned",
+    "Parking pass/permit returned",
+    "Building access card deactivated",
+    "Office keys returned",
+  ],
+  
+  // ADMIN (HR Employee) - ID & physical access items
+  ADMIN: [
+    "Employee ID badge returned",
+    "Access cards/Key fobs returned",
+    "Locker cleared and key returned",
+    "Company uniform returned (if applicable)",
+    "Business cards collected",
+  ],
+  
+  // HR (HR Manager) - Exit formalities & documentation
+  HR: [
+    "Exit interview completed",
+    "Final paperwork signed",
+    "Benefits termination processed",
+    "Reference letter request noted",
+    "Non-compete/NDA acknowledgment",
+    "Exit survey completed",
+  ],
+};
+
+interface EmployeeChecklist {
+  termination: TerminationRequest;
+  checklist: ClearanceChecklist | null;
+  expanded: boolean;
+  // Local state for sub-item checkboxes (not saved to DB)
+  checkedItems: { [dept: string]: boolean[] };
+}
 
 export default function OffboardingChecklistsPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
 
-  // CHANGED - State for terminations (to create checklists from)
-  const [terminations, setTerminations] = useState<TerminationRequest[]>([]);
-  // CHANGED - State for clearance checklists
-  const [checklists, setChecklists] = useState<Map<string, ClearanceChecklist>>(new Map());
+  // State
+  const [employeeChecklists, setEmployeeChecklists] = useState<EmployeeChecklist[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // CHANGED - Modal states
-  const [isUpdateItemModalOpen, setIsUpdateItemModalOpen] = useState(false);
-  const [selectedChecklist, setSelectedChecklist] = useState<ClearanceChecklist | null>(null);
-  const [selectedItemIndex, setSelectedItemIndex] = useState<number>(0);
-  const [updateForm, setUpdateForm] = useState({
-    department: "",
-    status: "pending",
-    notes: "",
-  });
+  // Modal states
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeChecklist | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [comments, setComments] = useState("");
 
-  // CHANGED - Search state
-  const [searchTerm, setSearchTerm] = useState("");
-  // CHANGED - Termination ID for creating new checklists
-  const [terminationId, setTerminationId] = useState("");
-  // CHANGED - OFF-013: Final settlement state
-  const [settlementEmployeeId, setSettlementEmployeeId] = useState("");
-  const [settlementTerminationId, setSettlementTerminationId] = useState("");
-  const [settlementResult, setSettlementResult] = useState<any>(null);
-  const [triggeringSettlement, setTriggeringSettlement] = useState(false);
+  // User roles
+  const userRoles = user?.roles || [];
+  const isHRManager = userRoles.includes(SystemRole.HR_MANAGER);
+  const isSystemAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+  const isHREmployee = userRoles.includes(SystemRole.HR_EMPLOYEE);
+  const isDepartmentHead = userRoles.includes(SystemRole.DEPARTMENT_HEAD);
+  const isFinanceStaff = userRoles.includes(SystemRole.FINANCE_STAFF) || 
+                         userRoles.includes(SystemRole.PAYROLL_MANAGER) ||
+                         userRoles.includes(SystemRole.PAYROLL_SPECIALIST);
+
+  // Department permissions - who can UPDATE which department
+  const canUpdateDepartment = (department: string): boolean => {
+    switch (department.toUpperCase()) {
+      case 'HR': return isHRManager;
+      case 'IT': return isSystemAdmin;
+      case 'FINANCE': return isFinanceStaff;
+      case 'FACILITIES': return isHREmployee;
+      case 'ADMIN': return isHREmployee;
+      case 'LINE_MANAGER': return isDepartmentHead;
+      default: return false;
+    }
+  };
+
+  // Get departments visible to current user
+  // HR Manager sees ALL departments, others see only their own
+  const getVisibleDepartments = (): string[] => {
+    if (isHRManager) {
+      return Object.keys(DEPARTMENT_ITEMS); // HR Manager sees all
+    }
+    
+    // Other roles only see their departments
+    const visible: string[] = [];
+    if (isSystemAdmin) visible.push('IT');
+    if (isDepartmentHead) visible.push('LINE_MANAGER');
+    if (isFinanceStaff) visible.push('FINANCE');
+    if (isHREmployee) {
+      visible.push('FACILITIES');
+      visible.push('ADMIN');
+    }
+    return visible;
+  };
+
+  const visibleDepartments = getVisibleDepartments();
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [isHRManager]);
 
-  // CHANGED - Load terminations and their clearance checklists
   const loadData = async () => {
     try {
       setLoading(true);
-
-      // Get termination requests (resignations) - HR Manager's own for now
-      // In a full implementation, there would be an endpoint to get all terminations
-      const resignations = await recruitmentApi.getMyResignationRequests();
-      setTerminations(Array.isArray(resignations) ? resignations : []);
-
-      // Load clearance checklists for each termination
-      const checklistMap = new Map<string, ClearanceChecklist>();
       
-      // Note: In production, you'd have an endpoint to get all clearance checklists
-      // For now, we'll try to load by employee ID if available
+      // Different data loading based on role:
+      // - HR Manager: Load terminations and create checklists
+      // - Other roles: Load checklists directly (no termination details access)
       
-      setChecklists(checklistMap);
+      if (isHRManager) {
+        // HR Manager flow - can see terminations and create checklists
+        const allTerminations = await recruitmentApi.getAllTerminationRequests();
+        const approvedTerminations = (Array.isArray(allTerminations) ? allTerminations : [])
+          .filter(t => t.status?.toLowerCase() === 'approved');
+
+        const checklistPromises = approvedTerminations.map(async (term) => {
+          let checklist: ClearanceChecklist | null = null;
+          if (term.employee?.employeeNumber) {
+            try {
+              checklist = await recruitmentApi.getClearanceChecklistByEmployee(
+                term.employee.employeeNumber
+              );
+            } catch (e) {
+              // No checklist yet
+            }
+          }
+          
+          // Initialize checked items state for each department
+          const checkedItems: { [dept: string]: boolean[] } = {};
+          Object.keys(DEPARTMENT_ITEMS).forEach(dept => {
+            checkedItems[dept] = DEPARTMENT_ITEMS[dept].map(() => false);
+          });
+          
+          return {
+            termination: term,
+            checklist,
+            expanded: false,
+            checkedItems,
+          };
+        });
+
+        const results = await Promise.all(checklistPromises);
+        setEmployeeChecklists(results);
+      } else {
+        // Non-HR roles - load clearance checklists directly (OFF-010)
+        const allChecklists = await recruitmentApi.getAllClearanceChecklists();
+        
+        const results = (Array.isArray(allChecklists) ? allChecklists : []).map((checklist: any) => {
+          // Initialize checked items state for each department
+          const checkedItems: { [dept: string]: boolean[] } = {};
+          Object.keys(DEPARTMENT_ITEMS).forEach(dept => {
+            checkedItems[dept] = DEPARTMENT_ITEMS[dept].map(() => false);
+          });
+          
+          // Create a "fake" termination object from checklist data for UI consistency
+          const pseudoTermination: TerminationRequest = {
+            _id: checklist.terminationId || '',
+            employeeId: checklist.employee?._id || '',
+            status: 'approved', // Only approved ones have checklists
+            terminationDate: checklist.terminationDate,
+            initiator: checklist.terminationType === 'Resignation' ? 'employee' : 'hr',
+            reason: '',
+            employee: {
+              _id: checklist.employee?._id || '',
+              firstName: checklist.employee?.fullName?.split(' ')[0] || 'Unknown',
+              lastName: checklist.employee?.fullName?.split(' ').slice(1).join(' ') || '',
+              fullName: checklist.employee?.fullName || 'Unknown Employee',
+              employeeNumber: checklist.employee?.employeeNumber || 'N/A',
+              workEmail: checklist.employee?.workEmail || 'N/A',
+            },
+          } as TerminationRequest;
+          
+          return {
+            termination: pseudoTermination,
+            checklist: checklist as ClearanceChecklist,
+            expanded: false,
+            checkedItems,
+          };
+        });
+        
+        setEmployeeChecklists(results);
+      }
     } catch (error: any) {
-      // Expected - HR Manager may not have their own resignations
-      console.log("No terminations found or error:", error.message);
-      setTerminations([]);
+      console.log("Error loading data:", error.message);
+      setEmployeeChecklists([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // CHANGED - Create clearance checklist for a termination
+  // Toggle checklist visibility
+  const toggleExpanded = (index: number) => {
+    setEmployeeChecklists(prev => 
+      prev.map((item, i) => 
+        i === index ? { ...item, expanded: !item.expanded } : item
+      )
+    );
+  };
+
+  // Toggle sub-item checkbox
+  const toggleSubItem = (empIndex: number, dept: string, itemIndex: number) => {
+    setEmployeeChecklists(prev => 
+      prev.map((emp, i) => {
+        if (i !== empIndex) return emp;
+        const newCheckedItems = { ...emp.checkedItems };
+        newCheckedItems[dept] = [...newCheckedItems[dept]];
+        newCheckedItems[dept][itemIndex] = !newCheckedItems[dept][itemIndex];
+        return { ...emp, checkedItems: newCheckedItems };
+      })
+    );
+  };
+
+  // Check if all sub-items for a department are checked
+  const allSubItemsChecked = (emp: EmployeeChecklist, dept: string): boolean => {
+    return emp.checkedItems[dept]?.every(checked => checked) ?? false;
+  };
+
+  // Create checklist
   const handleCreateChecklist = async (terminationId: string) => {
     try {
       await recruitmentApi.createClearanceChecklist(terminationId);
-      showToast("Clearance checklist created successfully", "success");
+      showToast("Clearance checklist created successfully!", "success");
       loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to create clearance checklist", "error");
+      showToast(error.message || "Failed to create checklist", "error");
     }
   };
 
-  // CHANGED - Load checklist by employee
-  const handleLoadChecklist = async (employeeId: string) => {
-    try {
-      const checklist = await recruitmentApi.getClearanceChecklistByEmployee(employeeId);
-      if (checklist) {
-        setChecklists((prev) => new Map(prev).set(employeeId, checklist));
-        showToast("Clearance checklist loaded", "success");
-      }
-    } catch (error: any) {
-      if (error.message?.includes("404") || error.message?.includes("not found")) {
-        // CHANGED - Show helpful message when no checklist exists
-        showToast(
-          "No clearance checklist found. Please create one from a termination request first.",
-          "info"
-        );
-      } else {
-        showToast(error.message || "Failed to load clearance checklist", "error");
-      }
-    }
+  // Open modal to mark department as complete
+  const handleOpenComplete = (emp: EmployeeChecklist, dept: string) => {
+    setSelectedEmployee(emp);
+    setSelectedDepartment(dept);
+    setComments("");
+    setIsUpdateModalOpen(true);
   };
 
-  // CHANGED - Create checklist from termination ID
-  const handleCreateFromTermination = async (terminationId: string) => {
-    if (!terminationId.trim()) {
-      showToast("Please enter a termination ID", "error");
-      return;
-    }
-
-    try {
-      await recruitmentApi.createClearanceChecklist(terminationId);
-      showToast("Clearance checklist created successfully!", "success");
-      // Try to reload - the checklist is now created
-    } catch (error: any) {
-      showToast(error.message || "Failed to create clearance checklist", "error");
-    }
-  };
-
-  // CHANGED - Open update item modal
-  const handleOpenUpdateItem = (checklist: ClearanceChecklist, itemIndex: number) => {
-    setSelectedChecklist(checklist);
-    setSelectedItemIndex(itemIndex);
-    const item = checklist.items[itemIndex];
-    setUpdateForm({
-      department: item.department || "",
-      status: item.status || "pending",
-      notes: item.notes || "",
-    });
-    setIsUpdateItemModalOpen(true);
-  };
-
-  // CHANGED - Update clearance item
-  const handleUpdateItem = async () => {
-    if (!selectedChecklist) return;
+  // Mark department as complete (approved)
+  const handleMarkComplete = async () => {
+    if (!selectedEmployee?.checklist || !selectedDepartment) return;
 
     try {
       const updateData: UpdateClearanceItemStatusDto = {
-        itemIndex: selectedItemIndex,
-        status: updateForm.status,
-        notes: updateForm.notes || undefined,
+        department: selectedDepartment,
+        status: "approved",
+        comments: comments || `All ${selectedDepartment} clearance items completed`,
       };
 
-      await recruitmentApi.updateClearanceItemStatus(selectedChecklist._id, updateData);
-      showToast("Clearance item updated", "success");
-      setIsUpdateItemModalOpen(false);
-      loadData();
-    } catch (error: any) {
-      showToast(error.message || "Failed to update clearance item", "error");
-    }
-  };
-
-  // CHANGED - Mark checklist complete
-  const handleMarkComplete = async (checklistId: string) => {
-    try {
-      await recruitmentApi.markClearanceChecklistComplete(checklistId);
-      showToast("Clearance checklist marked as complete", "success");
-      loadData();
-    } catch (error: any) {
-      showToast(error.message || "Failed to mark checklist complete", "error");
-    }
-  };
-
-  // CHANGED - Send reminders
-  const handleSendReminders = async () => {
-    try {
-      await recruitmentApi.sendClearanceReminders(false);
-      showToast("Clearance reminders sent to pending departments", "success");
-    } catch (error: any) {
-      showToast(error.message || "Failed to send reminders", "error");
-    }
-  };
-
-  // CHANGED - OFF-013: Trigger final settlement (benefits termination + final pay calc)
-  const handleTriggerFinalSettlement = async () => {
-    if (!settlementEmployeeId.trim() || !settlementTerminationId.trim()) {
-      showToast("Please enter both Employee ID and Termination ID", "error");
-      return;
-    }
-
-    // Validate ObjectId format (24-character hex string)
-    const objectIdRegex = /^[a-fA-F0-9]{24}$/;
-    if (!objectIdRegex.test(settlementEmployeeId.trim())) {
-      showToast("Invalid Employee ID format. Must be a 24-character MongoDB ObjectId.", "error");
-      return;
-    }
-    if (!objectIdRegex.test(settlementTerminationId.trim())) {
-      showToast("Invalid Termination ID format. Must be a 24-character MongoDB ObjectId.", "error");
-      return;
-    }
-
-    try {
-      setTriggeringSettlement(true);
-      setSettlementResult(null);
-
-      const result = await recruitmentApi.triggerFinalSettlement(
-        settlementEmployeeId.trim(),
-        settlementTerminationId.trim()
+      await recruitmentApi.updateClearanceItemStatus(
+        selectedEmployee.checklist._id,
+        updateData
       );
-
-      setSettlementResult(result);
-      showToast("Final settlement triggered successfully! Benefits termination and final pay calculation initiated.", "success");
+      
+      showToast(`${selectedDepartment} clearance marked as complete!`, "success");
+      setIsUpdateModalOpen(false);
+      loadData();
     } catch (error: any) {
-      showToast(error.message || "Failed to trigger final settlement", "error");
-      setSettlementResult({ error: error.message });
-    } finally {
-      setTriggeringSettlement(false);
+      showToast(error.message || "Failed to update clearance", "error");
     }
   };
 
-  // CHANGED - Get status badge color
+  // Get department status from checklist
+  const getDeptStatus = (checklist: ClearanceChecklist | null, dept: string): string => {
+    if (!checklist) return 'pending';
+    const item = checklist.items?.find((i: any) => i.department === dept);
+    return item?.status || 'pending';
+  };
+
+  // Get status badge color
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
-      case "pending":
-        return "bg-yellow-100 text-yellow-800";
-      case "approved":
-        return "bg-green-100 text-green-800";
-      case "rejected":
-        return "bg-red-100 text-red-800";
-      case "completed":
-        return "bg-blue-100 text-blue-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+      case "pending": return "bg-yellow-100 text-yellow-800";
+      case "approved": return "bg-green-100 text-green-800";
+      case "rejected": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
     }
   };
 
-  // CHANGED - Get department icon
+  // Get department icon
   const getDepartmentIcon = (department: string) => {
     switch (department?.toUpperCase()) {
-      case "IT":
-        return "💻";
-      case "HR":
-        return "👤";
-      case "FINANCE":
-        return "💰";
-      case "FACILITIES":
-        return "🏢";
-      case "ADMIN":
-        return "📋";
-      case "LINE_MANAGER":
-        return "👔";
-      default:
-        return "📁";
+      case "IT": return "💻";
+      case "HR": return "👤";
+      case "FINANCE": return "💰";
+      case "FACILITIES": return "🏢";
+      case "ADMIN": return "📋";
+      case "LINE_MANAGER": return "👔";
+      default: return "📁";
     }
   };
 
-  // CHANGED - Calculate checklist progress
-  const getChecklistProgress = (checklist: ClearanceChecklist) => {
-    if (!checklist.items || checklist.items.length === 0) return 0;
-    const approved = checklist.items.filter(
-      (item) => item.status?.toLowerCase() === "approved"
-    ).length;
+  // Calculate overall progress
+  const getProgress = (checklist: ClearanceChecklist | null): number => {
+    if (!checklist?.items?.length) return 0;
+    const approved = checklist.items.filter((i: any) => i.status?.toLowerCase() === "approved").length;
     return Math.round((approved / checklist.items.length) * 100);
   };
 
   return (
-    <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN]}>
+    <ProtectedRoute allowedRoles={[
+      SystemRole.HR_MANAGER, 
+      SystemRole.SYSTEM_ADMIN,
+      SystemRole.HR_EMPLOYEE,
+      SystemRole.DEPARTMENT_HEAD,
+      SystemRole.FINANCE_STAFF,
+      SystemRole.PAYROLL_MANAGER,
+      SystemRole.PAYROLL_SPECIALIST,
+    ]}>
       <div className="container mx-auto px-6 py-8">
         <Toast
           message={toast.message}
@@ -283,485 +379,327 @@ export default function OffboardingChecklistsPage() {
         />
 
         <div className="mb-8">
-          <Link
-            href="/dashboard/recruitment"
-            className="text-blue-600 hover:underline mb-4 inline-block"
-          >
+          <Link href="/dashboard/recruitment" className="text-blue-600 hover:underline mb-4 inline-block">
             ← Back to Recruitment
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">
-            Offboarding Checklists
+            {isHRManager ? 'Offboarding Checklists' : 'My Clearance Tasks'}
           </h1>
           <p className="text-gray-600 mt-1">
-            Manage offboarding checklists to ensure no company property is lost
-            (IT assets, ID cards, equipment)
+            {isHRManager 
+              ? 'Manage clearance sign-offs for departing employees (OFF-006, OFF-010)'
+              : 'Complete clearance items for your department (OFF-010)'
+            }
           </p>
         </div>
 
-        {/* CHANGED - Actions Bar */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex-1 max-w-md">
-            <Input
-              placeholder="Search by employee ID or name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={handleSendReminders}>
-              Send Reminders
-            </Button>
-          </div>
-        </div>
+        {/* Permission Legend - Show only relevant departments */}
+        <Card className="mb-6 bg-blue-50 border-blue-200">
+          <CardContent className="py-4">
+            <h3 className="font-semibold text-blue-900 mb-2">
+              {isHRManager ? 'All Department Clearance Overview' : 'Your Clearance Responsibilities'}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {visibleDepartments.map(dept => (
+                <span
+                  key={dept}
+                  className={`px-3 py-1 rounded-full text-sm ${
+                    canUpdateDepartment(dept)
+                      ? 'bg-green-100 text-green-800 font-medium'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {getDepartmentIcon(dept)} {dept}: {canUpdateDepartment(dept) ? '✅ Your Tasks' : '👁️ View Only'}
+                </span>
+              ))}
+            </div>
+            {!isHRManager && (
+              <p className="text-xs text-blue-700 mt-2">
+                ℹ️ You can only see and update your department's clearance items.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {loading ? (
           <div className="text-center py-12">
             <p className="text-gray-500">Loading offboarding checklists...</p>
           </div>
+        ) : employeeChecklists.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-gray-500 mb-4">No approved separations requiring clearance.</p>
+              <p className="text-sm text-gray-400">
+                Clearance checklists will appear here when resignations/terminations are approved.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
-          <>
-            {/* CHANGED - Instructions Card */}
-            <Card className="mb-8 bg-blue-50 border-blue-200">
-              <CardContent className="py-4">
-                <h3 className="font-semibold text-blue-900 mb-2">
-                  How to use Offboarding Checklists
-                </h3>
-                <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
-                  <li>
-                    First, create a termination request from the{" "}
-                    <Link
-                      href="/dashboard/recruitment/terminations"
-                      className="underline"
-                    >
-                      Termination Management
-                    </Link>{" "}
-                    page
-                  </li>
-                  <li>
-                    When a termination is approved, create a clearance checklist
-                  </li>
-                  <li>
-                    Track approvals from each department (IT, HR, Finance,
-                    Facilities, Admin)
-                  </li>
-                  <li>Ensure all equipment, ID cards, and assets are returned</li>
-                  <li>Mark the checklist as complete when all items are approved</li>
-                </ol>
-              </CardContent>
-            </Card>
-
-            {/* CHANGED - Checklist Items Explanation */}
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Clearance Checklist Items</CardTitle>
-                <CardDescription>
-                  Each offboarding checklist includes the following departments
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">👔</span>
-                    <div>
-                      <p className="font-medium text-gray-900">Line Manager</p>
-                      <p className="text-xs text-gray-500">
-                        Work handover, project transfer
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">👤</span>
-                    <div>
-                      <p className="font-medium text-gray-900">HR</p>
-                      <p className="text-xs text-gray-500">
-                        Exit interview, final paperwork
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">💻</span>
-                    <div>
-                      <p className="font-medium text-gray-900">IT</p>
-                      <p className="text-xs text-gray-500">
-                        Laptop, phone, software access
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">💰</span>
-                    <div>
-                      <p className="font-medium text-gray-900">Finance</p>
-                      <p className="text-xs text-gray-500">
-                        Final settlement, expenses
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">🏢</span>
-                    <div>
-                      <p className="font-medium text-gray-900">Facilities</p>
-                      <p className="text-xs text-gray-500">
-                        Desk, parking, building access
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <span className="text-2xl">📋</span>
-                    <div>
-                      <p className="font-medium text-gray-900">Admin</p>
-                      <p className="text-xs text-gray-500">
-                        ID card, keys, access cards
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* CHANGED - Create Checklist Section */}
-            <Card className="mb-8 border-green-200 bg-green-50">
-              <CardHeader>
-                <CardTitle className="text-green-900">Create Clearance Checklist</CardTitle>
-                <CardDescription className="text-green-700">
-                  Enter a termination request ID to create a new clearance checklist
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4">
-                  <Input
-                    placeholder="Enter Termination ID (MongoDB ObjectId, e.g., 507f1f77bcf86cd799439011)"
-                    value={terminationId}
-                    onChange={(e) => setTerminationId(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={() => handleCreateFromTermination(terminationId)}
-                    disabled={!terminationId.trim()}
-                  >
-                    Create Checklist
-                  </Button>
-                </div>
-                <p className="text-xs text-green-600 mt-2">
-                  You can find the Termination ID from the Termination Management page or your database.
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* CHANGED - Load Checklist Section */}
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Load Existing Checklist</CardTitle>
-                <CardDescription>
-                  Enter an employee number to view their clearance checklist (if it exists)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-4">
-                  <Input
-                    placeholder="Enter Employee Number (e.g., EMP-2025-0014)"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => handleLoadChecklist(searchTerm)}
-                    disabled={!searchTerm.trim()}
-                  >
-                    Load Checklist
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* CHANGED - OFF-013: Final Settlement Section */}
-            <Card className="mb-8 border-purple-200 bg-purple-50">
-              <CardHeader>
-                <CardTitle className="text-purple-900">
-                  💰 Trigger Final Settlement (OFF-013)
-                </CardTitle>
-                <CardDescription className="text-purple-700">
-                  Send offboarding notification to trigger benefits termination and final pay calculation
-                  (unused leave, deductions, severance)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="bg-white p-4 rounded-lg border border-purple-200">
-                    <h4 className="font-medium text-purple-900 mb-3">What this does:</h4>
-                    <ul className="text-sm text-purple-800 space-y-1 list-disc list-inside">
-                      <li>Calculates unused leave balance for encashment</li>
-                      <li>Creates employee termination benefit records in payroll module</li>
-                      <li>Queues final pay calculation (salary, deductions, severance)</li>
-                      <li>Triggers benefits plan termination</li>
-                      <li>Sends notification to HR about settlement status</li>
-                    </ul>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Employee ID (MongoDB ObjectId) *
-                      </label>
-                      <Input
-                        placeholder="e.g., 507f1f77bcf86cd799439011"
-                        value={settlementEmployeeId}
-                        onChange={(e) => setSettlementEmployeeId(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Termination ID (MongoDB ObjectId) *
-                      </label>
-                      <Input
-                        placeholder="e.g., 507f1f77bcf86cd799439012"
-                        value={settlementTerminationId}
-                        onChange={(e) => setSettlementTerminationId(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleTriggerFinalSettlement}
-                    disabled={triggeringSettlement || !settlementEmployeeId.trim() || !settlementTerminationId.trim()}
-                    className="bg-purple-600 hover:bg-purple-700"
-                  >
-                    {triggeringSettlement ? "Processing..." : "🚀 Trigger Final Settlement"}
-                  </Button>
-
-                  <p className="text-xs text-purple-600">
-                    Note: This should be triggered after all clearance items are approved.
-                    The system automatically triggers this when all clearances are complete,
-                    but you can also trigger it manually here.
-                  </p>
-                </div>
-
-                {/* Settlement Result */}
-                {settlementResult && (
-                  <div className={`mt-4 p-4 rounded-lg ${settlementResult.error ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'} border`}>
-                    <h4 className={`font-medium mb-2 ${settlementResult.error ? 'text-red-900' : 'text-green-900'}`}>
-                      {settlementResult.error ? '❌ Settlement Error' : '✅ Settlement Result'}
-                    </h4>
-                    {settlementResult.error ? (
-                      <p className="text-red-700 text-sm">{settlementResult.error}</p>
-                    ) : (
-                      <div className="text-sm text-green-800 space-y-2">
-                        <p><strong>Status:</strong> {settlementResult.status || 'Processed'}</p>
-                        {settlementResult.components && (
-                          <>
-                            {settlementResult.components.leaveEncashment && (
-                              <div className="bg-white p-2 rounded">
-                                <p className="font-medium">📅 Leave Encashment:</p>
-                                <p>Unused Days: {settlementResult.components.leaveEncashment.unusedDays || 'N/A'}</p>
-                                <p>Encashment Amount: {settlementResult.components.leaveEncashment.encashmentAmount || 'Calculated'}</p>
-                              </div>
-                            )}
-                            {settlementResult.components.benefitsTermination && (
-                              <div className="bg-white p-2 rounded">
-                                <p className="font-medium">💼 Benefits Termination:</p>
-                                <p>Benefits Created: {settlementResult.components.benefitsTermination.benefitsCreated || 0}</p>
-                                <p>{settlementResult.components.benefitsTermination.note || 'Processed'}</p>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        {settlementResult.errors && settlementResult.errors.length > 0 && (
-                          <div className="bg-yellow-50 p-2 rounded">
-                            <p className="font-medium text-yellow-800">⚠️ Warnings:</p>
-                            {settlementResult.errors.map((err: any, idx: number) => (
-                              <p key={idx} className="text-yellow-700">{err.step}: {err.error}</p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* CHANGED - Display loaded checklists */}
-            {checklists.size > 0 && (
-              <div className="space-y-6">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Loaded Checklists
-                </h2>
-                {Array.from(checklists.values()).map((checklist) => (
-                  <Card
-                    key={checklist._id}
-                    className="hover:shadow-lg transition-shadow"
-                  >
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-xl">
-                            Clearance Checklist
+          <div className="space-y-4">
+            {employeeChecklists.map((empChecklist, empIndex) => {
+              const { termination, checklist, expanded } = empChecklist;
+              const progress = getProgress(checklist);
+              const isComplete = progress === 100;
+              const hasChecklist = !!checklist;
+              
+              return (
+                <Card 
+                  key={termination._id} 
+                  className={`transition-all ${
+                    isComplete 
+                      ? 'border-green-200 bg-green-50' 
+                      : hasChecklist 
+                        ? 'border-blue-200' 
+                        : 'border-orange-200 bg-orange-50'
+                  }`}
+                >
+                  {/* Employee Header */}
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${
+                          isComplete ? 'bg-green-200' : 'bg-blue-200'
+                        }`}>
+                          {termination.initiator === 'employee' ? '📝' : '⚠️'}
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">
+                            {termination.employee?.fullName || 
+                             termination.employee?.employeeNumber || 
+                             'Unknown Employee'}
                           </CardTitle>
                           <CardDescription>
-                            Employee: {checklist.employeeId || "N/A"}
+                            {termination.employee?.department || 'N/A'} • {termination.employee?.position || 'N/A'}
                           </CardDescription>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <span
-                            className={`px-3 py-1 text-xs rounded-full ${getStatusColor(
-                              checklist.status
-                            )}`}
-                          >
-                            {checklist.status || "In Progress"}
-                          </span>
-                          <span className="text-sm text-gray-500">
-                            Progress: {getChecklistProgress(checklist)}%
-                          </span>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {/* Progress Bar */}
-                      <div className="mb-6">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all"
-                            style={{
-                              width: `${getChecklistProgress(checklist)}%`,
-                            }}
-                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {termination.initiator === 'employee' ? 'Resignation' : 'Termination'} • 
+                            {termination.terminationDate 
+                              ? ` Last Day: ${new Date(termination.terminationDate).toLocaleDateString()}`
+                              : ' Effective date TBD'}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Checklist Items */}
-                      <div className="space-y-3">
-                        <h3 className="font-semibold text-gray-900 mb-3">
-                          Department Approvals
-                        </h3>
-                        {checklist.items?.map((item, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">
-                                {getDepartmentIcon(item.department)}
+                      <div className="flex items-center gap-3">
+                        {hasChecklist ? (
+                          <>
+                            <div className="text-right">
+                              <span className={`px-3 py-1 text-sm rounded-full ${
+                                isComplete ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {isComplete ? '✅ All Clear' : `${progress}% Complete`}
                               </span>
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  {item.department}
-                                </p>
-                                {item.notes && (
-                                  <p className="text-sm text-gray-500">
-                                    {item.notes}
-                                  </p>
-                                )}
-                              </div>
+                              {!isComplete && (
+                                <div className="w-24 bg-gray-200 rounded-full h-2 mt-2">
+                                  <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all"
+                                    style={{ width: `${progress}%` }}
+                                  />
+                                </div>
+                              )}
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span
-                                className={`px-3 py-1 text-xs rounded-full ${getStatusColor(
-                                  item.status
-                                )}`}
-                              >
-                                {item.status || "pending"}
-                              </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleExpanded(empIndex)}
+                            >
+                              {expanded ? '▲ Hide' : '▼ Show Details'}
+                            </Button>
+                          </>
+                        ) : (
+                          // Only HR Manager can create checklists (OFF-006)
+                          isHRManager ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCreateChecklist(termination._id)}
+                            >
+                              📋 Create Checklist
+                            </Button>
+                          ) : (
+                            <span className="text-sm text-gray-500 italic">
+                              ⏳ Waiting for HR to create checklist
+                            </span>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  {/* Expanded Checklist with Sub-Items */}
+                  {expanded && checklist && (
+                    <CardContent className="pt-0">
+                      <div className="border-t border-gray-200 pt-4 mt-2">
+                        <h4 className="font-semibold text-gray-900 mb-4">
+                          Clearance Checklist Items
+                        </h4>
+                        
+                        <div className="space-y-4">
+                          {/* Show only departments relevant to current user */}
+                          {visibleDepartments.map(dept => {
+                            const deptStatus = getDeptStatus(checklist, dept);
+                            const isApproved = deptStatus === 'approved';
+                            const canUpdate = canUpdateDepartment(dept);
+                            const allChecked = allSubItemsChecked(empChecklist, dept);
+                            const subItems = DEPARTMENT_ITEMS[dept];
+                            
+                            return (
+                              <div key={dept} className={`rounded-lg border ${
+                                isApproved 
+                                  ? 'border-green-300 bg-green-50' 
+                                  : canUpdate 
+                                    ? 'border-blue-300' 
+                                    : 'border-gray-200'
+                              }`}>
+                                {/* Department Header */}
+                                <div className={`flex items-center justify-between p-3 ${
+                                  isApproved ? 'bg-green-100' : canUpdate ? 'bg-blue-50' : 'bg-gray-50'
+                                } rounded-t-lg`}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl">{getDepartmentIcon(dept)}</span>
+                                    <span className="font-semibold">{dept}</span>
+                                    <span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(deptStatus)}`}>
+                                      {deptStatus}
+                                    </span>
+                                  </div>
+                                  
+                                  {canUpdate && !isApproved && (
+                                    <Button
+                                      size="sm"
+                                      disabled={!allChecked}
+                                      onClick={() => handleOpenComplete(empChecklist, dept)}
+                                      className={allChecked ? 'bg-green-600 hover:bg-green-700' : ''}
+                                    >
+                                      {allChecked ? '✓ Mark Complete' : 'Check all items first'}
+                                    </Button>
+                                  )}
+                                  
+                                  {!canUpdate && !isApproved && (
+                                    <span className="text-xs text-gray-500 italic">
+                                      Awaiting {dept} sign-off
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {/* Sub-Items Checklist */}
+                                <div className="p-3 space-y-2">
+                                  {subItems.map((item, idx) => (
+                                    <label
+                                      key={idx}
+                                      className={`flex items-center gap-3 p-2 rounded ${
+                                        isApproved || empChecklist.checkedItems[dept][idx]
+                                          ? 'bg-green-50'
+                                          : 'hover:bg-gray-50'
+                                      } ${canUpdate && !isApproved ? 'cursor-pointer' : ''}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isApproved || empChecklist.checkedItems[dept][idx]}
+                                        disabled={isApproved || !canUpdate}
+                                        onChange={() => toggleSubItem(empIndex, dept, idx)}
+                                        className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                      />
+                                      <span className={`${
+                                        isApproved || empChecklist.checkedItems[dept][idx]
+                                          ? 'text-green-700 line-through'
+                                          : 'text-gray-700'
+                                      }`}>
+                                        {item}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Final Settlement - Only when all departments approved */}
+                        {isComplete && isHRManager && (
+                          <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h5 className="font-semibold text-purple-900">
+                                  💰 Final Settlement (OFF-013)
+                                </h5>
+                                <p className="text-sm text-purple-700">
+                                  All clearances approved. Ready to process final settlement.
+                                </p>
+                              </div>
                               <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  handleOpenUpdateItem(checklist, index)
-                                }
+                                className="bg-purple-600 hover:bg-purple-700"
+                                onClick={() => {
+                                  recruitmentApi.triggerFinalSettlement(
+                                    termination.employee?._id || termination.employeeId,
+                                    termination._id
+                                  ).then(() => {
+                                    showToast("Final settlement triggered!", "success");
+                                  }).catch((err: any) => {
+                                    showToast(err.message || "Failed", "error");
+                                  });
+                                }}
                               >
-                                Update
+                                Trigger Settlement
                               </Button>
                             </div>
                           </div>
-                        ))}
-                      </div>
-
-
-                      {/* Actions */}
-                      <div className="mt-6 flex gap-3">
-                        <Button
-                          onClick={() => handleMarkComplete(checklist._id)}
-                          disabled={getChecklistProgress(checklist) < 100}
-                        >
-                          Mark Complete
-                        </Button>
+                        )}
                       </div>
                     </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* CHANGED - No checklists message */}
-            {checklists.size === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <p className="text-gray-500 mb-4">
-                    No clearance checklists loaded yet.
-                  </p>
-                  <p className="text-sm text-gray-400">
-                    Enter an employee ID above to load their clearance checklist,
-                    or create a termination request first.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
         )}
 
-        {/* CHANGED - Update Item Modal */}
+        {/* Mark Complete Modal */}
         <Modal
-          isOpen={isUpdateItemModalOpen}
-          onClose={() => setIsUpdateItemModalOpen(false)}
-          title="Update Clearance Item"
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+          title={`Mark ${selectedDepartment} Clearance Complete`}
           size="md"
         >
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Department
-              </label>
-              <Input value={updateForm.department} disabled />
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <p className="text-green-800">
+                ✅ All {selectedDepartment} items have been checked. 
+                Marking this department as <strong>APPROVED</strong> will finalize their clearance.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Status *
-              </label>
-              <Select
-                value={updateForm.status}
-                onChange={(e) =>
-                  setUpdateForm({ ...updateForm, status: e.target.value })
-                }
-                options={[
-                  { value: "pending", label: "Pending" },
-                  { value: "approved", label: "Approved" },
-                  { value: "rejected", label: "Rejected" },
-                ]}
-              />
-            </div>
+            {selectedEmployee && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="text-sm text-gray-600">
+                  Employee: <strong>{selectedEmployee.termination.employee?.fullName || 'Unknown'}</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  Department: <strong>{getDepartmentIcon(selectedDepartment)} {selectedDepartment}</strong>
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Comments (Optional)
               </label>
               <Textarea
-                value={updateForm.notes}
-                onChange={(e) =>
-                  setUpdateForm({ ...updateForm, notes: e.target.value })
-                }
-                placeholder="Add any notes..."
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                placeholder="Add any notes about this clearance..."
                 rows={3}
               />
             </div>
 
             <div className="flex justify-end gap-2 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setIsUpdateItemModalOpen(false)}
-              >
+              <Button variant="outline" onClick={() => setIsUpdateModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleUpdateItem}>Update</Button>
+              <Button 
+                onClick={handleMarkComplete}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                ✓ Mark as Complete
+              </Button>
             </div>
           </div>
         </Modal>
@@ -769,4 +707,3 @@ export default function OffboardingChecklistsPage() {
     </ProtectedRoute>
   );
 }
-

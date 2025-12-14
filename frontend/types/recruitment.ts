@@ -380,9 +380,9 @@ export interface ClearanceItem {
 }
 
 export interface UpdateClearanceItemStatusDto {
-  itemIndex: number;
-  status: string;
-  notes?: string;
+  department: string;   // Department name (e.g., 'IT', 'HR', 'FINANCE')
+  status: string;       // 'pending', 'approved', 'rejected'
+  comments?: string;    // Optional comments
 }
 
 export interface CreateEmployeeFromContractDto {

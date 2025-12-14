@@ -22,6 +22,10 @@ export default function RecruitmentPage() {
   const isRecruiter = user?.roles?.includes(SystemRole.RECRUITER);
   // CHANGED - Added System Admin role check
   const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
+  // CHANGED - Added Finance role check for offboarding clearance
+  const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF) ||
+                         user?.roles?.includes(SystemRole.PAYROLL_MANAGER) ||
+                         user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
 
   return (
     <ProtectedRoute>
@@ -172,6 +176,30 @@ export default function RecruitmentPage() {
           </div>
         )}
 
+        {/* Finance Staff View - OFF-010: FINANCE Clearance */}
+        {isFinanceStaff && !isHR && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Finance Clearance Tasks</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-800">💰 Finance Clearance</CardTitle>
+                  <CardDescription className="text-green-700">
+                    Complete expense reports, credit card returns, and loan settlements (OFF-010)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/offboarding-checklists">
+                    <Button className="w-full bg-green-600 hover:bg-green-700">
+                      View Clearance Tasks
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
         {/* Department Head View */}
         {isDepartmentHead && !isHR && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -187,14 +215,19 @@ export default function RecruitmentPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            {/* OFF-010: Line Manager Clearance */}
+            <Card className="border-purple-200 bg-purple-50">
               <CardHeader>
-                <CardTitle>Clearance Checklists</CardTitle>
-                <CardDescription>Update clearance items for your department</CardDescription>
+                <CardTitle className="text-purple-800">👔 Line Manager Clearance</CardTitle>
+                <CardDescription className="text-purple-700">
+                  Complete work handover & project transfer clearance (OFF-010)
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <Link href="/dashboard/recruitment/clearance">
-                  <Button className="w-full">Manage Clearance</Button>
+                <Link href="/dashboard/recruitment/offboarding-checklists">
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    View Clearance Tasks
+                  </Button>
                 </Link>
               </CardContent>
             </Card>
@@ -448,6 +481,25 @@ export default function RecruitmentPage() {
                 </Card>
               )}
 
+              {/* OFF-006, OFF-010: Offboarding Clearance for HR Employee */}
+              {isHREmployee && (
+                <Card className="border-orange-200 bg-orange-50">
+                  <CardHeader>
+                    <CardTitle className="text-orange-800">📋 Offboarding Clearance</CardTitle>
+                    <CardDescription className="text-orange-700">
+                      Complete FACILITIES & ADMIN clearance items (OFF-010)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/offboarding-checklists">
+                      <Button className="w-full bg-orange-600 hover:bg-orange-700">
+                        View Clearance Tasks
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* CHANGED - Added Pre-boarding button for HR Employee user story */}
               {(isHRManager || isHREmployee) && (
                 <Card>
@@ -495,6 +547,23 @@ export default function RecruitmentPage() {
                 <CardContent>
                   <Link href="/dashboard/recruitment/hr-onboarding">
                     <Button className="w-full">View Onboarding</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* OFF-006, OFF-007, OFF-010: Offboarding & IT Clearance */}
+              <Card className="border-red-200 bg-red-50">
+                <CardHeader>
+                  <CardTitle className="text-red-800">💻 IT Clearance Tasks</CardTitle>
+                  <CardDescription className="text-red-700">
+                    View offboarding checklists and complete IT clearance items (OFF-007)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/offboarding-checklists">
+                    <Button className="w-full bg-red-600 hover:bg-red-700">
+                      View IT Clearance
+                    </Button>
                   </Link>
                 </CardContent>
               </Card>

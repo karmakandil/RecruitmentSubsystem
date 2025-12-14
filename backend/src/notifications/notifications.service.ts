@@ -2803,6 +2803,58 @@ export class NotificationsService {
   }
 
   /**
+   * OFF-010: Notify specific department that they need to sign off on clearance
+   */
+  async notifyClearanceSignOffNeeded(
+    recipientIds: string[],
+    clearanceDetails: {
+      employeeId: string;
+      employeeName: string;
+      department: string;
+      terminationDate: string;
+      checklistId: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const deptIcons: { [key: string]: string } = {
+      'IT': '💻', 'HR': '👤', 'FINANCE': '💰', 
+      'FACILITIES': '🏢', 'ADMIN': '📋', 'LINE_MANAGER': '👔'
+    };
+    const icon = deptIcons[clearanceDetails.department?.toUpperCase()] || '📁';
+
+    for (const recipientId of recipientIds) {
+      try {
+        const message = `${icon} Clearance Sign-Off Required (OFF-010)\n\n` +
+          `Your department needs to complete a clearance sign-off.\n\n` +
+          `👤 Employee: ${clearanceDetails.employeeName}\n` +
+          `🏢 Your Department: ${clearanceDetails.department}\n` +
+          `📅 Termination Date: ${new Date(clearanceDetails.terminationDate).toLocaleDateString()}\n\n` +
+          `Action Required: Review and approve clearance items for this employee.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.CLEARANCE_SIGN_OFF_NEEDED,
+          message: message,
+          data: {
+            ...clearanceDetails,
+            action: 'CLEARANCE_SIGN_OFF_NEEDED',
+          },
+          isRead: false,
+        });
+        notifications.push(notification);
+      } catch (error) {
+        console.error(`Failed to send clearance sign-off notification to ${recipientId}:`, error);
+      }
+    }
+
+    return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
    * OFF-010: Notify HR when clearance item is updated
    */
   async notifyClearanceItemUpdated(

@@ -6374,7 +6374,7 @@ Due: ${context.dueDate}`
    * Checks that the employee has an appraisal record with a low score (< 2.5).
    */
   async terminateEmployeeByHR(dto: TerminateEmployeeDto, user: any) {
-    // Guard: Only HR Manager can terminate employees
+    // OFF-001: Only HR Manager can terminate employees based on performance
     if (!user || !user.roles?.includes(SystemRole.HR_MANAGER)) {
       throw new ForbiddenException(
         'Only HR Manager can terminate employees.',
@@ -6433,22 +6433,23 @@ Due: ${context.dueDate}`
       .sort({ createdAt: -1 })
       .exec();
 
+    // OFF-001: Performance-based termination requires appraisal record with low score
     if (!latestRecord) {
-      throw new ForbiddenException(
-        'Cannot terminate: employee has no appraisal record on file.',
+      throw new BadRequestException(
+        'Cannot terminate: Employee has no appraisal record on file. Please ensure the employee has been appraised before initiating termination.',
       );
     }
 
     if (latestRecord.totalScore === undefined || latestRecord.totalScore === null) {
-      throw new ForbiddenException(
-        'Cannot terminate: employee appraisal has no total score.',
+      throw new BadRequestException(
+        'Cannot terminate: Employee appraisal has no total score. Please complete the appraisal process first.',
       );
     }
 
     // Rule: only allow termination if totalScore < 2.5
     if (latestRecord.totalScore >= 2.5) {
-      throw new ForbiddenException(
-        `Cannot terminate: employee performance score (${latestRecord.totalScore}) is not low enough for termination. Score must be below 2.5.`,
+      throw new BadRequestException(
+        `Cannot terminate: Employee performance score is ${latestRecord.totalScore.toFixed(2)}, which is not low enough for termination. Score must be below 2.5.`,
       );
     }
 
@@ -6674,16 +6675,66 @@ Due: ${context.dueDate}`
           terminationId: termination._id,
         });
         if (!existingChecklist) {
-          await this.createClearanceChecklist(
+          const newChecklist = await this.createClearanceChecklist(
             {
               terminationId: termination._id.toString(),
             } as CreateClearanceChecklistDto,
             user,
           );
+          console.log(`✅ [OFF-006] Clearance checklist auto-created for termination ${termination._id}`);
+          
+          // OFF-006: Notify all departments about the new clearance checklist
+          try {
+            const employee = await this.employeeModel.findById(termination.employeeId).exec();
+            const employeeName = employee 
+              ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber
+              : 'Employee';
+            
+            // Get ALL relevant roles for clearance sign-offs (OFF-010)
+            const [systemAdmins, hrManagers, hrEmployees, departmentHeads, financeStaff] = await Promise.all([
+              this.employeeSystemRoleModel.find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true }).select('employeeProfileId').lean().exec(),
+              this.employeeSystemRoleModel.find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true }).select('employeeProfileId').lean().exec(),
+              this.employeeSystemRoleModel.find({ roles: { $in: [SystemRole.HR_EMPLOYEE] }, isActive: true }).select('employeeProfileId').lean().exec(),
+              this.employeeSystemRoleModel.find({ roles: { $in: [SystemRole.DEPARTMENT_HEAD] }, isActive: true }).select('employeeProfileId').lean().exec(),
+              this.employeeSystemRoleModel.find({ roles: { $in: [SystemRole.FINANCE_STAFF, SystemRole.PAYROLL_MANAGER, SystemRole.PAYROLL_SPECIALIST] }, isActive: true }).select('employeeProfileId').lean().exec(),
+            ]);
+            
+            const allRecipients = [
+              ...systemAdmins.map((a: any) => a.employeeProfileId?.toString()),
+              ...hrManagers.map((hr: any) => hr.employeeProfileId?.toString()),
+              ...hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()),
+              ...departmentHeads.map((dh: any) => dh.employeeProfileId?.toString()),
+              ...financeStaff.map((fs: any) => fs.employeeProfileId?.toString()),
+            ].filter(Boolean);
+            
+            console.log(`📋 [OFF-010] Sending clearance notifications to: ${allRecipients.length} recipients`);
+            console.log(`   - System Admins: ${systemAdmins.length}`);
+            console.log(`   - HR Managers: ${hrManagers.length}`);
+            console.log(`   - HR Employees: ${hrEmployees.length}`);
+            console.log(`   - Department Heads: ${departmentHeads.length}`);
+            console.log(`   - Finance Staff: ${financeStaff.length}`);
+            
+            if (allRecipients.length > 0) {
+              await this.notificationsService.notifyClearanceChecklistCreated(
+                [...new Set(allRecipients)],
+                {
+                  employeeId: termination.employeeId.toString(),
+                  employeeName: employeeName,
+                  terminationDate: termination.terminationDate?.toISOString() || new Date().toISOString(),
+                  departments: ['LINE_MANAGER', 'HR', 'IT', 'FINANCE', 'FACILITIES', 'ADMIN'],
+                },
+              );
+              console.log(`✅ [OFF-006] Clearance checklist notification sent to ${allRecipients.length} recipient(s)`);
+            }
+          } catch (notifyError) {
+            console.warn('[OFF-006] Failed to send clearance checklist notification:', this.getErrorMessage(notifyError));
+          }
+        } else {
+          console.log(`ℹ️ Clearance checklist already exists for termination ${termination._id}`);
         }
       } catch (e) {
         // Non-critical - log but don't fail status update
-        console.warn('Failed to create clearance checklist automatically:', e);
+        console.warn('❌ Failed to create clearance checklist automatically:', this.getErrorMessage(e));
       }
     }
 
@@ -6910,6 +6961,7 @@ Due: ${context.dueDate}`
     }
 
     // Default checklist order: LINE_MANAGER (assigned), HR, IT, FINANCE, FACILITIES, ADMIN
+    // Each department signs off on their overall clearance
     const items = [
       {
         department: 'LINE_MANAGER',
@@ -6930,7 +6982,85 @@ Due: ${context.dueDate}`
       cardReturned: false,
     });
 
-    return checklist.save();
+    const savedChecklist = await checklist.save();
+
+    // ============= OFF-010: Send TARGETED notifications to EACH department =============
+    try {
+      const employeeName = employee 
+        ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber
+        : 'Employee';
+      const terminationDate = termination.terminationDate?.toISOString() || new Date().toISOString();
+
+      // Get recipients for each department
+      const departmentRecipients: { [key: string]: string[] } = {
+        'LINE_MANAGER': [],
+        'IT': [],
+        'FINANCE': [],
+        'FACILITIES': [],
+        'ADMIN': [],
+        'HR': [],
+      };
+
+      // LINE_MANAGER - Department Heads (specific manager + all department heads as fallback)
+      if (departmentManagerId) {
+        departmentRecipients['LINE_MANAGER'].push(departmentManagerId.toString());
+      }
+      // Also notify ALL Department Heads (they can see if it's relevant to their team)
+      const allDepartmentHeads = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.DEPARTMENT_HEAD] }, isActive: true })
+        .select('employeeProfileId').lean().exec();
+      const deptHeadIds = allDepartmentHeads.map((dh: any) => dh.employeeProfileId?.toString()).filter(Boolean);
+      departmentRecipients['LINE_MANAGER'].push(...deptHeadIds);
+      console.log(`📋 [OFF-010] LINE_MANAGER recipients: ${departmentRecipients['LINE_MANAGER'].length} (specific: ${departmentManagerId ? 1 : 0}, all dept heads: ${deptHeadIds.length})`);
+
+      // IT - System Admins
+      const systemAdmins = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true })
+        .select('employeeProfileId').lean().exec();
+      departmentRecipients['IT'] = systemAdmins.map((a: any) => a.employeeProfileId?.toString()).filter(Boolean);
+
+      // FINANCE - Payroll/Finance Staff
+      const financeStaff = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.FINANCE_STAFF, SystemRole.PAYROLL_MANAGER, SystemRole.PAYROLL_SPECIALIST] }, isActive: true })
+        .select('employeeProfileId').lean().exec();
+      departmentRecipients['FINANCE'] = financeStaff.map((f: any) => f.employeeProfileId?.toString()).filter(Boolean);
+
+      // FACILITIES & ADMIN - HR Employees
+      const hrEmployees = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN] }, isActive: true })
+        .select('employeeProfileId').lean().exec();
+      const hrEmployeeIds = hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+      departmentRecipients['FACILITIES'] = hrEmployeeIds;
+      departmentRecipients['ADMIN'] = hrEmployeeIds;
+
+      // HR - HR Managers
+      const hrManagers = await this.employeeSystemRoleModel
+        .find({ roles: { $in: [SystemRole.HR_MANAGER] }, isActive: true })
+        .select('employeeProfileId').lean().exec();
+      departmentRecipients['HR'] = hrManagers.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+
+      // Send targeted notification to each department
+      for (const [dept, recipients] of Object.entries(departmentRecipients)) {
+        if (recipients.length > 0) {
+          await this.notificationsService.notifyClearanceSignOffNeeded(
+            [...new Set(recipients)], // Remove duplicates
+            {
+              employeeId: employee._id.toString(),
+              employeeName: employeeName,
+              department: dept,
+              terminationDate: terminationDate,
+              checklistId: savedChecklist._id.toString(),
+            },
+          );
+          console.log(`✅ [OFF-010] ${dept} clearance notification sent to ${recipients.length} recipient(s)`);
+        }
+      }
+    } catch (notifyError) {
+      console.warn('[OFF-010] Failed to send department clearance notifications:', this.getErrorMessage(notifyError));
+    }
+    // ============= END DEPARTMENT NOTIFICATIONS =============
+
+    return savedChecklist;
   }
 
   // ---------------------------- Helper functions ----------------------------
@@ -7106,6 +7236,74 @@ Due: ${context.dueDate}`
     return checklist;
   }
 
+  // OFF-010: GET ALL CLEARANCE CHECKLISTS - For department roles to see their pending items
+  // This does NOT expose termination details, only checklist data with employee info
+  async getAllClearanceChecklists() {
+    try {
+      // Get all clearance checklists
+      const checklists = await this.clearanceModel.find().lean().exec();
+      
+      // Enrich each checklist with employee info (from termination -> employee)
+      const enrichedChecklists = await Promise.all(
+        checklists.map(async (checklist: any) => {
+          let employeeInfo = {
+            _id: null,
+            fullName: 'Unknown Employee',
+            employeeNumber: 'N/A',
+            workEmail: 'N/A',
+            department: 'N/A',
+          };
+          
+          let terminationDate = null;
+          let terminationType = 'Unknown';
+          
+          // Get termination to find employee
+          if (checklist.terminationId) {
+            const termination = await this.terminationModel
+              .findById(checklist.terminationId)
+              .lean()
+              .exec();
+            
+            if (termination) {
+              terminationDate = (termination as any).terminationDate;
+              terminationType = (termination as any).initiator === 'employee' ? 'Resignation' : 'Termination';
+              
+              if ((termination as any).employeeId) {
+                const employee = await this.employeeModel
+                  .findById((termination as any).employeeId)
+                  .lean()
+                  .exec();
+                
+                if (employee) {
+                  employeeInfo = {
+                    _id: (employee as any)._id,
+                    fullName: `${(employee as any).firstName || ''} ${(employee as any).lastName || ''}`.trim() || 'Unknown',
+                    employeeNumber: (employee as any).employeeNumber || 'N/A',
+                    workEmail: (employee as any).workEmail || 'N/A',
+                    department: (employee as any).departmentId || 'N/A',
+                  };
+                }
+              }
+            }
+          }
+          
+          return {
+            ...checklist,
+            employee: employeeInfo,
+            terminationDate,
+            terminationType,
+          };
+        }),
+      );
+      
+      console.log(`✅ [OFF-010] Returning ${enrichedChecklists.length} clearance checklists for department roles`);
+      return enrichedChecklists;
+    } catch (error) {
+      console.error('❌ Error fetching all clearance checklists:', error);
+      throw new BadRequestException('Failed to fetch clearance checklists');
+    }
+  }
+
   // 7) UPDATE CLEARANCE ITEM STATUS
   async updateClearanceItemStatus(
     checklistId: string,
@@ -7159,54 +7357,47 @@ Due: ${context.dueDate}`
     const roles = user.roles || [];
 
     // changed - use roles.some() to check array of roles
+    // OFF-010: Each department can ONLY update their OWN clearance items
+    // HR Manager can only update HR items (not IT, FINANCE, etc.)
     const hasPermission = (() => {
       switch (dept) {
         case 'LINE_MANAGER':
-          // allowed if user is department head or assignedTo matches user
+          // Only Department Head or the assigned manager can update
           if (
             departmentItem.assignedTo &&
             user.id &&
             departmentItem.assignedTo.toString() === user.id.toString()
           )
             return true;
-          return (
-            roles.includes(SystemRole.DEPARTMENT_HEAD) ||
-            roles.includes(SystemRole.HR_MANAGER)
-          );
+          return roles.includes(SystemRole.DEPARTMENT_HEAD);
         case 'IT':
-          return (
-            roles.includes(SystemRole.SYSTEM_ADMIN) || roles.includes(SystemRole.HR_MANAGER)
-          );
+          // Only System Admin can update IT clearance
+          return roles.includes(SystemRole.SYSTEM_ADMIN);
         case 'FINANCE':
+          // Only Finance staff can update FINANCE clearance
           return (
             roles.includes(SystemRole.FINANCE_STAFF) ||
             roles.includes(SystemRole.PAYROLL_MANAGER) ||
-            roles.includes(SystemRole.PAYROLL_SPECIALIST) ||
-            roles.includes(SystemRole.HR_MANAGER)
+            roles.includes(SystemRole.PAYROLL_SPECIALIST)
           );
         case 'FACILITIES':
+          // HR Admin or HR Employee can update FACILITIES
           return (
             roles.includes(SystemRole.HR_ADMIN) ||
-            roles.includes(SystemRole.SYSTEM_ADMIN) ||
-            roles.includes(SystemRole.HR_MANAGER)
+            roles.includes(SystemRole.HR_EMPLOYEE)
           );
         case 'ADMIN':
+          // HR Admin or HR Employee can update ADMIN
           return (
             roles.includes(SystemRole.HR_ADMIN) ||
-            roles.includes(SystemRole.HR_MANAGER) ||
-            roles.includes(SystemRole.SYSTEM_ADMIN)
+            roles.includes(SystemRole.HR_EMPLOYEE)
           );
         case 'HR':
-          // HR employees can update, but final APPROVED must be performed by HR_MANAGER
-          return (
-            roles.includes(SystemRole.HR_EMPLOYEE) ||
-            roles.includes(SystemRole.HR_MANAGER) ||
-            roles.includes(SystemRole.SYSTEM_ADMIN)
-          );
+          // ONLY HR Manager can update HR clearance (final sign-off)
+          return roles.includes(SystemRole.HR_MANAGER);
         default:
-          return (
-            roles.includes(SystemRole.HR_MANAGER) || roles.includes(SystemRole.SYSTEM_ADMIN)
-          );
+          // System Admin as fallback for unknown departments
+          return roles.includes(SystemRole.SYSTEM_ADMIN);
       }
     })();
 
@@ -7946,18 +8137,20 @@ Due: ${context.dueDate}`
           }
 
           // send reminders to each recipient (non-blocking)
+          const employeeName = employee
+            ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber || 'Employee'
+            : 'Employee';
+          const terminationDate = termination?.terminationDate?.toISOString() || new Date().toISOString();
+
           for (const r of recipients) {
             try {
+              // Send EMAIL notification
               await this.sendNotification(
                 'clearance_reminder',
                 r.email,
                 {
                   recipientName: r.name,
-                  employeeName: employee
-                    ? employee.employeeNumber ||
-                      employee.workEmail ||
-                      'Employee'
-                    : 'Employee',
+                  employeeName: employeeName,
                   checklistId: checklist._id?.toString(),
                   department: dept,
                   itemName: dept,
@@ -7967,10 +8160,30 @@ Due: ${context.dueDate}`
               );
             } catch (err) {
               console.warn(
-                `Failed to send clearance reminder to ${r.email}:`,
+                `Failed to send clearance reminder email to ${r.email}:`,
                 this.getErrorMessage(err) || err,
               );
             }
+          }
+
+          // Also send IN-APP notifications to the responsible department
+          try {
+            const recipientIds = await this._getRecipientIdsForClearanceDept(dept);
+            if (recipientIds.length > 0) {
+              await this.notificationsService.notifyClearanceSignOffNeeded(
+                recipientIds,
+                {
+                  employeeId: employee?._id?.toString() || '',
+                  employeeName: employeeName,
+                  department: dept,
+                  terminationDate: terminationDate,
+                  checklistId: checklist._id?.toString(),
+                },
+              );
+              console.log(`✅ [OFF-010] Clearance reminder in-app notification sent to ${dept} (${recipientIds.length} recipients)`);
+            }
+          } catch (notifyErr) {
+            console.warn(`Failed to send in-app clearance reminder for ${dept}:`, this.getErrorMessage(notifyErr));
           }
 
           // Update meta
@@ -8135,6 +8348,48 @@ Due: ${context.dueDate}`
     for (const r of recipients) uniq.set(r.email, r);
 
     return Array.from(uniq.values());
+  }
+
+  // Helper: Get employee profile IDs for a clearance department (for in-app notifications)
+  private async _getRecipientIdsForClearanceDept(department: string): Promise<string[]> {
+    const dept = department.toUpperCase();
+    let roles: SystemRole[] = [];
+
+    switch (dept) {
+      case 'LINE_MANAGER':
+        roles = [SystemRole.DEPARTMENT_HEAD];
+        break;
+      case 'IT':
+        roles = [SystemRole.SYSTEM_ADMIN];
+        break;
+      case 'FINANCE':
+        roles = [SystemRole.FINANCE_STAFF, SystemRole.PAYROLL_MANAGER, SystemRole.PAYROLL_SPECIALIST];
+        break;
+      case 'FACILITIES':
+      case 'ADMIN':
+        roles = [SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN];
+        break;
+      case 'HR':
+        roles = [SystemRole.HR_MANAGER];
+        break;
+      default:
+        roles = [SystemRole.HR_MANAGER];
+    }
+
+    try {
+      const roleRecords = await this.employeeSystemRoleModel
+        .find({ roles: { $in: roles }, isActive: true })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+      
+      return roleRecords
+        .map((r: any) => r.employeeProfileId?.toString())
+        .filter(Boolean);
+    } catch (err) {
+      console.warn(`Failed to get recipient IDs for ${dept}:`, this.getErrorMessage(err));
+      return [];
+    }
   }
 
   // 9) GET LATEST APPRAISAL FOR AN EMPLOYEE (by employeeNumber)

@@ -87,6 +87,7 @@ export default function TerminationsPage() {
   };
 
   // CHANGED - View employee performance
+  // OFF-001: HR Manager views employee performance for termination decisions
   const handleViewPerformance = async (employee: any) => {
     setSelectedEmployee(employee);
     setPerformanceData(null);
@@ -94,11 +95,18 @@ export default function TerminationsPage() {
     setIsPerformanceModalOpen(true);
 
     try {
-      const data = await recruitmentApi.getEmployeePerformance(employee._id);
+      // FIX: Backend expects employeeNumber, not _id
+      const employeeNumber = employee.employeeNumber;
+      if (!employeeNumber) {
+        setPerformanceData({ noData: true, message: "Employee number not found" });
+        return;
+      }
+      const data = await recruitmentApi.getEmployeePerformance(employeeNumber);
       setPerformanceData(data);
     } catch (error: any) {
-      // CHANGED - Handle case where no appraisal exists
-      if (error.message?.includes("404") || error.message?.includes("not found")) {
+      // Handle case where no appraisal exists (404 Not Found)
+      const errorMsg = error.message?.toLowerCase() || "";
+      if (errorMsg.includes("404") || errorMsg.includes("not found") || errorMsg.includes("appraisal")) {
         setPerformanceData({ noData: true });
       } else {
         showToast(error.message || "Failed to load performance data", "error");
@@ -183,8 +191,9 @@ export default function TerminationsPage() {
     }
   };
 
+  // OFF-001: Only HR Manager can access termination management
   return (
-    <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN]}>
+    <ProtectedRoute allowedRoles={[SystemRole.HR_MANAGER]}>
       <div className="container mx-auto px-6 py-8">
         <Toast
           message={toast.message}
@@ -281,35 +290,46 @@ export default function TerminationsPage() {
                                 {emp.position || ""}
                               </div>
                             </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span
-                                className={`px-2 py-1 text-xs rounded-full ${
-                                  emp.status === "active"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {emp.status || "active"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm">
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleViewPerformance(emp)}
-                                >
-                                  View Performance
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() => handleOpenTerminate(emp)}
-                                >
-                                  Initiate Termination
-                                </Button>
-                              </div>
-                            </td>
+<td className="px-4 py-4 whitespace-nowrap">
+                                              <span
+                                                className={`px-2 py-1 text-xs rounded-full ${
+                                                  emp.status?.toUpperCase() === "INACTIVE"
+                                                    ? "bg-red-100 text-red-800"
+                                                    : emp.status?.toLowerCase() === "active"
+                                                    ? "bg-green-100 text-green-800"
+                                                    : "bg-gray-100 text-gray-800"
+                                                }`}
+                                              >
+                                                {emp.status || "active"}
+                                              </span>
+                                            </td>
+                                            <td className="px-4 py-4 whitespace-nowrap text-sm">
+                                              {/* RECRUITMENT SYSTEM (OFF-007): Hide action buttons for INACTIVE employees
+                                                  Employees with INACTIVE status have already been terminated/offboarded,
+                                                  so showing "Terminate" or "View Performance" buttons makes no sense */}
+                                              {emp.status?.toUpperCase() === "INACTIVE" ? (
+                                                <span className="text-sm text-gray-500 italic">
+                                                  ✅ Already Offboarded
+                                                </span>
+                                              ) : (
+                                                <div className="flex gap-2">
+                                                  <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleViewPerformance(emp)}
+                                                  >
+                                                    View Performance
+                                                  </Button>
+                                                  <Button
+                                                    variant="danger"
+                                                    size="sm"
+                                                    onClick={() => handleOpenTerminate(emp)}
+                                                  >
+                                                    Initiate Termination
+                                                  </Button>
+                                                </div>
+                                              )}
+                                            </td>
                           </tr>
                         ))}
                       </tbody>

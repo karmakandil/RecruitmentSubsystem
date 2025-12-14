@@ -530,9 +530,15 @@ export const recruitmentApi = {
     return await api.get("/recruitment/offboarding/my-resignation");
   },
 
-  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN - Get ALL terminations (OFF-001, OFF-018, OFF-019)
+  // ✅ Accessible: HR_MANAGER only - Get ALL terminations (OFF-001)
   getAllTerminationRequests: async (): Promise<TerminationRequest[]> => {
     return await api.get("/recruitment/offboarding/terminations");
+  },
+
+  // ✅ Accessible: All department roles - Get ALL clearance checklists (OFF-010)
+  // System Admin, HR Employee, Department Head, Finance can view checklists without seeing termination details
+  getAllClearanceChecklists: async (): Promise<any[]> => {
+    return await api.get("/recruitment/offboarding/clearance-checklists");
   },
 
   // ============================================
