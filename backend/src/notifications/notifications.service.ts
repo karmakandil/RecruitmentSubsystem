@@ -854,6 +854,94 @@ export class NotificationsService {
   }
 
   /**
+   * RECRUITMENT SUBSYSTEM: Notify HR Employees about New Application
+   * 
+   * Purpose: Inform HR Employees and HR Managers when a candidate submits
+   * a new job application. Ensures timely review of applications.
+   * 
+   * Called by: apply() in recruitment.service.ts
+   * 
+   * Flow:
+   * Candidate applies → notifyHRNewApplication()
+   *                              ↓
+   *                  All HR Employees & Managers notified
+   *                  "New application received for [position]"
+   * 
+   * @param hrRecipientIds - Array of user IDs (ObjectId strings) for HR staff
+   * @param applicationDetails - Object containing:
+   *   - applicationId: The application ID
+   *   - candidateName: Full name of candidate
+   *   - positionTitle: Job title being applied for
+   *   - requisitionId: The job requisition ID
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyHRNewApplication(
+    hrRecipientIds: string[],
+    applicationDetails: {
+      applicationId: string;
+      candidateName: string;
+      positionTitle: string;
+      requisitionId: string;
+      isReferral?: boolean;
+    },
+  ) {
+    if (!hrRecipientIds || hrRecipientIds.length === 0) {
+      console.log('[APPLICATION_NOTIFICATION] No HR recipients to notify');
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const referralBadge = applicationDetails.isReferral ? '⭐ REFERRAL - ' : '';
+    const appliedAt = new Date().toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    for (const recipientId of hrRecipientIds) {
+      try {
+        const message = `${referralBadge}New job application received!\n\n` +
+          `📋 Application Details:\n` +
+          `• Candidate: ${applicationDetails.candidateName}\n` +
+          `• Position: ${applicationDetails.positionTitle}\n` +
+          `• Applied: ${appliedAt}\n\n` +
+          `Please review the application and schedule screening.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.NEW_APPLICATION_RECEIVED,
+          message: message,
+          data: {
+            applicationId: applicationDetails.applicationId,
+            candidateName: applicationDetails.candidateName,
+            positionTitle: applicationDetails.positionTitle,
+            requisitionId: applicationDetails.requisitionId,
+            isReferral: applicationDetails.isReferral || false,
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+        console.log(`[APPLICATION_NOTIFICATION] Sent notification to HR: ${recipientId}`);
+      } catch (error) {
+        console.error(`[APPLICATION_NOTIFICATION] Failed to notify HR ${recipientId}:`, error);
+        // Continue with other notifications even if one fails
+      }
+    }
+
+    console.log(`[APPLICATION_NOTIFICATION] Successfully created ${notifications.length} notifications for HR staff`);
+    
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+      notifications,
+    };
+  }
+
+  /**
    * RECRUITMENT SUBSYSTEM: Notify Panel Members about Interview Cancellation
    * 
    * Purpose: Inform all panel members when an interview they were assigned to
@@ -2410,6 +2498,100 @@ export class NotificationsService {
   }
 
   /**
+   * ONB-001: Notify Departments About Assigned Onboarding Tasks
+   * 
+   * Purpose: Inform IT, Admin, and HR departments about their assigned tasks
+   * for a new hire's onboarding. Ensures all departments are aware of their
+   * responsibilities and deadlines.
+   * 
+   * Called by: createOnboarding() in recruitment.service.ts
+   * 
+   * Flow:
+   * Onboarding created → notifyOnboardingTaskAssigned()
+   *                              ↓
+   *                  Each department receives their tasks
+   *                  "You have been assigned onboarding tasks for [employee]"
+   * 
+   * @param recipientIds - Array of recipient IDs (department users)
+   * @param taskDetails - Object containing task assignment info
+   * @returns Object with success status and count of notifications created
+   */
+  async notifyOnboardingTaskAssigned(
+    recipientIds: string[],
+    taskDetails: {
+      employeeId: string;
+      employeeName: string;
+      department: string;
+      tasks: string[];
+      deadline: Date;
+      onboardingId: string;
+    },
+  ) {
+    if (!recipientIds || recipientIds.length === 0) {
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+    const formattedDeadline = taskDetails.deadline.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    // Department-specific emoji and title
+    const deptConfig: Record<string, { emoji: string; title: string }> = {
+      'IT': { emoji: '💻', title: 'IT Department' },
+      'Admin': { emoji: '🏢', title: 'Admin/Facilities' },
+      'HR': { emoji: '👥', title: 'HR Department' },
+    };
+    const config = deptConfig[taskDetails.department] || { emoji: '📋', title: taskDetails.department };
+
+    for (const recipientId of recipientIds) {
+      try {
+        const taskListText = taskDetails.tasks.length > 0
+          ? taskDetails.tasks.map(task => `  • ${task}`).join('\n')
+          : '  • No tasks specified';
+
+        const message = `${config.emoji} Onboarding Tasks Assigned - ${config.title}\n\n` +
+          `You have been assigned onboarding tasks for a new hire.\n\n` +
+          `👤 New Hire: ${taskDetails.employeeName}\n` +
+          `📅 Deadline: ${formattedDeadline}\n\n` +
+          `📋 Your Tasks:\n${taskListText}\n\n` +
+          `Please complete these tasks before the deadline to ensure the new hire is ready on Day 1.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(recipientId),
+          type: NotificationType.ONBOARDING_TASK_REMINDER, // Reuse task reminder type
+          message: message,
+          data: {
+            employeeId: taskDetails.employeeId,
+            employeeName: taskDetails.employeeName,
+            department: taskDetails.department,
+            tasks: taskDetails.tasks,
+            deadline: taskDetails.deadline.toISOString(),
+            onboardingId: taskDetails.onboardingId,
+            action: 'ONBOARDING_TASK_ASSIGNED',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+        console.log(`[ONBOARDING_NOTIFICATION] Task assignment sent to ${recipientId} for ${taskDetails.department}`);
+      } catch (error) {
+        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about tasks:`, error);
+      }
+    }
+
+    console.log(`[ONBOARDING_NOTIFICATION] Sent ${notifications.length} task assignment notifications for ${taskDetails.department}`);
+    
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  /**
    * Notify about Onboarding Completion
    * 
    * Purpose: Inform new hire and HR that all onboarding tasks are completed.
@@ -2754,6 +2936,94 @@ export class NotificationsService {
     }
 
     return { success: true, notificationsCreated: notifications.length };
+  }
+
+  /**
+   * OFF-001: Notify EMPLOYEE when termination is initiated (employment under review)
+   */
+  async notifyEmployeeTerminationInitiated(
+    employeeId: string,
+    terminationDetails: {
+      reason: string;
+      performanceScore?: number;
+      initiatedBy: string;
+    },
+  ) {
+    if (!employeeId) {
+      return { success: false, message: 'No employee ID provided' };
+    }
+
+    try {
+      const message = `⚠️ Employment Review Notice\n\n` +
+        `Your employment is currently under review.\n\n` +
+        `📋 Reason: ${terminationDetails.reason}\n` +
+        (terminationDetails.performanceScore !== undefined 
+          ? `📊 Performance Score: ${terminationDetails.performanceScore}${terminationDetails.performanceScore > 5 ? '%' : '/5'}\n` 
+          : '') +
+        `👤 Initiated by: ${terminationDetails.initiatedBy}\n\n` +
+        `A member of HR will contact you shortly to discuss next steps and the offboarding process.`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(employeeId),
+        type: NotificationType.TERMINATION_INITIATED,
+        message: message,
+        data: {
+          ...terminationDetails,
+          action: 'TERMINATION_INITIATED',
+        },
+        isRead: false,
+      });
+
+      return { success: true, notification };
+    } catch (error) {
+      console.error(`Failed to notify employee about termination initiation:`, error);
+      return { success: false, error };
+    }
+  }
+
+  /**
+   * OFF-001: Notify EMPLOYEE when termination is approved with reason
+   */
+  async notifyEmployeeTerminationApproved(
+    employeeId: string,
+    terminationDetails: {
+      reason: string;
+      effectiveDate: string;
+      hrComments?: string;
+    },
+  ) {
+    if (!employeeId) {
+      return { success: false, message: 'No employee ID provided' };
+    }
+
+    try {
+      const message = `🔴 Employment Termination Notice\n\n` +
+        `Your employment has been terminated.\n\n` +
+        `📅 Effective Date: ${new Date(terminationDetails.effectiveDate).toLocaleDateString()}\n` +
+        `📋 Reason: ${terminationDetails.reason}\n` +
+        (terminationDetails.hrComments ? `💬 HR Comments: ${terminationDetails.hrComments}\n\n` : '\n') +
+        `Next Steps:\n` +
+        `• Complete the offboarding checklist\n` +
+        `• Return all company assets (laptop, badge, phone, etc.)\n` +
+        `• Contact HR for final settlement details\n` +
+        `• Schedule an exit interview if requested`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(employeeId),
+        type: NotificationType.TERMINATION_APPROVED,
+        message: message,
+        data: {
+          ...terminationDetails,
+          action: 'TERMINATION_APPROVED_EMPLOYEE',
+        },
+        isRead: false,
+      });
+
+      return { success: true, notification };
+    } catch (error) {
+      console.error(`Failed to notify employee about termination approval:`, error);
+      return { success: false, error };
+    }
   }
 
   /**

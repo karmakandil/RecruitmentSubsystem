@@ -659,7 +659,60 @@ export class RecruitmentService {
       currentStage: ApplicationStage.SCREENING,
       status: ApplicationStatus.SUBMITTED,
     });
-    return application.save();
+    const savedApplication = await application.save();
+
+    // =========================================================================
+    // NOTIFICATION: Notify HR Employees and HR Managers about new application
+    // =========================================================================
+    // When a candidate applies, HR staff should be notified to review the 
+    // application and begin the screening process.
+    // =========================================================================
+    try {
+      // Get job requisition details for the notification
+      const jobTemplate = await this.jobTemplateModel
+        .findById(jobRequisition.templateId)
+        .lean()
+        .exec();
+      const positionTitle = (jobTemplate as any)?.title || 'Position';
+
+      // Check if candidate is a referral
+      const isReferral = await this.referralModel.exists({
+        candidateId: new Types.ObjectId(dto.candidateId),
+      });
+
+      // Find all HR Employees and HR Managers to notify
+      const hrStaff = await this.employeeSystemRoleModel
+        .find({
+          roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] },
+          isActive: true,
+        })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+
+      const hrRecipientIds = hrStaff
+        .map((hr: any) => hr.employeeProfileId?.toString())
+        .filter(Boolean);
+
+      if (hrRecipientIds.length > 0) {
+        await this.notificationsService.notifyHRNewApplication(
+          hrRecipientIds,
+          {
+            applicationId: savedApplication._id.toString(),
+            candidateName: candidate.firstName + ' ' + (candidate.lastName || ''),
+            positionTitle: positionTitle,
+            requisitionId: dto.requisitionId,
+            isReferral: !!isReferral,
+          },
+        );
+        console.log(`[APPLICATION] Notified ${hrRecipientIds.length} HR staff about new application`);
+      }
+    } catch (notifError) {
+      console.warn('[APPLICATION] Failed to send HR notifications:', notifError);
+      // Don't fail the application submission if notification fails
+    }
+
+    return savedApplication;
   }
 
   async getAllApplications(
@@ -2717,6 +2770,102 @@ Due: ${context.dueDate}`
         // Non-critical - don't fail onboarding creation if notification fails
         console.warn('Failed to send onboarding welcome notification:', e);
       }
+
+      // ============= ONB-001: NOTIFY DEPARTMENTS ABOUT THEIR ONBOARDING TASKS =============
+      // Send notifications to IT, Admin, and HR about their assigned tasks
+      try {
+        // Fetch employee for notification details
+        const employeeForDeptNotif = await this.employeeProfileService.findOne(
+          createOnboardingDto.employeeId.toString(),
+        );
+        const employeeName = employeeForDeptNotif 
+          ? `${(employeeForDeptNotif as any).firstName || ''} ${(employeeForDeptNotif as any).lastName || ''}`.trim() || 'New Hire'
+          : 'New Hire';
+        
+        // Group tasks by department
+        const tasksByDepartment: Record<string, string[]> = {};
+        for (const task of tasks) {
+          const dept = task.department || 'HR';
+          if (!tasksByDepartment[dept]) {
+            tasksByDepartment[dept] = [];
+          }
+          tasksByDepartment[dept].push(task.name);
+        }
+
+        // Get IT/System Admin users for IT tasks
+        if (tasksByDepartment['IT'] && tasksByDepartment['IT'].length > 0) {
+          const systemAdmins = await this.employeeSystemRoleModel
+            .find({ roles: { $in: [SystemRole.SYSTEM_ADMIN] }, isActive: true })
+            .select('employeeProfileId')
+            .lean()
+            .exec();
+          const adminIds = systemAdmins.map((a: any) => a.employeeProfileId?.toString()).filter(Boolean);
+          
+          if (adminIds.length > 0) {
+            await this.notificationsService.notifyOnboardingTaskAssigned(
+              adminIds,
+              {
+                employeeId: createOnboardingDto.employeeId.toString(),
+                employeeName: employeeName,
+                department: 'IT',
+                tasks: tasksByDepartment['IT'],
+                deadline: defaultDeadline,
+                onboardingId: saved._id.toString(),
+              },
+            );
+            console.log(`[ONB-001] IT onboarding tasks notification sent to ${adminIds.length} System Admin(s)`);
+          }
+        }
+
+        // Get HR users for HR and Admin tasks
+        if ((tasksByDepartment['HR'] && tasksByDepartment['HR'].length > 0) || 
+            (tasksByDepartment['Admin'] && tasksByDepartment['Admin'].length > 0)) {
+          const hrRoles = await this.employeeSystemRoleModel
+            .find({ roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] }, isActive: true })
+            .select('employeeProfileId')
+            .lean()
+            .exec();
+          const hrIds = hrRoles.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
+          
+          if (hrIds.length > 0) {
+            // Notify about HR tasks
+            if (tasksByDepartment['HR'] && tasksByDepartment['HR'].length > 0) {
+              await this.notificationsService.notifyOnboardingTaskAssigned(
+                hrIds,
+                {
+                  employeeId: createOnboardingDto.employeeId.toString(),
+                  employeeName: employeeName,
+                  department: 'HR',
+                  tasks: tasksByDepartment['HR'],
+                  deadline: defaultDeadline,
+                  onboardingId: saved._id.toString(),
+                },
+              );
+              console.log(`[ONB-001] HR onboarding tasks notification sent to ${hrIds.length} HR user(s)`);
+            }
+            
+            // Notify about Admin tasks
+            if (tasksByDepartment['Admin'] && tasksByDepartment['Admin'].length > 0) {
+              await this.notificationsService.notifyOnboardingTaskAssigned(
+                hrIds,
+                {
+                  employeeId: createOnboardingDto.employeeId.toString(),
+                  employeeName: employeeName,
+                  department: 'Admin',
+                  tasks: tasksByDepartment['Admin'],
+                  deadline: defaultDeadline,
+                  onboardingId: saved._id.toString(),
+                },
+              );
+              console.log(`[ONB-001] Admin onboarding tasks notification sent to ${hrIds.length} HR user(s)`);
+            }
+          }
+        }
+      } catch (deptNotifyError) {
+        console.warn('[ONB-001] Failed to send department task notifications:', deptNotifyError);
+        // Non-critical - don't fail onboarding creation
+      }
+      // ============= END ONB-001 DEPARTMENT NOTIFICATIONS =============
 
       return saved.toObject();
     } catch (error) {
@@ -5300,6 +5449,34 @@ Due: ${context.dueDate}`
 
       await onboarding.save();
 
+      // ============= ONB-009: NOTIFY NEW HIRE ABOUT ACCESS PROVISIONING =============
+      try {
+        const employee = await this.employeeProfileService.findOne(employeeId);
+        if (employee) {
+          const employeeName = `${(employee as any).firstName || ''} ${(employee as any).lastName || ''}`.trim() || 'New Hire';
+          const provisionedSystems = ['Email', 'SSO', 'Internal Systems'];
+          if (shiftAssignmentResult) {
+            provisionedSystems.push('Time Clock Access');
+          }
+
+          await this.notificationsService.notifyAccessProvisioned(
+            [employeeId],
+            {
+              employeeId: employeeId,
+              employeeName: employeeName,
+              accessType: task.name,
+              systemName: provisionedSystems.join(', '),
+              provisionedBy: 'System (Automatic)',
+            },
+          );
+          console.log(`[ONB-009] Access provisioning notification sent to new hire: ${employeeId}`);
+        }
+      } catch (notifyError) {
+        console.warn('[ONB-009] Failed to send access provisioning notification:', notifyError);
+        // Non-critical - don't fail the provisioning
+      }
+      // ============= END ONB-009 NOTIFICATION =============
+
       return {
         message: 'System access provisioned successfully',
         task: task,
@@ -5413,6 +5590,48 @@ Due: ${context.dueDate}`
         `\n[${new Date().toISOString()}] Reserved: ${JSON.stringify(equipmentDetails)}`;
 
       await onboarding.save();
+
+      // ============= ONB-012: NOTIFY NEW HIRE ABOUT EQUIPMENT RESERVATION =============
+      try {
+        const employee = await this.employeeProfileService.findOne(employeeId);
+        if (employee) {
+          const employeeName = `${(employee as any).firstName || ''} ${(employee as any).lastName || ''}`.trim() || 'New Hire';
+          
+          // Build equipment list for notification
+          const equipmentList: string[] = [];
+          if (equipmentType === 'workspace' || equipmentType === 'desk') {
+            equipmentList.push('Workspace/Desk');
+            if (equipmentDetails?.location) {
+              equipmentList.push(`Location: ${equipmentDetails.location}`);
+            }
+          } else if (equipmentType === 'access_card' || equipmentType === 'badge') {
+            equipmentList.push('ID Badge/Access Card');
+          }
+          
+          // Add any additional equipment details
+          if (equipmentDetails?.model) equipmentList.push(equipmentDetails.model);
+          if (equipmentDetails?.accessories) {
+            equipmentList.push(...(Array.isArray(equipmentDetails.accessories) ? equipmentDetails.accessories : [equipmentDetails.accessories]));
+          }
+
+          await this.notificationsService.notifyEquipmentReserved(
+            [employeeId],
+            {
+              employeeId: employeeId,
+              employeeName: employeeName,
+              equipmentList: equipmentList.length > 0 ? equipmentList : [equipmentType],
+              workspaceDetails: equipmentDetails?.location || equipmentDetails?.desk || 'To be assigned',
+              reservedBy: 'HR (Automatic)',
+              readyDate: new Date(), // Ready now
+            },
+          );
+          console.log(`[ONB-012] Equipment reservation notification sent to new hire: ${employeeId}`);
+        }
+      } catch (notifyError) {
+        console.warn('[ONB-012] Failed to send equipment reservation notification:', notifyError);
+        // Non-critical - don't fail the reservation
+      }
+      // ============= END ONB-012 NOTIFICATION =============
 
       return {
         message: `${equipmentType} reserved successfully`,
@@ -6241,12 +6460,16 @@ Due: ${context.dueDate}`
         );
       }
 
-      // Example rule: only allow termination if totalScore < 2.5
-      // TODO: When warnings integration is available, also allow termination based on warnings count
-      // e.g., if (latestRecord.totalScore >= 2.5 && warningsCount < 3) { throw... }
-      if (latestRecord.totalScore >= 2.5) {
+      // OFF-001: Only allow termination if performance score is low enough
+      // Supports both percentage scores (0-100) and 5-point scale scores (0-5)
+      // Threshold: < 50% (percentage) OR < 2.5 (5-point scale)
+      const isPercentageScale = latestRecord.totalScore > 5; // If score > 5, it's likely a percentage
+      const threshold = isPercentageScale ? 50 : 2.5;
+      const scaleLabel = isPercentageScale ? '%' : '/5';
+      
+      if (latestRecord.totalScore >= threshold) {
         throw new ForbiddenException(
-          'Cannot terminate: performance score is not low enough for termination.',
+          `Cannot terminate: Employee performance score is ${latestRecord.totalScore}${scaleLabel}, which is not low enough for termination. Score must be below ${threshold}${scaleLabel} to proceed with termination.`,
         );
       }
 
@@ -6446,10 +6669,16 @@ Due: ${context.dueDate}`
       );
     }
 
-    // Rule: only allow termination if totalScore < 2.5
-    if (latestRecord.totalScore >= 2.5) {
+    // OFF-001: Only allow termination if performance score is low enough
+    // Supports both percentage scores (0-100) and 5-point scale scores (0-5)
+    // Threshold: < 50% (percentage) OR < 2.5 (5-point scale)
+    const isPercentageScale = latestRecord.totalScore > 5; // If score > 5, it's likely a percentage
+    const threshold = isPercentageScale ? 50 : 2.5;
+    const scaleLabel = isPercentageScale ? '%' : '/5';
+    
+    if (latestRecord.totalScore >= threshold) {
       throw new BadRequestException(
-        `Cannot terminate: Employee performance score is ${latestRecord.totalScore.toFixed(2)}, which is not low enough for termination. Score must be below 2.5.`,
+        `Cannot terminate: Employee performance score is ${latestRecord.totalScore}${scaleLabel}, which is not low enough for termination. Score must be below ${threshold}${scaleLabel} to proceed with termination.`,
       );
     }
 
@@ -6495,6 +6724,17 @@ Due: ${context.dueDate}`
         );
         console.log(`[OFF-001] Termination notification sent to ${hrManagerIds.length} HR Manager(s)`);
       }
+
+      // OFF-001: NOTIFY THE EMPLOYEE about the termination initiation
+      await this.notificationsService.notifyEmployeeTerminationInitiated(
+        employee._id.toString(),
+        {
+          reason: termination.reason,
+          performanceScore: latestRecord.totalScore,
+          initiatedBy: initiatorName,
+        },
+      );
+      console.log(`[OFF-001] Termination notice sent to employee: ${employee.employeeNumber}`);
     } catch (notifyError) {
       console.warn('[OFF-001] Failed to send termination notification:', this.getErrorMessage(notifyError));
     }
@@ -6750,16 +6990,31 @@ Due: ${context.dueDate}`
       
       // Notify the EMPLOYEE about their status update (OFF-019)
       if (employee) {
-        await this.notificationsService.notifyResignationStatusUpdated(
-          employee._id.toString(),
-          {
-            employeeName: employeeName,
-            newStatus: dto.status,
-            effectiveDate: termination.terminationDate?.toISOString(),
-            hrComments: dto.hrComments,
-          },
-        );
-        console.log(`[OFF-019] ${isResignation ? 'Resignation' : 'Termination'} status update notification sent to ${employeeName}`);
+        // For HR-initiated terminations, include the reason in the notification
+        if (!isResignation && dto.status === TerminationStatus.APPROVED) {
+          // OFF-001: Employee notification for APPROVED TERMINATION with reason
+          await this.notificationsService.notifyEmployeeTerminationApproved(
+            employee._id.toString(),
+            {
+              reason: termination.reason,
+              effectiveDate: termination.terminationDate?.toISOString() || new Date().toISOString(),
+              hrComments: dto.hrComments,
+            },
+          );
+          console.log(`[OFF-001] Termination APPROVED notification sent to employee: ${employee.employeeNumber}`);
+        } else {
+          // For resignations or other status updates, use the existing method
+          await this.notificationsService.notifyResignationStatusUpdated(
+            employee._id.toString(),
+            {
+              employeeName: employeeName,
+              newStatus: dto.status,
+              effectiveDate: termination.terminationDate?.toISOString(),
+              hrComments: dto.hrComments,
+            },
+          );
+          console.log(`[OFF-019] ${isResignation ? 'Resignation' : 'Termination'} status update notification sent to ${employeeName}`);
+        }
       }
 
       // If APPROVED, also notify IT for access revocation (OFF-007)

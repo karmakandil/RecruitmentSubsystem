@@ -102,10 +102,17 @@ export default function TerminationsPage() {
         return;
       }
       const data = await recruitmentApi.getEmployeePerformance(employeeNumber);
-      setPerformanceData(data);
+      console.log("Performance data received:", data); // Debug log
+      // Check if we got valid appraisal data
+      if (!data || (!data.appraisal && !data.totalScore)) {
+        setPerformanceData({ noData: true });
+      } else {
+        setPerformanceData(data);
+      }
     } catch (error: any) {
       // Handle case where no appraisal exists (404 Not Found)
       const errorMsg = error.message?.toLowerCase() || "";
+      console.error("Performance fetch error:", error); // Debug log
       if (errorMsg.includes("404") || errorMsg.includes("not found") || errorMsg.includes("appraisal")) {
         setPerformanceData({ noData: true });
       } else {
@@ -230,7 +237,7 @@ export default function TerminationsPage() {
                 <CardTitle>Employee Performance Review</CardTitle>
                 <CardDescription>
                   Search employees to view their performance and initiate
-                  termination if performance score is below 2.5
+                  termination if performance score is below threshold (50% or 2.5/5)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -474,7 +481,7 @@ export default function TerminationsPage() {
                 </p>
                 <p className="text-sm text-yellow-600 mt-2">
                   Performance-based termination requires at least one appraisal
-                  record with a score below 2.5.
+                  record with a score below the threshold (50% or 2.5/5).
                 </p>
               </div>
             ) : performanceData?.error ? (
@@ -485,64 +492,85 @@ export default function TerminationsPage() {
               </div>
             ) : performanceData ? (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-500">Latest Performance Score</p>
-                    <p
-                      className={`text-3xl font-bold ${
-                        performanceData.totalScore < 2.5
-                          ? "text-red-600"
-                          : "text-green-600"
-                      }`}
-                    >
-                      {performanceData.totalScore?.toFixed(2) || "N/A"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {performanceData.totalScore < 2.5
-                        ? "Eligible for termination"
-                        : "Not eligible for termination (score must be < 2.5)"}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-500">Review Period</p>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {performanceData.reviewPeriod || "N/A"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {performanceData.reviewDate
-                        ? `Date: ${new Date(
-                            performanceData.reviewDate
-                          ).toLocaleDateString()}`
-                        : ""}
-                    </p>
-                  </div>
-                </div>
+                {(() => {
+                  // Backend returns { employee: {...}, appraisal: {...} }
+                  const appraisal = performanceData.appraisal || performanceData;
+                  const score = appraisal?.totalScore ?? performanceData?.totalScore ?? 0;
+                  
+                  // Score > 5 means it's a percentage (0-100), otherwise it's a 5-point scale
+                  const isPercentageScale = score > 5;
+                  const threshold = isPercentageScale ? 50 : 2.5;
+                  const scaleLabel = isPercentageScale ? "%" : "/5";
+                  const isEligible = score > 0 && score < threshold;
+                  
+                  const reviewDate = appraisal?.createdAt || appraisal?.managerSubmittedAt || performanceData?.reviewDate;
+                  const managerSummary = appraisal?.managerSummary || performanceData?.feedback;
+                  const overallLabel = appraisal?.overallRatingLabel || "";
+                  
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <p className="text-sm text-gray-500">Latest Performance Score</p>
+                          <p
+                            className={`text-3xl font-bold ${
+                              isEligible ? "text-red-600" : "text-green-600"
+                            }`}
+                          >
+                            {score > 0 ? `${score.toFixed(1)}${scaleLabel}` : "N/A"}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {score === 0 
+                              ? "No score available"
+                              : isEligible
+                              ? "⚠️ Eligible for termination"
+                              : `Not eligible (must be < ${threshold}${scaleLabel})`}
+                          </p>
+                          {overallLabel && (
+                            <p className="text-sm font-medium mt-2 text-gray-700">{overallLabel}</p>
+                          )}
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                          <p className="text-sm text-gray-500">Review Status</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            {appraisal?.status || "N/A"}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {reviewDate
+                              ? `Date: ${new Date(reviewDate).toLocaleDateString()}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
 
-                {performanceData.feedback && (
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-sm text-gray-500 mb-2">Manager Feedback</p>
-                    <p className="text-gray-900">{performanceData.feedback}</p>
-                  </div>
-                )}
+                      {managerSummary && (
+                        <div className="bg-gray-50 p-4 rounded-lg mt-4">
+                          <p className="text-sm text-gray-500 mb-2">Manager Summary</p>
+                          <p className="text-gray-900">{managerSummary}</p>
+                        </div>
+                      )}
 
-                {performanceData.totalScore < 2.5 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <p className="text-red-800 font-semibold">
-                      ⚠️ This employee is eligible for termination due to low
-                      performance score.
-                    </p>
-                    <Button
-                      className="mt-3"
-                      variant="danger"
-                      onClick={() => {
-                        setIsPerformanceModalOpen(false);
-                        handleOpenTerminate(selectedEmployee);
-                      }}
-                    >
-                      Initiate Termination
-                    </Button>
-                  </div>
-                )}
+                      {isEligible && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
+                          <p className="text-red-800 font-semibold">
+                            ⚠️ This employee is eligible for termination due to low
+                            performance score ({score.toFixed(1)}{scaleLabel} is below {threshold}{scaleLabel}).
+                          </p>
+                          <Button
+                            className="mt-3"
+                            variant="danger"
+                            onClick={() => {
+                              setIsPerformanceModalOpen(false);
+                              handleOpenTerminate(selectedEmployee);
+                            }}
+                          >
+                            Initiate Termination
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <p className="text-gray-500">No performance data available.</p>
@@ -567,7 +595,7 @@ export default function TerminationsPage() {
                     selectedEmployee?.employeeNumber}
                 </strong>
                 . This action requires the employee to have a performance score
-                below 2.5.
+                below the threshold (50% for percentage scores, or 2.5 for 5-point scale).
               </p>
             </div>
 

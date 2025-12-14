@@ -167,6 +167,15 @@ export enum NotificationType {
    */
   APPLICATION_REJECTED = 'APPLICATION_REJECTED',
 
+  /**
+   * NEW_APPLICATION_RECEIVED
+   * Sent to: All HR Employees and HR Managers
+   * When: A candidate submits a new job application
+   * Contains: Candidate name, position title, application ID
+   * Purpose: Notify HR team about new applications in the pipeline for review
+   */
+  NEW_APPLICATION_RECEIVED = 'NEW_APPLICATION_RECEIVED',
+
   // =============================================================================
   // ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS (ONB-018, ONB-019)
   // =============================================================================

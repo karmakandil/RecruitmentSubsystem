@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
@@ -16,6 +17,7 @@ import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 
 export default function JobRequisitionsPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
   const [jobRequisitions, setJobRequisitions] = useState<JobRequisition[]>([]);
@@ -336,9 +338,8 @@ export default function JobRequisitionsPage() {
 
   const handlePreview = async (id: string) => {
     try {
-      const preview = await recruitmentApi.previewJobRequisition(id);
-      // Open preview in a new modal or page
-      window.open(`/dashboard/recruitment/jobs/${id}`, '_blank');
+      // Navigate to preview page in the same tab (keeps auth context)
+      router.push(`/dashboard/recruitment/jobs/${id}`);
     } catch (error: any) {
       showToast(error.message || "Failed to preview job requisition", "error");
     }
