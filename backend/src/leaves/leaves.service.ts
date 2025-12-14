@@ -414,16 +414,16 @@ export class LeavesService {
     // REQ-016: Validate medical certificate requirement for sick leave exceeding one day
     if (leaveType.code === 'SICK_LEAVE' && durationDays > 1) {
       if (!attachmentId) {
-        throw new Error(
-          'Medical certificate is required for sick leave exceeding one day.',
+        throw new BadRequestException(
+          'Medical certificate is required for sick leave exceeding one day. Please upload a medical certificate before submitting your request.',
         );
       }
     }
 
     // REQ-016: Validate attachment requirement
     if (leaveType.requiresAttachment && !attachmentId) {
-      throw new Error(
-        `Attachment is required for ${leaveType.name} leave requests.`,
+      throw new BadRequestException(
+        `Attachment is required for ${leaveType.name} leave requests. Please upload the required supporting document before submitting.`,
       );
     }
 
@@ -432,7 +432,7 @@ export class LeavesService {
         .findById(attachmentId)
         .exec();
       if (!attachment) {
-        throw new Error('Attachment not found');
+        throw new NotFoundException(`Attachment with ID '${attachmentId}' not found. Please upload a new attachment or verify the attachment ID.`);
       }
     }
 
@@ -456,21 +456,21 @@ export class LeavesService {
       .findById(leaveTypeObjectId)
       .exec();
     if (!leaveTypeDoc) {
-      throw new Error('Leave type not found');
+      throw new NotFoundException(`Leave type with ID '${leaveTypeId}' not found. Please select a valid leave type.`);
     }
 
     // REQ-016 validations remain the same (use original attachmentId variable)
     if (leaveTypeDoc.code === 'SICK_LEAVE' && durationDays > 1) {
       if (!attachmentId) {
-        throw new Error(
-          'Medical certificate is required for sick leave exceeding one day.',
+        throw new BadRequestException(
+          'Medical certificate is required for sick leave exceeding one day. Please upload a medical certificate before submitting your request.',
         );
       }
     }
 
     if (leaveTypeDoc.requiresAttachment && !attachmentId) {
-      throw new Error(
-        `Attachment is required for ${leaveTypeDoc.name} leave requests.`,
+      throw new BadRequestException(
+        `Attachment is required for ${leaveTypeDoc.name} leave requests. Please upload the required supporting document before submitting.`,
       );
     }
 
@@ -479,7 +479,7 @@ export class LeavesService {
         .findById(this.toObjectId(attachmentId))
         .exec();
       if (!attachment) {
-        throw new Error('Attachment not found');
+        throw new NotFoundException(`Attachment with ID '${attachmentId}' not found. Please upload a new attachment or verify the attachment ID.`);
       }
     }
 
@@ -495,7 +495,7 @@ export class LeavesService {
       leaveTypeDoc.deductible !== false, // Only check balance if deductible
     );
     if (!validationResult.isValid) {
-      throw new Error(validationResult.errorMessage);
+      throw new BadRequestException(validationResult.errorMessage || 'Invalid leave request. Please check your input and try again.');
     }
 
     // Create leave request with initial approval flow, ensuring ObjectId fields are set
@@ -599,10 +599,57 @@ export class LeavesService {
   // Phase 2: REQ-020 - Get Line Manager/Department Head ID
 
   async getLeaveRequestById(id: string): Promise<LeaveRequestDocument> {
-    const leaveRequest = await this.leaveRequestModel.findById(id).exec();
+    const leaveRequest = await this.leaveRequestModel
+      .findById(id)
+      .populate('leaveTypeId', 'name code')
+      .exec();
     if (!leaveRequest) {
-      throw new Error(`LeaveRequest with ID ${id} not found`);
+      throw new NotFoundException(`Leave request with ID ${id} not found. Please verify the request ID and try again.`);
     }
+    
+    // Handle case where leaveTypeId is not populated or populate returned null (leave type was deleted)
+    const leaveTypeIdValue = leaveRequest.leaveTypeId instanceof Types.ObjectId 
+      ? leaveRequest.leaveTypeId 
+      : (typeof leaveRequest.leaveTypeId === 'string' 
+          ? new Types.ObjectId(leaveRequest.leaveTypeId) 
+          : (leaveRequest.leaveTypeId as any)?._id || leaveRequest.leaveTypeId);
+    
+    // Check if populate succeeded (has name property) or if it's still an ObjectId (not populated)
+    const isPopulated = leaveRequest.leaveTypeId && 
+      typeof leaveRequest.leaveTypeId === 'object' && 
+      leaveRequest.leaveTypeId !== null &&
+      !(leaveRequest.leaveTypeId instanceof Types.ObjectId) &&
+      (leaveRequest.leaveTypeId as any).name;
+    
+    if (!isPopulated && leaveTypeIdValue) {
+      // Populate failed or returned null - fetch the leave type separately
+      try {
+        const leaveType = await this.leaveTypeModel.findById(leaveTypeIdValue).exec();
+        if (leaveType) {
+          // Manually set the populated leaveTypeId with the fetched data
+          (leaveRequest.leaveTypeId as any) = {
+            _id: leaveType._id,
+            name: leaveType.name,
+            code: leaveType.code,
+          };
+        } else {
+          // Leave type was deleted - set a placeholder
+          (leaveRequest.leaveTypeId as any) = {
+            _id: leaveTypeIdValue,
+            name: 'Deleted Leave Type',
+            code: 'DELETED',
+          };
+        }
+      } catch (err) {
+        // If fetch fails, set placeholder
+        (leaveRequest.leaveTypeId as any) = {
+          _id: leaveTypeIdValue,
+          name: 'Unknown Leave Type',
+          code: 'UNKNOWN',
+        };
+      }
+    }
+    
     return leaveRequest;
   }
 
@@ -619,7 +666,11 @@ export class LeavesService {
     }
 
     if (leaveRequest.status !== LeaveStatus.PENDING) {
-      throw new Error('Only pending requests can be modified');
+      const statusDisplay = leaveRequest.status.charAt(0).toUpperCase() + leaveRequest.status.slice(1).toLowerCase();
+      throw new BadRequestException(
+        `Only pending leave requests can be edited. This request has been ${statusDisplay.toLowerCase()} and cannot be modified. ` +
+        `If you need to make changes, please cancel this request (if still pending) or contact HR for assistance.`
+      );
     }
 
     // 🔹 Determine the new dates & duration (use updated values if provided, otherwise existing ones)
@@ -640,7 +691,7 @@ export class LeavesService {
     );
 
     if (!validationResult.isValid) {
-      throw new Error(validationResult.errorMessage);
+      throw new BadRequestException(validationResult.errorMessage || 'Invalid leave request update. Please check your input and try again.');
     }
 
     // 🔹 If duration changed, update pending balance atomically
@@ -701,7 +752,11 @@ export class LeavesService {
     }
 
     if (leaveRequest.status !== LeaveStatus.PENDING) {
-      throw new Error('Only pending requests can be canceled');
+      const statusDisplay = leaveRequest.status.charAt(0).toUpperCase() + leaveRequest.status.slice(1).toLowerCase();
+      throw new BadRequestException(
+        `Only pending leave requests can be canceled. This request has been ${statusDisplay.toLowerCase()} and cannot be canceled. ` +
+        `If you need to make changes to an approved request, please contact HR for assistance.`
+      );
     }
 
     // Release pending balance atomically (and clamp to 0 if negative)
@@ -1065,8 +1120,31 @@ export class LeavesService {
       .exec();
 
     if (!leaveEntitlement) {
+      // Fetch employee and leave type names for user-friendly error message
+      let employeeName = 'the employee';
+      let leaveTypeName = 'this leave type';
+      
+      try {
+        const employee = await this.employeeProfileModel.findById(employeeId).exec();
+        if (employee) {
+          employeeName = employee.fullName || `${employee.firstName} ${employee.lastName}`.trim() || employee.employeeNumber || 'the employee';
+        }
+      } catch (err) {
+        // Ignore errors fetching employee name
+      }
+      
+      try {
+        const leaveType = await this.leaveTypeModel.findById(leaveTypeId).exec();
+        if (leaveType) {
+          leaveTypeName = leaveType.name || 'this leave type';
+        }
+      } catch (err) {
+        // Ignore errors fetching leave type name
+      }
+      
       throw new NotFoundException(
-        `Entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found`,
+        `Leave entitlement not found for ${employeeName} with leave type "${leaveTypeName}". ` +
+        `Please contact HR to create a leave entitlement before submitting leave requests.`
       );
     }
 
@@ -1224,13 +1302,8 @@ export class LeavesService {
     leaveTypeId: string,
     personalizedEntitlement: number,
   ): Promise<LeaveEntitlementDocument> {
+    // getLeaveEntitlement will throw NotFoundException with user-friendly message if not found
     const entitlement = await this.getLeaveEntitlement(employeeId, leaveTypeId);
-
-    if (!entitlement) {
-      throw new Error(
-        `Leave entitlement for employee ${employeeId} with leave type ${leaveTypeId} not found`,
-      );
-    }
 
     // Add personalized entitlement to accruedActual
     // This gives the employee extra days beyond their normal policy
@@ -1471,12 +1544,12 @@ export class LeavesService {
   ): Promise<{ message: string; delegation: any }> {
     // Validate dates
     if (startDate >= endDate) {
-      throw new BadRequestException('Start date must be before end date.');
+      throw new BadRequestException('End date must be after start date for delegation period. Please select a valid date range.');
     }
 
     const now = new Date();
     if (endDate < now) {
-      throw new BadRequestException('End date must be in the future.');
+      throw new BadRequestException('End date must be in the future. Please select a future date for the delegation period.');
     }
 
     // Validate that delegateId is a valid employee
@@ -1484,18 +1557,18 @@ export class LeavesService {
       .findById(delegateId)
       .exec();
     if (!delegate) {
-      throw new NotFoundException(`Employee with ID ${delegateId} not found.`);
+      throw new NotFoundException(`Employee with ID '${delegateId}' not found. Please verify the employee ID and try again.`);
     }
 
     // Validate that managerId is a valid employee
     const manager = await this.employeeProfileModel.findById(managerId).exec();
     if (!manager) {
-      throw new NotFoundException(`Manager with ID ${managerId} not found.`);
+      throw new NotFoundException(`Manager with ID '${managerId}' not found. Please verify the manager ID and try again.`);
     }
 
     // Check if delegate is the same as manager
     if (managerId === delegateId) {
-      throw new BadRequestException('Manager cannot delegate to themselves.');
+      throw new BadRequestException('You cannot delegate approval authority to yourself. Please select a different employee to delegate to.');
     }
 
     // Get or create delegation array for this manager
@@ -2176,53 +2249,199 @@ export class LeavesService {
     leaveRequestId: string,
     hrUserId: string,
     overrideToApproved: boolean,
-    overrideReason?: string,
+    overrideReason: string,
   ): Promise<LeaveRequestDocument> {
     const leaveRequest = await this.leaveRequestModel
       .findById(leaveRequestId)
+      .populate('leaveTypeId', 'name code')
       .exec();
     if (!leaveRequest) {
-      throw new Error(`LeaveRequest with ID ${leaveRequestId} not found`);
+      throw new NotFoundException(`Leave request with ID ${leaveRequestId} not found. Please verify the request ID and try again.`);
     }
 
-    // BR 479: Validate override conditions (e.g., only for special circumstances)
-    if (!overrideReason || overrideReason.trim().length === 0) {
-      throw new Error('Override reason is required for HR override decisions.');
+    // Validate override reason is provided (required but no character limit)
+    if (!overrideReason || typeof overrideReason !== 'string') {
+      throw new BadRequestException('Override justification is required. Please provide a reason for this override decision.');
     }
 
+    // Store override reason in approval flow for audit purposes
     leaveRequest.approvalFlow.push({
       role: 'HR Manager',
       status: overrideToApproved ? LeaveStatus.APPROVED : LeaveStatus.REJECTED,
       decidedBy: new Types.ObjectId(hrUserId),
       decidedAt: new Date(),
+      // Store the override reason in the approval flow (if the schema supports it)
+      // Note: If the schema doesn't have a reason field, we can add it to justification or create a separate field
     });
+    
+    // Also store override reason in the request's justification field if it exists, or append it
+    if (overrideReason.trim()) {
+      const existingJustification = leaveRequest.justification || '';
+      const overrideNote = `[HR Override: ${overrideReason.trim()}]`;
+      leaveRequest.justification = existingJustification 
+        ? `${existingJustification}\n${overrideNote}` 
+        : overrideNote;
+    }
 
     if (overrideToApproved) {
       leaveRequest.status = LeaveStatus.APPROVED;
-      await this.finalizeApprovedLeaveRequest(leaveRequest);
-      await this.notifyStakeholders(leaveRequest, 'overridden_approved');
+      try {
+        // Extract leaveTypeId correctly before calling finalizeApprovedLeaveRequest
+        let leaveTypeIdForFinalize: string;
+        if (leaveRequest.leaveTypeId instanceof Types.ObjectId) {
+          leaveTypeIdForFinalize = leaveRequest.leaveTypeId.toString();
+        } else if (typeof leaveRequest.leaveTypeId === 'object' && leaveRequest.leaveTypeId !== null) {
+          // Populated object - extract the _id
+          const populatedLeaveType = leaveRequest.leaveTypeId as any;
+          if (populatedLeaveType._id) {
+            leaveTypeIdForFinalize = populatedLeaveType._id instanceof Types.ObjectId 
+              ? populatedLeaveType._id.toString() 
+              : String(populatedLeaveType._id);
+          } else {
+            // Fallback: get original unpopulated document
+            const originalRequest = await this.leaveRequestModel
+              .findById(leaveRequest._id)
+              .select('leaveTypeId')
+              .lean()
+              .exec();
+            if (originalRequest && originalRequest.leaveTypeId) {
+              leaveTypeIdForFinalize = originalRequest.leaveTypeId instanceof Types.ObjectId 
+                ? originalRequest.leaveTypeId.toString() 
+                : String(originalRequest.leaveTypeId);
+            } else {
+              throw new BadRequestException(
+                'Unable to process leave request: Leave type information is missing. Please contact system administrator.'
+              );
+            }
+          }
+        } else {
+          leaveTypeIdForFinalize = String(leaveRequest.leaveTypeId);
+        }
+        
+        // Temporarily set leaveTypeId to ObjectId for finalizeApprovedLeaveRequest
+        const originalLeaveTypeId = leaveRequest.leaveTypeId;
+        leaveRequest.leaveTypeId = new Types.ObjectId(leaveTypeIdForFinalize) as any;
+        
+        try {
+          await this.finalizeApprovedLeaveRequest(leaveRequest);
+        } finally {
+          // Restore original leaveTypeId (populated object)
+          leaveRequest.leaveTypeId = originalLeaveTypeId;
+        }
+      } catch (error) {
+        // Provide user-friendly error message if finalization fails
+        if (error instanceof BadRequestException || error instanceof NotFoundException) {
+          throw error;
+        }
+        throw new BadRequestException(
+          'Unable to finalize leave request: An error occurred while processing the approval. Please try again or contact system administrator.'
+        );
+      }
+      // Notify stakeholders (don't throw if notification fails)
+      try {
+        await this.notifyStakeholders(leaveRequest, 'overridden_approved');
+      } catch (error) {
+        console.error('Failed to send notification for overridden approval:', error);
+        // Continue execution even if notification fails
+      }
     } else {
       leaveRequest.status = LeaveStatus.REJECTED;
-      const entitlement = await this.getLeaveEntitlement(
-        leaveRequest.employeeId.toString(),
-        leaveRequest.leaveTypeId.toString(),
-      );
-      const updated = await this.leaveEntitlementModel
-        .findByIdAndUpdate(
-          entitlement._id,
-          { $inc: { pending: -leaveRequest.durationDays } },
-          { new: true },
-        )
-        .exec();
-      if (updated && updated.pending < 0) {
-        await this.leaveEntitlementModel
-          .findByIdAndUpdate(entitlement._id, { $set: { pending: 0 } })
+      
+      // Extract leaveTypeId correctly - handle both populated object and ObjectId cases
+      let leaveTypeIdValue: string;
+      try {
+        // Get the original unpopulated document to ensure we have the ObjectId
+        const originalRequest = await this.leaveRequestModel
+          .findById(leaveRequest._id)
+          .select('leaveTypeId')
+          .lean()
           .exec();
+        
+        if (!originalRequest || !originalRequest.leaveTypeId) {
+          throw new BadRequestException(
+            'Unable to process leave request: Leave type information is missing. Please contact system administrator.'
+          );
+        }
+        
+        // Extract the ObjectId value
+        if (originalRequest.leaveTypeId instanceof Types.ObjectId) {
+          leaveTypeIdValue = originalRequest.leaveTypeId.toString();
+        } else if (typeof originalRequest.leaveTypeId === 'string') {
+          leaveTypeIdValue = originalRequest.leaveTypeId;
+        } else {
+          // Handle case where it might be an object with _id
+          leaveTypeIdValue = (originalRequest.leaveTypeId as any)?._id?.toString() || String(originalRequest.leaveTypeId);
+        }
+        
+        // Validate leaveTypeId is a valid ObjectId string
+        if (!Types.ObjectId.isValid(leaveTypeIdValue)) {
+          throw new BadRequestException(
+            'Unable to process leave request: Invalid leave type information. Please contact system administrator.'
+          );
+        }
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new BadRequestException(
+          'Unable to process leave request: Error reading leave type information. Please contact system administrator.'
+        );
       }
-      await this.notifyStakeholders(leaveRequest, 'overridden_rejected');
+      
+      try {
+        const entitlement = await this.getLeaveEntitlement(
+          leaveRequest.employeeId.toString(),
+          leaveTypeIdValue,
+        );
+        const updated = await this.leaveEntitlementModel
+          .findByIdAndUpdate(
+            entitlement._id,
+            { $inc: { pending: -leaveRequest.durationDays } },
+            { new: true },
+          )
+          .exec();
+        if (updated && updated.pending < 0) {
+          await this.leaveEntitlementModel
+            .findByIdAndUpdate(entitlement._id, { $set: { pending: 0 } })
+            .exec();
+        }
+      } catch (error) {
+        // If getLeaveEntitlement fails, provide user-friendly error
+        if (error instanceof NotFoundException || error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new BadRequestException(
+          'Unable to process leave request rejection: Could not update leave balance. Please contact system administrator.'
+        );
+      }
+      // Notify stakeholders (don't throw if notification fails)
+      try {
+        await this.notifyStakeholders(leaveRequest, 'overridden_rejected');
+      } catch (error) {
+        console.error('Failed to send notification for overridden rejection:', error);
+        // Continue execution even if notification fails
+      }
     }
 
-    return await leaveRequest.save();
+    try {
+      const savedRequest = await leaveRequest.save();
+      // Re-populate after save to ensure leaveTypeId is populated in response
+      const populatedRequest = await this.leaveRequestModel
+        .findById(savedRequest._id)
+        .populate('leaveTypeId', 'name code')
+        .exec();
+      if (!populatedRequest) {
+        throw new NotFoundException(`Failed to retrieve updated leave request with ID ${leaveRequestId}. Please try again.`);
+      }
+      return populatedRequest;
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Unable to save leave request override: An error occurred while saving the changes. Please try again or contact system administrator.'
+      );
+    }
   }
 
   // Phase 2: REQ-027 - Process multiple leave requests at once
@@ -2459,7 +2678,6 @@ export class LeavesService {
         
         query = { 
           employeeId: { $in: teamMemberIds },
-          status: filters?.status || 'PENDING', // Default to pending for delegates
         };
         
         console.log(`[DELEGATE] Found ${teamMemberIds.length} team members for delegate to review`);
@@ -2479,10 +2697,23 @@ export class LeavesService {
         }
       }
 
-      // Apply status filter (if not already set for delegate)
-      // Only apply if status is provided and not empty string (empty means "all statuses")
-      if (filters?.status && filters.status.trim() !== '' && !isDelegate) {
-        query.status = filters.status;
+      // Apply status filter - normalize to lowercase to match enum values
+      // Allow filtering for both regular users and delegates
+      if (filters?.status && typeof filters.status === 'string' && filters.status.trim() !== '') {
+        // Normalize status to lowercase to match LeaveStatus enum (pending, approved, rejected, cancelled)
+        const normalizedStatus = filters.status.trim().toLowerCase();
+        // Validate that the status is a valid enum value
+        const validStatuses = ['pending', 'approved', 'rejected', 'cancelled'];
+        if (validStatuses.includes(normalizedStatus)) {
+          query.status = normalizedStatus;
+          console.log(`[getPastLeaveRequests] Filtering by status: ${normalizedStatus}`);
+        } else {
+          console.warn(`[getPastLeaveRequests] Invalid status value: "${filters.status}" (normalized: "${normalizedStatus}"). Valid values are: ${validStatuses.join(', ')}`);
+        }
+      } else if (isDelegate && (!filters?.status || (typeof filters.status === 'string' && filters.status.trim() === ''))) {
+        // For delegates, default to pending if no status filter is provided
+        query.status = LeaveStatus.PENDING;
+        console.log(`[getPastLeaveRequests] Delegate query - defaulting to PENDING status`);
       }
 
       if (filters?.leaveTypeId) {
@@ -2498,8 +2729,26 @@ export class LeavesService {
       // Map requests and handle null populate results
       const mapped = await Promise.all(
         requests.map(async (req) => {
-          let leaveTypeName = req.leaveTypeId ? (req.leaveTypeId as any).name : null;
-          let leaveTypeIdValue = req.leaveTypeId ? (req.leaveTypeId as any)._id : req.leaveTypeId;
+          let leaveTypeName: string | null = null;
+          let leaveTypeIdValue = req.leaveTypeId;
+          
+          try {
+            if (req.leaveTypeId && typeof req.leaveTypeId === 'object' && req.leaveTypeId !== null) {
+              // Safely access name property - check if it exists first
+              const populatedLeaveType = req.leaveTypeId as any;
+              if (populatedLeaveType && populatedLeaveType.name) {
+                leaveTypeName = populatedLeaveType.name;
+                leaveTypeIdValue = populatedLeaveType._id || populatedLeaveType;
+              } else {
+                // Populated but name is missing (leave type was deleted)
+                leaveTypeName = null; // Will be set to 'Deleted Leave Type' below
+                leaveTypeIdValue = populatedLeaveType?._id || populatedLeaveType || req.leaveTypeId;
+              }
+            }
+          } catch (typeError) {
+            console.warn(`[getPastLeaveRequests] Error accessing leaveTypeId for request ${req._id}:`, typeError);
+            leaveTypeName = null;
+          }
 
           // If populate failed (leaveTypeId is null or doesn't have name), fetch it separately
           if (!leaveTypeName && req.leaveTypeId) {
@@ -2546,8 +2795,10 @@ export class LeavesService {
 
       return mapped;
     } catch (error) {
-      throw new Error(
-        `Failed to fetch past leave requests: ${(error as any).message}`,
+      console.error(`[getPastLeaveRequests] Error:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(
+        `Unable to retrieve leave requests. ${errorMessage.includes('name') ? 'Some leave types may have been deleted. Please contact support if this issue persists.' : 'Please try again or contact support if the problem continues.'}`,
       );
     }
   }
@@ -2571,8 +2822,10 @@ export class LeavesService {
         }
       }
 
-      if (filters.status) {
-        query.status = filters.status;
+      if (filters.status && typeof filters.status === 'string' && filters.status.trim() !== '') {
+        // Normalize status to lowercase to match LeaveStatus enum (pending, approved, rejected, cancelled)
+        query.status = filters.status.trim().toLowerCase();
+        console.log(`[filterLeaveHistory] Filtering by status: ${query.status}`);
       }
 
       let sortObj: any = {};
@@ -2597,19 +2850,61 @@ export class LeavesService {
 
       return {
         total,
-        items: items.map((req) => ({
-          _id: req._id,
-          employeeId: req.employeeId,
-          leaveTypeName: (req.leaveTypeId as any).name,
-          dates: req.dates,
-          durationDays: req.durationDays,
-          status: req.status,
-          createdAt: (req as any).createdAt,
+        items: await Promise.all(items.map(async (req) => {
+          // Safely get leave type name, handling null populate and deleted leave types
+          let leaveTypeName = 'Unknown Leave Type';
+          let leaveTypeIdValue = req.leaveTypeId;
+          
+          try {
+            if (req.leaveTypeId) {
+              if (typeof req.leaveTypeId === 'object' && req.leaveTypeId !== null) {
+                // Check if populated object has name property
+                const populatedLeaveType = req.leaveTypeId as any;
+                if (populatedLeaveType.name) {
+                  leaveTypeName = populatedLeaveType.name;
+                  leaveTypeIdValue = populatedLeaveType._id || populatedLeaveType;
+                } else {
+                  // Populated but name is missing (might be deleted)
+                  leaveTypeName = 'Deleted Leave Type';
+                  leaveTypeIdValue = populatedLeaveType._id || populatedLeaveType;
+                }
+              } else if (typeof req.leaveTypeId === 'string') {
+                // If it's a string ID, try to fetch the leave type
+                try {
+                  const leaveType = await this.leaveTypeModel.findById(req.leaveTypeId).exec();
+                  if (leaveType) {
+                    leaveTypeName = leaveType.name;
+                    leaveTypeIdValue = leaveType._id;
+                  } else {
+                    leaveTypeName = 'Deleted Leave Type';
+                  }
+                } catch (fetchError) {
+                  leaveTypeName = 'Unknown Leave Type';
+                }
+              }
+            }
+          } catch (typeError) {
+            console.warn(`[filterLeaveHistory] Error processing leave type for request ${req._id}:`, typeError);
+            leaveTypeName = 'Unknown Leave Type';
+          }
+          
+          return {
+            _id: req._id,
+            employeeId: req.employeeId,
+            leaveTypeId: leaveTypeIdValue,
+            leaveTypeName,
+            dates: req.dates,
+            durationDays: req.durationDays,
+            status: req.status,
+            createdAt: (req as any).createdAt,
+          };
         })),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to filter leave history: ${(error as any).message}`,
+      console.error(`[filterLeaveHistory] Error:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(
+        `Unable to filter leave history. ${errorMessage.includes('name') ? 'Some leave types may have been deleted. Please contact support if this issue persists.' : 'Please check your filter criteria and try again.'}`,
       );
     }
   }
@@ -2633,22 +2928,84 @@ export class LeavesService {
       }
 
       // Get team members where supervisorPositionId matches manager's position
-      const teamMembersQuery: any = {
+      const baseQuery: any = {
         supervisorPositionId: manager.primaryPositionId,
         status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
       };
 
-      // Filter by department if provided
-      if (departmentId) {
-        teamMembersQuery.primaryDepartmentId = new Types.ObjectId(departmentId);
+      let teamMembers: any[] = [];
+
+      // Filter by department if provided and valid
+      if (departmentId && departmentId.trim()) {
+        const trimmedDeptId = departmentId.trim();
+        if (Types.ObjectId.isValid(trimmedDeptId)) {
+          console.log(`[getTeamLeaveBalances] Filtering by department: ${trimmedDeptId}`);
+          
+          // Try ObjectId first
+          const objectIdQuery = {
+            ...baseQuery,
+            primaryDepartmentId: new Types.ObjectId(trimmedDeptId)
+          };
+          console.log(`[getTeamLeaveBalances] Trying ObjectId query`);
+          
+          teamMembers = await this.employeeProfileModel
+            .find(objectIdQuery)
+            .populate('primaryDepartmentId', 'name code')
+            .populate('primaryPositionId', 'title code')
+            .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
+            .exec();
+          
+          // If no results with ObjectId, try string comparison
+          if (teamMembers.length === 0) {
+            console.log(`[getTeamLeaveBalances] No results with ObjectId, trying string comparison`);
+            const stringQuery = {
+              ...baseQuery,
+              primaryDepartmentId: trimmedDeptId
+            };
+            teamMembers = await this.employeeProfileModel
+              .find(stringQuery)
+              .populate('primaryDepartmentId', 'name code')
+              .populate('primaryPositionId', 'title code')
+              .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
+              .exec();
+            console.log(`[getTeamLeaveBalances] Found ${teamMembers.length} team members with string comparison`);
+          } else {
+            console.log(`[getTeamLeaveBalances] Found ${teamMembers.length} team members with ObjectId`);
+          }
+        } else {
+          console.warn(`[getTeamLeaveBalances] Invalid departmentId format: ${trimmedDeptId}`);
+          // Fallback to base query without department filter
+          teamMembers = await this.employeeProfileModel
+            .find(baseQuery)
+            .populate('primaryDepartmentId', 'name code')
+            .populate('primaryPositionId', 'title code')
+            .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
+            .exec();
+        }
+      } else {
+        console.log(`[getTeamLeaveBalances] No department filter applied`);
+        teamMembers = await this.employeeProfileModel
+          .find(baseQuery)
+          .populate('primaryDepartmentId', 'name code')
+          .populate('primaryPositionId', 'title code')
+          .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
+          .exec();
       }
 
-      const teamMembers = await this.employeeProfileModel
-        .find(teamMembersQuery)
-        .populate('primaryDepartmentId', 'name code')
-        .populate('primaryPositionId', 'title code')
-        .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
-        .exec();
+      console.log(`[getTeamLeaveBalances] Total found: ${teamMembers.length} team members`);
+      if (teamMembers.length > 0) {
+        teamMembers.forEach((member, idx) => {
+          const deptId = (member as any).primaryDepartmentId?._id || (member as any).primaryDepartmentId;
+          const deptIdStr = deptId?.toString ? deptId.toString() : (deptId || 'N/A');
+          const deptIdType = deptId instanceof Types.ObjectId ? 'ObjectId' : (deptId ? typeof deptId : 'null/undefined');
+          console.log(`[getTeamLeaveBalances] Member ${idx + 1}: ${(member as any).firstName} ${(member as any).lastName}, Department ID: ${deptIdStr}, Type: ${deptIdType}`);
+          if (departmentId && departmentId.trim()) {
+            const matches = deptIdStr === departmentId.trim() || 
+                           (deptId instanceof Types.ObjectId && deptId.equals(new Types.ObjectId(departmentId.trim())));
+            console.log(`[getTeamLeaveBalances]   - Matches filter (${departmentId.trim()}): ${matches}`);
+          }
+        });
+      }
 
       const balances = await Promise.all(
         teamMembers.map(async (member) => {
@@ -2954,8 +3311,10 @@ export class LeavesService {
         }
       }
 
-      if (filters.status) {
-        query.status = filters.status;
+      if (filters.status && typeof filters.status === 'string' && filters.status.trim() !== '') {
+        // Normalize status to lowercase to match LeaveStatus enum (pending, approved, rejected, cancelled)
+        query.status = filters.status.trim().toLowerCase();
+        console.log(`[filterTeamLeaveData] Filtering by status: ${query.status}`);
       }
 
       let sortObj: any = {};
@@ -2991,27 +3350,54 @@ export class LeavesService {
               : undefined,
           status: filters.status,
         },
-        items: items.map((req) => {
+        items: await Promise.all(items.map(async (req) => {
           const employee = req.employeeId as any;
-          const employeeName = employee
+          const employeeName = employee && typeof employee === 'object'
             ? `${employee.firstName || ''} ${employee.middleName || ''} ${employee.lastName || ''}`.trim()
             : undefined;
+          
+          // Safely get leave type name
+          let leaveTypeName = 'Unknown Leave Type';
+          try {
+            if (req.leaveTypeId) {
+              if (typeof req.leaveTypeId === 'object' && req.leaveTypeId !== null) {
+                const populatedLeaveType = req.leaveTypeId as any;
+                if (populatedLeaveType && populatedLeaveType.name) {
+                  leaveTypeName = populatedLeaveType.name;
+                } else {
+                  leaveTypeName = 'Deleted Leave Type';
+                }
+              } else if (typeof req.leaveTypeId === 'string') {
+                try {
+                  const leaveType = await this.leaveTypeModel.findById(req.leaveTypeId).exec();
+                  leaveTypeName = leaveType ? leaveType.name : 'Deleted Leave Type';
+                } catch {
+                  leaveTypeName = 'Unknown Leave Type';
+                }
+              }
+            }
+          } catch (typeError) {
+            console.warn(`[filterTeamLeaveData] Error processing leave type for request ${req._id}:`, typeError);
+            leaveTypeName = 'Unknown Leave Type';
+          }
           
           return {
             _id: req._id.toString(),
             employeeId: (req.employeeId as any)?._id?.toString() || req.employeeId?.toString() || req.employeeId,
             employeeName,
-            leaveTypeName: (req.leaveTypeId as any)?.name || (req.leaveTypeId as any)?.name || 'Unknown',
+            leaveTypeName,
             dates: req.dates,
             durationDays: req.durationDays,
             status: req.status,
             createdAt: (req as any).createdAt,
           };
-        }),
+        })),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to filter team leave data: ${(error as any).message}`,
+      console.error(`[filterTeamLeaveData] Error:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(
+        `Unable to filter team leave data. ${errorMessage.includes('name') ? 'Some leave types may have been deleted. Please contact support if this issue persists.' : 'Please check your filter criteria and try again.'}`,
       );
     }
   }

@@ -519,13 +519,25 @@ export const leavesApi = {
       }
 
       const params = new URLSearchParams();
-      if (filters?.fromDate) params.append('fromDate', filters.fromDate);
-      if (filters?.toDate) params.append('toDate', filters.toDate);
-      if (filters?.status) params.append('status', filters.status);
-      if (filters?.leaveTypeId) params.append('leaveTypeId', filters.leaveTypeId);
+      if (filters?.fromDate && filters.fromDate.trim()) {
+        params.append('fromDate', filters.fromDate.trim());
+      }
+      if (filters?.toDate && filters.toDate.trim()) {
+        params.append('toDate', filters.toDate.trim());
+      }
+      if (filters?.status && filters.status.trim()) {
+        // Normalize status to lowercase for backend
+        const normalizedStatus = filters.status.trim().toLowerCase();
+        params.append('status', normalizedStatus);
+        console.log(`[API] Adding status filter: "${filters.status}" -> "${normalizedStatus}"`);
+      }
+      if (filters?.leaveTypeId && filters.leaveTypeId.trim()) {
+        params.append('leaveTypeId', filters.leaveTypeId.trim());
+      }
 
       const queryString = params.toString();
       const url = `/leaves/past-requests/${employeeId.trim()}${queryString ? `?${queryString}` : ''}`;
+      console.log(`[API] Request URL: ${url}`);
       
       const result = await api.get(url);
       
@@ -637,7 +649,16 @@ export const leavesApi = {
     overrideReason: string
   ): Promise<LeaveRequest> => {
     try {
-      const payload = { leaveRequestId, hrUserId, overrideToApproved, overrideReason };
+      // Ensure overrideReason is provided and is a string
+      if (!overrideReason || typeof overrideReason !== 'string') {
+        throw new Error('Override justification is required');
+      }
+      const payload = { 
+        leaveRequestId, 
+        hrUserId, 
+        overrideToApproved, 
+        overrideReason: overrideReason.trim() 
+      };
       const result = await api.post(`/leaves/request/override`, payload);
       return result as unknown as LeaveRequest;
     } catch (error: any) {
@@ -706,7 +727,19 @@ export const leavesApi = {
     }
   ): Promise<any> => {
     try {
-      const payload = { employeeId, ...filters };
+      // Normalize status to lowercase before sending
+      const normalizedFilters = { ...filters };
+      if (normalizedFilters.status && typeof normalizedFilters.status === 'string' && normalizedFilters.status.trim()) {
+        const originalStatus = normalizedFilters.status;
+        normalizedFilters.status = normalizedFilters.status.trim().toLowerCase();
+        console.log(`[API] filterLeaveHistory - Normalizing status: "${originalStatus}" -> "${normalizedFilters.status}"`);
+      } else if (normalizedFilters.status === '') {
+        // Remove empty string status
+        delete normalizedFilters.status;
+      }
+      
+      const payload = { employeeId, ...normalizedFilters };
+      console.log(`[API] filterLeaveHistory payload:`, payload);
       return await api.post('/leaves/filter-history', payload);
     } catch (error: any) {
       console.error("Error filtering leave history:", error);
@@ -728,12 +761,20 @@ export const leavesApi = {
   ): Promise<any> => {
     try {
       const params = new URLSearchParams();
-      if (upcomingFromDate) params.append('upcomingFromDate', upcomingFromDate);
-      if (upcomingToDate) params.append('upcomingToDate', upcomingToDate);
-      if (departmentId) params.append('departmentId', departmentId);
+      if (upcomingFromDate && upcomingFromDate.trim()) {
+        params.append('upcomingFromDate', upcomingFromDate.trim());
+      }
+      if (upcomingToDate && upcomingToDate.trim()) {
+        params.append('upcomingToDate', upcomingToDate.trim());
+      }
+      if (departmentId && departmentId.trim()) {
+        params.append('departmentId', departmentId.trim());
+        console.log("[API] Adding departmentId to query:", departmentId.trim());
+      }
 
       const queryString = params.toString();
       const url = `/leaves/team-balances/${managerId}${queryString ? `?${queryString}` : ''}`;
+      console.log("[API] Request URL:", url);
       return await api.get(url);
     } catch (error: any) {
       console.error("Error fetching team leave balances:", error);

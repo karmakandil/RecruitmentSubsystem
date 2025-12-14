@@ -110,12 +110,29 @@ export default function TeamBalancesPage() {
         throw new Error("Manager ID is required. Please log in again.");
       }
       
+      const departmentIdParam = filters.departmentId && filters.departmentId.trim() ? filters.departmentId.trim() : undefined;
+      const upcomingFromDateParam = filters.upcomingFromDate && filters.upcomingFromDate.trim() ? filters.upcomingFromDate : undefined;
+      const upcomingToDateParam = filters.upcomingToDate && filters.upcomingToDate.trim() ? filters.upcomingToDate : undefined;
+      
+      console.log("[TeamBalances] Fetching with filters:", {
+        managerId: managerId.trim(),
+        departmentId: departmentIdParam,
+        upcomingFromDate: upcomingFromDateParam,
+        upcomingToDate: upcomingToDateParam,
+      });
+      
       const result = await leavesApi.getTeamLeaveBalances(
         managerId.trim(),
-        filters.upcomingFromDate || undefined,
-        filters.upcomingToDate || undefined,
-        filters.departmentId || undefined
+        upcomingFromDateParam,
+        upcomingToDateParam,
+        departmentIdParam
       );
+      
+      console.log("[TeamBalances] Received result:", {
+        totalTeamMembers: result.totalTeamMembers,
+        teamMembersCount: result.teamMembers?.length || 0,
+        departmentFilter: departmentIdParam,
+      });
       
       // Apply client-side filtering for leave type and status
       let filteredMembers: TeamMemberBalance[] = result.teamMembers || [];

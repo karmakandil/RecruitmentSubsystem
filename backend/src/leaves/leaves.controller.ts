@@ -443,11 +443,18 @@ export class LeaveController {
     @Req() req?: any, // Get current user to check if they're a delegate
   ) {
     const userId = req?.user?.userId || req?.user?._id || req?.user?.id;
+    // Normalize status: convert empty string to undefined, and normalize case
+    let normalizedStatus: string | undefined = undefined;
+    if (status && status.trim() !== '') {
+      normalizedStatus = status.trim().toLowerCase();
+      console.log(`[Controller] Received status: "${status}", normalized to: "${normalizedStatus}"`);
+    }
+    
     return await this.leavesService.getPastLeaveRequests(employeeId, {
-      fromDate: fromDate ? new Date(fromDate) : undefined,
-      toDate: toDate ? new Date(toDate) : undefined,
-      status,
-      leaveTypeId,
+      fromDate: fromDate && fromDate.trim() ? new Date(fromDate) : undefined,
+      toDate: toDate && toDate.trim() ? new Date(toDate) : undefined,
+      status: normalizedStatus,
+      leaveTypeId: leaveTypeId && leaveTypeId.trim() ? leaveTypeId.trim() : undefined,
     }, userId);
   }
 
@@ -461,9 +468,18 @@ export class LeaveController {
     SystemRole.HR_ADMIN,
   )
   async filterLeaveHistory(@Body() filterDto: FilterLeaveHistoryDto) {
+    // Normalize status to lowercase if provided
+    const normalizedDto = { ...filterDto };
+    if (normalizedDto.status && typeof normalizedDto.status === 'string' && normalizedDto.status.trim() !== '') {
+      normalizedDto.status = normalizedDto.status.trim().toLowerCase() as any;
+      console.log(`[Controller] filterLeaveHistory - Normalizing status: "${filterDto.status}" -> "${normalizedDto.status}"`);
+    } else if (normalizedDto.status === '') {
+      delete normalizedDto.status;
+    }
+    
     return await this.leavesService.filterLeaveHistory(
-      filterDto.employeeId,
-      filterDto,
+      normalizedDto.employeeId,
+      normalizedDto,
     );
   }
 
@@ -479,9 +495,9 @@ export class LeaveController {
   ) {
     return await this.leavesService.getTeamLeaveBalances(
       managerId,
-      upcomingFromDate ? new Date(upcomingFromDate) : undefined,
-      upcomingToDate ? new Date(upcomingToDate) : undefined,
-      departmentId,
+      upcomingFromDate && upcomingFromDate.trim() ? new Date(upcomingFromDate) : undefined,
+      upcomingToDate && upcomingToDate.trim() ? new Date(upcomingToDate) : undefined,
+      departmentId && departmentId.trim() ? departmentId.trim() : undefined,
     );
   }
 
