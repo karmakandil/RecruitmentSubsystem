@@ -1,4 +1,4 @@
-// lib/api/client.ts - UPDATED WITH BETTER LOGGING
+// lib/api/client.ts
 import axios, {
   AxiosInstance,
   AxiosResponse,
@@ -13,27 +13,33 @@ export const api: AxiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000, // Increased timeout
+  timeout: 15000,
 });
 
-// Request interceptor
+// 🔐 Request interceptor – attach JWT if present
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Only run on client side
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("auth_token");
+      // Try multiple common keys so we don't depend on one name
+      const token =
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("jwt");
+
       if (token) {
+        config.headers = config.headers ?? {};
         config.headers.Authorization = `Bearer ${token}`;
         console.log(
           `🔑 API Request [${config.method?.toUpperCase()} ${
             config.url
-          }]: Token attached`
+          }]: Token attached`,
         );
       } else {
         console.warn(
           `⚠️ API Request [${config.method?.toUpperCase()} ${
             config.url
-          }]: No auth token`
+          }]: No auth token`,
         );
       }
     }
@@ -42,19 +48,19 @@ api.interceptors.request.use(
   (error) => {
     console.error("❌ Request interceptor error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
-// Response interceptor - returns data directly
+// ✅ Response interceptor – return data directly
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     console.log(
       `✅ API Success [${
         response.status
-      } ${response.config.method?.toUpperCase()} ${response.config.url}]`
+      } ${response.config.method?.toUpperCase()} ${response.config.url}]`,
     );
 
-    // Return the data property if it exists, otherwise return the full response
+    // Always return the `data` part
     return response.data;
   },
   (error) => {
@@ -68,15 +74,16 @@ api.interceptors.response.use(
         message: error.message,
         responseData: error.response?.data,
         headers: error.response?.headers,
-      }
+      },
     );
 
-    // Handle errors
     if (error.response?.status === 401) {
       console.log("🔒 401 Unauthorized - Clearing auth tokens");
-      // Clear token and redirect to login (client side only)
       if (typeof window !== "undefined") {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("token");
+        localStorage.removeItem("jwt");
         localStorage.removeItem("user");
         window.location.href = "/auth/login";
       }
@@ -85,10 +92,8 @@ api.interceptors.response.use(
     if (error.response?.status === 403) {
       console.log("🚫 403 Forbidden - Insufficient permissions");
       console.log("Endpoint:", error.config?.url);
-      console.log("User role may not have access to this endpoint");
     }
 
-    // Extract error message
     const errorMessage =
       error.response?.data?.message ||
       error.response?.data?.error ||
@@ -96,7 +101,7 @@ api.interceptors.response.use(
       `HTTP ${error.response?.status || "Unknown"} error`;
 
     return Promise.reject(new Error(errorMessage));
-  }
+  },
 );
 
 export default api;

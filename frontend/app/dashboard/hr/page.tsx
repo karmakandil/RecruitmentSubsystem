@@ -22,7 +22,9 @@ export default function HRManagerDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">HR Manager Dashboard</h1>
+        <h1 className="text-3xl font-bold text-gray-900">
+          HR Manager Dashboard
+        </h1>
         <p className="text-gray-600 mt-1">
           Welcome, {user?.fullName || "Manager"}. Manage HR operations and
           employee workflows.
@@ -105,13 +107,39 @@ export default function HRManagerDashboardPage() {
         </div>
       </div>
 
+      {/* Performance Management Section – Appraisal Templates */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Performance Management
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50">
+            <CardHeader>
+              <CardTitle>Appraisal Templates</CardTitle>
+              <CardDescription>
+                Configure standardized appraisal templates and rating scales
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/performance/templates"
+                className="block w-full text-center bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 transition font-medium"
+              >
+                Manage Appraisal Templates
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {/* Leave Management Section */}
       <div className="mb-10">
         <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardHeader>
             <CardTitle className="text-xl">Leave Management</CardTitle>
             <CardDescription>
-              Manage leave requests: finalize approved requests, override decisions, process in bulk, and verify medical documents
+              Manage leave requests: finalize approved requests, override
+              decisions, process in bulk, and verify medical documents
             </CardDescription>
           </CardHeader>
           <CardContent>
