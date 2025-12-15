@@ -7,11 +7,54 @@ import {
   GetPositionsParams,
 } from "../../../types/organization-structure";
 
+// Helper function to extract error message
+const extractErrorMessage = (error: any): string => {
+  if (!error) return "Unknown error occurred";
+
+  // If it's already an Error object with message
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  // Check for response data
+  if (error.response?.data) {
+    const data = error.response.data;
+
+    if (typeof data === "string") {
+      return data;
+    }
+
+    if (data.message) {
+      return data.message;
+    }
+
+    if (data.error) {
+      return data.error;
+    }
+
+    // Try to stringify object
+    try {
+      return JSON.stringify(data);
+    } catch (e) {
+      return "Error parsing response";
+    }
+  }
+
+  // Fallback
+  if (error.message) {
+    return error.message;
+  }
+
+  if (error.response?.status) {
+    return `HTTP ${error.response.status} error`;
+  }
+
+  return "Unknown error occurred";
+};
+
 export const positionsApi = {
   /**
    * REQ-OSM-01: Create new position (System Admin only)
-   * BR 10: Position must have Position ID, Pay Grade, Dept ID
-   * BR 30: Creation requires Cost Center and Reporting Manager
    */
   createPosition: async (
     data: CreatePositionDto
@@ -23,20 +66,20 @@ export const positionsApi = {
         data
       );
       return response;
-    } catch (error) {
-      console.error("Error creating position:", error);
-      throw error;
+    } catch (error: any) {
+      const errorMessage = extractErrorMessage(error);
+      console.error("Error creating position:", errorMessage);
+      throw new Error(errorMessage);
     }
   },
 
   /**
-   * REQ-SANV-01: View positions (All authenticated users)
+   * REQ-SANV-01: View positions
    */
   getAllPositions: async (
     params?: GetPositionsParams
   ): Promise<PositionResponseDto[]> => {
     try {
-      console.log("Fetching positions with params:", params);
       const queryParams = new URLSearchParams();
 
       if (params?.departmentId) {
@@ -51,9 +94,10 @@ export const positionsApi = {
       }`;
       const response: PositionResponseDto[] = await api.get(url);
       return response;
-    } catch (error) {
-      console.error("Error fetching positions:", error);
-      throw error;
+    } catch (error: any) {
+      const errorMessage = extractErrorMessage(error);
+      console.error("Error fetching positions:", errorMessage);
+      throw new Error(errorMessage);
     }
   },
 
@@ -62,40 +106,59 @@ export const positionsApi = {
    */
   getPositionById: async (id: string): Promise<PositionResponseDto> => {
     try {
-      console.log("Fetching position by ID:", id);
       const response: PositionResponseDto = await api.get(
         `/organization-structure/positions/${id}`
       );
       return response;
-    } catch (error) {
-      console.error(`Error fetching position ${id}:`, error);
-      throw error;
+    } catch (error: any) {
+      const errorMessage = extractErrorMessage(error);
+      console.error(`Error fetching position ${id}:`, errorMessage);
+      throw new Error(errorMessage);
     }
   },
 
   /**
-   * REQ-OSM-02: Update existing position (System Admin only)
+   * REQ-OSM-02: Update existing position
    */
   updatePosition: async (
     id: string,
     data: UpdatePositionDto
   ): Promise<PositionResponseDto> => {
     try {
-      console.log(`Updating position ${id}:`, data);
+      console.log(`Updating position ${id} with data:`, data);
+
+      // Log the actual data being sent
+      const requestData = { ...data };
+      console.log("Request payload:", requestData);
+
       const response: PositionResponseDto = await api.put(
         `/organization-structure/positions/${id}`,
-        data
+        requestData
       );
+      console.log("Update successful:", response);
       return response;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error updating position ${id}:`, error);
-      throw error;
+      console.error("Error details:", {
+        message: error.message,
+        responseStatus: error.response?.status,
+        responseData: error.response?.data,
+        responseHeaders: error.response?.headers,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data,
+          headers: error.config?.headers,
+        },
+      });
+
+      const errorMessage = extractErrorMessage(error);
+      throw new Error(errorMessage);
     }
   },
 
   /**
-   * REQ-OSM-05: Deactivate position (System Admin only)
-   * BR 12, BR 16, BR 37: Historical records preserved, status Frozen/Inactive
+   * REQ-OSM-05: Deactivate position
    */
   deactivatePosition: async (id: string): Promise<PositionResponseDto> => {
     try {
@@ -104,26 +167,26 @@ export const positionsApi = {
         `/organization-structure/positions/${id}`
       );
       return response;
-    } catch (error) {
-      console.error(`Error deactivating position ${id}:`, error);
-      throw error;
+    } catch (error: any) {
+      const errorMessage = extractErrorMessage(error);
+      console.error(`Error deactivating position ${id}:`, errorMessage);
+      throw new Error(errorMessage);
     }
   },
 
   /**
-   * REQ-SANV-01: View position hierarchy
-   * BR 24: View as graphical chart
+   * View position hierarchy
    */
   getPositionHierarchy: async (id: string): Promise<PositionHierarchyNode> => {
     try {
-      console.log(`Fetching position hierarchy for position ${id}`);
       const response: PositionHierarchyNode = await api.get(
         `/organization-structure/positions/${id}/hierarchy`
       );
       return response;
-    } catch (error) {
-      console.error(`Error fetching position hierarchy ${id}:`, error);
-      throw error;
+    } catch (error: any) {
+      const errorMessage = extractErrorMessage(error);
+      console.error(`Error fetching position hierarchy ${id}:`, errorMessage);
+      throw new Error(errorMessage);
     }
   },
 };
