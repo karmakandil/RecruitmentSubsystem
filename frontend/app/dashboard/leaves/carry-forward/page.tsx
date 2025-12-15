@@ -2,13 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { leavesApi } from "@/lib/api/leaves/leaves";
+import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { LeaveType } from "@/types/leaves";
+import { EmployeeProfile } from "@/types";
 
 export default function CarryForwardPage() {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string>("");
@@ -25,6 +29,7 @@ export default function CarryForwardPage() {
 
   useEffect(() => {
     fetchLeaveTypes();
+    fetchEmployees();
   }, []);
 
   const fetchLeaveTypes = async () => {
@@ -37,8 +42,25 @@ export default function CarryForwardPage() {
     }
   };
 
+  const fetchEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+      const employeesList = Array.isArray(response) ? response : (response.data || []);
+      setEmployees(employeesList);
+    } catch (error) {
+      console.warn("Failed to fetch employees:", error);
+      setEmployees([]);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
   const handleCarryForward = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[Frontend] handleCarryForward called");
+    console.log("[Frontend] Form data:", formData);
+    
     try {
       setLoading(true);
       setError("");
@@ -46,8 +68,16 @@ export default function CarryForwardPage() {
       setResult(null);
 
       if (!formData.leaveTypeId) {
+        console.error("[Frontend] Validation failed: Leave Type is required");
         throw new Error("Leave Type is required");
       }
+
+      console.log("[Frontend] Calling runCarryForward with:", {
+        leaveTypeId: formData.leaveTypeId,
+        employeeId: formData.employeeId,
+        asOfDate: formData.asOfDate,
+        departmentId: formData.departmentId,
+      });
 
       const result = await leavesApi.runCarryForward(
         formData.leaveTypeId,
@@ -56,12 +86,19 @@ export default function CarryForwardPage() {
         formData.departmentId || undefined
       );
 
+      console.log("[Frontend] Carry-forward result:", result);
+
       setResult(result);
       setSuccessMessage(
         `Carry-forward completed. Successful: ${result.successful}, Failed: ${result.failed}, Total: ${result.total}`
       );
     } catch (error: any) {
-      console.error("Error running carry-forward:", error);
+      console.error("[Frontend] Error running carry-forward:", error);
+      console.error("[Frontend] Error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       setError(error.message || "Failed to run carry-forward");
     } finally {
       setLoading(false);
@@ -114,15 +151,27 @@ export default function CarryForwardPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Employee ID (Optional)
+                  Employee (Optional)
                 </label>
-                <input
-                  type="text"
+                <select
                   value={formData.employeeId}
                   onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Leave empty for all employees"
-                />
+                  disabled={loadingEmployees}
+                >
+                  <option value="">All Employees</option>
+                  {employees.map((employee) => {
+                    const employeeName = employee.fullName || 
+                      (employee.firstName && employee.lastName 
+                        ? `${employee.firstName}${employee.middleName ? ' ' + employee.middleName : ''} ${employee.lastName}`.trim()
+                        : employee.employeeNumber || 'Unknown');
+                    return (
+                      <option key={employee._id} value={employee._id}>
+                        {employeeName} {employee.employeeNumber ? `(${employee.employeeNumber})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

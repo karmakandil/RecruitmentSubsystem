@@ -3831,8 +3831,17 @@ export class LeavesService {
     asOfDate?: Date,
     departmentId?: string,
   ): Promise<any> {
+    console.log(`[runCarryForward] ════════════════════════════════════════`);
+    console.log(`[runCarryForward] START - Called with:`, {
+      leaveTypeId,
+      employeeId,
+      asOfDate,
+      departmentId,
+    });
+    
     try {
       const processDate = asOfDate || new Date();
+      console.log(`[runCarryForward] Process date: ${processDate}`);
 
       const query: any = { leaveTypeId: new Types.ObjectId(leaveTypeId) };
 
@@ -3841,75 +3850,210 @@ export class LeavesService {
       }
       // departmentId is currently not used in filtering; you can add it later if needed
 
-      const entitlements = await this.leaveEntitlementModel.find(query).exec();
+      const entitlements = await this.leaveEntitlementModel
+        .find(query)
+        .exec();
+      
+      console.log(`[runCarryForward] Found ${entitlements.length} entitlements to process for leaveTypeId: ${leaveTypeId}`);
+      
       const results: any[] = [];
       let successful = 0;
       let failed = 0;
 
       // Get policy to check maxCarryForward
-      const leavePolicy = await this.leavePolicyModel
+      // Try multiple ways to find the policy in case of ID format issues
+      let leavePolicy = await this.leavePolicyModel
         .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
         .exec();
+      
+      // If not found, try as string
+      if (!leavePolicy) {
+        leavePolicy = await this.leavePolicyModel
+          .findOne({ leaveTypeId: leaveTypeId })
+          .exec();
+      }
 
       const maxCarryForward = leavePolicy?.maxCarryForward || 0;
+      const carryForwardAllowed = leavePolicy?.carryForwardAllowed || false;
+
+      console.log(`[runCarryForward] Policy check:`, {
+        leaveTypeId,
+        policyFound: !!leavePolicy,
+        maxCarryForward,
+        carryForwardAllowed,
+        entitlementsCount: entitlements.length,
+      });
+
+      // Allow carry forward if either:
+      // 1. carryForwardAllowed is explicitly true, OR
+      // 2. maxCarryForward is set to a positive value (implicitly allows carry forward)
+      const canCarryForward = carryForwardAllowed || maxCarryForward > 0;
+
+      if (!canCarryForward) {
+        console.warn(`[runCarryForward] Carry forward not allowed: carryForwardAllowed=${carryForwardAllowed}, maxCarryForward=${maxCarryForward}`);
+        return {
+          processedDate: processDate,
+          leaveTypeId,
+          successful: 0,
+          failed: 0,
+          total: entitlements.length,
+          details: entitlements.map(ent => ({
+            employeeId: ent.employeeId,
+            status: 'skipped',
+            reason: 'Carry forward not allowed by policy. Please enable "Carry Forward Allowed" or set "Max Carry Forward" to a positive value.',
+            carryForwardAmount: 0,
+            newBalance: ent.remaining,
+          })),
+        };
+      }
+
+      // If maxCarryForward is 0 but carryForwardAllowed is true, use a default
+      const effectiveMaxCarryForward = maxCarryForward > 0 ? maxCarryForward : (carryForwardAllowed ? 999 : 0);
+      
+      if (maxCarryForward === 0 && carryForwardAllowed) {
+        console.warn(`[runCarryForward] maxCarryForward is 0 but carryForwardAllowed is true. Using unlimited carry forward.`);
+      }
 
       for (const entitlement of entitlements) {
         try {
-          // Use maxCarryForward from policy instead of hardcoded 10
+          console.log(`[runCarryForward] Processing entitlement:`, {
+            employeeId: entitlement.employeeId?.toString(),
+            remaining: entitlement.remaining,
+            maxCarryForward: effectiveMaxCarryForward,
+            currentCarryForward: entitlement.carryForward || 0,
+          });
+
+          // Use effectiveMaxCarryForward (handles case where maxCarryForward is 0 but carryForwardAllowed is true)
           const carryForwardAmount = Math.min(
             entitlement.remaining,
-            maxCarryForward,
+            effectiveMaxCarryForward,
           );
+
+          console.log(`[runCarryForward] Calculated carryForwardAmount: ${carryForwardAmount}`);
 
           // Only process if there's something to carry forward
           if (carryForwardAmount <= 0) {
+            console.log(`[runCarryForward] Skipping - carryForwardAmount is ${carryForwardAmount}`);
             results.push({
               employeeId: entitlement.employeeId,
               status: 'skipped',
-              reason: 'No remaining balance to carry forward',
+              reason: effectiveMaxCarryForward === 0 
+                ? 'Max carry forward is 0 in policy' 
+                : 'No remaining balance to carry forward',
               carryForwardAmount: 0,
               newBalance: entitlement.remaining,
             });
             continue;
           }
 
-          // Atomically set carryForward and decrement remaining, and get updated doc back
-          const updated = await this.leaveEntitlementModel
-            .findByIdAndUpdate(
-              entitlement._id,
-              {
-                $set: { carryForward: carryForwardAmount },
-                $inc: { remaining: -carryForwardAmount },
-              },
-              { new: true },
-            )
+          // Record the previous remaining balance and carryForward for reference
+          const previousRemaining = entitlement.remaining;
+          const previousCarryForward = entitlement.carryForward || 0;
+          
+          // Calculate new remaining: subtract the carry forward amount from current remaining
+          // The carryForward field will be set to the amount being carried forward
+          // When carry forward happens, we're moving days FROM remaining TO carryForward
+          // So remaining should decrease by the carry forward amount
+          const newRemaining = previousRemaining - carryForwardAmount;
+          
+          // Ensure remaining doesn't go negative (shouldn't happen if carryForwardAmount <= remaining)
+          if (newRemaining < 0) {
+            throw new Error(`Carry forward amount (${carryForwardAmount}) exceeds remaining balance (${previousRemaining})`);
+          }
+          
+          // Round to 2 decimal places to avoid floating point precision issues
+          const roundedRemaining = Math.round(newRemaining * 100) / 100;
+          const roundedCarryForward = Math.round(carryForwardAmount * 100) / 100;
+
+          // Atomically set carryForward and remaining
+          // Note: We're setting carryForward to the NEW amount (replacing any old value)
+          // and decreasing remaining by that amount
+          console.log(`[runCarryForward] Updating entitlement:`, {
+            entitlementId: entitlement._id.toString(),
+            previousRemaining,
+            previousCarryForward,
+            newRemaining: roundedRemaining,
+            newCarryForward: roundedCarryForward,
+          });
+
+          // Fetch fresh document to ensure we have the latest version
+          const freshEntitlement = await this.leaveEntitlementModel
+            .findById(entitlement._id)
             .exec();
 
-          if (!updated) {
-            throw new Error('Failed to update entitlement');
+          if (!freshEntitlement) {
+            throw new Error(`Entitlement not found: ${entitlement._id}`);
           }
 
-          // Recalculate remaining to ensure consistency
-          updated.remaining = this.calculateRemaining(updated);
-          await updated.save();
+          // Update the fields
+          freshEntitlement.carryForward = roundedCarryForward;
+          freshEntitlement.remaining = roundedRemaining;
+          
+          // Save the document
+          const updated = await freshEntitlement.save();
+
+          if (!updated) {
+            throw new Error('Failed to save entitlement');
+          }
+
+          // Verify the update persisted by fetching again
+          const verification = await this.leaveEntitlementModel
+            .findById(entitlement._id)
+            .select('carryForward remaining')
+            .lean()
+            .exec();
+
+          console.log(`[runCarryForward] ✅ Successfully updated:`, {
+            employeeId: entitlement.employeeId?.toString(),
+            carryForward: updated.carryForward,
+            remaining: updated.remaining,
+            verificationCarryForward: verification?.carryForward,
+            verificationRemaining: verification?.remaining,
+          });
+
+          // Double-check the values were saved correctly
+          if (verification && (
+            Math.abs((verification.carryForward || 0) - roundedCarryForward) > 0.01 ||
+            Math.abs((verification.remaining || 0) - roundedRemaining) > 0.01
+          )) {
+            console.error(`[runCarryForward] ⚠️ WARNING: Values may not have persisted correctly!`, {
+              expectedCarryForward: roundedCarryForward,
+              actualCarryForward: verification.carryForward,
+              expectedRemaining: roundedRemaining,
+              actualRemaining: verification.remaining,
+            });
+            throw new Error(`Update verification failed. Expected carryForward: ${roundedCarryForward}, got: ${verification.carryForward}`);
+          }
 
           results.push({
             employeeId: entitlement.employeeId,
             status: 'success',
-            carryForwardAmount,
+            carryForwardAmount: roundedCarryForward,
             expiringAmount: 0, // you can change this later if you track expired days
             newBalance: updated.remaining,
           });
           successful++;
         } catch (err) {
           failed++;
+          const errorMessage = (err as any).message || String(err);
+          console.error(`[runCarryForward] ❌ Error processing entitlement:`, {
+            employeeId: entitlement.employeeId?.toString(),
+            error: errorMessage,
+            stack: (err as any).stack,
+          });
           results.push({
             employeeId: entitlement.employeeId,
             status: 'failed',
-            error: (err as any).message,
+            error: errorMessage,
           });
         }
       }
+
+      console.log(`[runCarryForward] Final results:`, {
+        successful,
+        failed,
+        total: entitlements.length,
+      });
 
       return {
         processedDate: processDate,
@@ -3940,20 +4084,30 @@ export class LeavesService {
         employeeId,
         leaveTypeId,
       );
-      const previousBalance = entitlement.remaining;
+      // Normalize the starting remaining value to avoid floating point precision issues
+      const previousBalance = Math.round(entitlement.remaining * 100) / 100;
+      entitlement.remaining = previousBalance;
 
       switch (adjustmentType) {
         case 'suspension':
           entitlement.accruedActual -= adjustmentAmount;
+          // Round to 2 decimal places to avoid floating point precision issues
+          entitlement.accruedActual = Math.round(entitlement.accruedActual * 100) / 100;
           break;
         case 'reduction':
           entitlement.remaining -= adjustmentAmount;
+          // Round to 2 decimal places to avoid floating point precision issues
+          entitlement.remaining = Math.round(entitlement.remaining * 100) / 100;
           break;
         case 'adjustment':
           entitlement.remaining += adjustmentAmount;
+          // Round to 2 decimal places to avoid floating point precision issues
+          entitlement.remaining = Math.round(entitlement.remaining * 100) / 100;
           break;
         case 'restoration':
           entitlement.accruedActual += adjustmentAmount;
+          // Round to 2 decimal places to avoid floating point precision issues
+          entitlement.accruedActual = Math.round(entitlement.accruedActual * 100) / 100;
           break;
         default:
           throw new Error('Invalid adjustment type');
@@ -3973,40 +4127,49 @@ export class LeavesService {
       }
 
       // Save and get the updated doc back
-      // For reduction/adjustment: only update remaining (don't touch accrued)
+      // For reduction/adjustment: directly update remaining without touching accrued fields
       // For suspension/restoration: update accrued and let remaining be recalculated
-      const updateData: any = {};
+      let updated: LeaveEntitlementDocument;
       
       if (adjustmentType === 'reduction' || adjustmentType === 'adjustment') {
-        // Direct remaining change - don't pass accrued fields to avoid recalculation
-        updateData.remaining = entitlement.remaining;
+        // Direct remaining change - update directly without going through updateLeaveEntitlement
+        // to avoid any recalculation logic that might interfere
+        updated = await this.leaveEntitlementModel
+          .findByIdAndUpdate(
+            entitlement._id.toString(),
+            { $set: { remaining: entitlement.remaining } },
+            { new: true }
+          )
+          .exec();
+        
+        if (!updated) {
+          throw new Error('Failed to update entitlement');
+        }
       } else {
         // Suspension/restoration affect accrued, so update accrued fields
-        updateData.accruedActual = entitlement.accruedActual;
-        updateData.accruedRounded = entitlement.accruedRounded;
-        // remaining will be recalculated below
-      }
-      
-      const updated = await this.updateLeaveEntitlement(
-        entitlement._id.toString(),
-        updateData,
-      );
+        const updateData: any = {
+          accruedActual: entitlement.accruedActual,
+          accruedRounded: entitlement.accruedRounded,
+        };
+        
+        updated = await this.updateLeaveEntitlement(
+          entitlement._id.toString(),
+          updateData,
+        );
 
-      if (!updated) {
-        throw new Error('Failed to update entitlement');
-      }
+        if (!updated) {
+          throw new Error('Failed to update entitlement');
+        }
 
-      // Recalculate remaining ONLY for suspension/restoration (which affect accrued)
-      // For reduction/adjustment, we directly modified remaining, so don't recalculate
-      if (adjustmentType === 'suspension' || adjustmentType === 'restoration') {
+        // Recalculate remaining for suspension/restoration (which affect accrued)
         updated.remaining = this.calculateRemaining(updated);
+        // Round to 2 decimal places to avoid floating point precision issues
+        updated.remaining = Math.round(updated.remaining * 100) / 100;
+        await updated.save();
       }
-      // For reduction/adjustment, remaining was already set directly above, keep it as is
       
       // Clamp to avoid negative remaining (optional - depends on business rules)
       // updated.remaining = Math.max(0, updated.remaining);
-      
-      await updated.save();
 
       return {
         success: true,
@@ -4021,7 +4184,7 @@ export class LeavesService {
         notes,
       };
     } catch (error) {
-      throw new Error('Failed to adjust accrual: ${(error as any).message}');
+      throw new Error(`Failed to adjust accrual: ${(error as any).message}`);
     }
   }
 

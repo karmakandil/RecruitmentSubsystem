@@ -916,15 +916,33 @@ export const leavesApi = {
     departmentId?: string
   ): Promise<any> => {
     try {
-      const payload = {
+      const payload: any = {
         leaveTypeId,
-        employeeId,
-        asOfDate,
-        departmentId,
       };
-      return await api.post('/leaves/carry-forward', payload);
+      
+      // Only include optional fields if they have values
+      if (employeeId && employeeId.trim()) {
+        payload.employeeId = employeeId.trim();
+      }
+      
+      if (asOfDate && asOfDate.trim()) {
+        // Convert date string to ISO format for backend
+        payload.asOfDate = new Date(asOfDate).toISOString();
+      }
+      
+      if (departmentId && departmentId.trim()) {
+        payload.departmentId = departmentId.trim();
+      }
+      
+      console.log("[API] runCarryForward payload:", payload);
+      
+      const response = await api.post('/leaves/carry-forward', payload);
+      console.log("[API] runCarryForward response:", response);
+      return response;
     } catch (error: any) {
-      console.error("Error running carry-forward:", error);
+      console.error("[API] Error running carry-forward:", error);
+      console.error("[API] Error response:", error.response?.data);
+      console.error("[API] Error status:", error.response?.status);
       throw error;
     }
   },

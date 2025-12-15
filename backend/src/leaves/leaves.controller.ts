@@ -575,12 +575,32 @@ export class LeaveController {
 
   )
   async runCarryForward(@Body() carryForwardDto: RunCarryForwardDto) {
-    return await this.leavesService.runCarryForward(
-      carryForwardDto.leaveTypeId,
-      carryForwardDto.employeeId,
-      carryForwardDto.asOfDate,
-      carryForwardDto.departmentId,
-    );
+    console.log(`[Controller] runCarryForward called with:`, {
+      leaveTypeId: carryForwardDto.leaveTypeId,
+      employeeId: carryForwardDto.employeeId,
+      asOfDate: carryForwardDto.asOfDate,
+      departmentId: carryForwardDto.departmentId,
+    });
+    
+    try {
+      const result = await this.leavesService.runCarryForward(
+        carryForwardDto.leaveTypeId,
+        carryForwardDto.employeeId,
+        carryForwardDto.asOfDate,
+        carryForwardDto.departmentId,
+      );
+      
+      console.log(`[Controller] runCarryForward completed:`, {
+        successful: result.successful,
+        failed: result.failed,
+        total: result.total,
+      });
+      
+      return result;
+    } catch (error) {
+      console.error(`[Controller] runCarryForward error:`, error);
+      throw error;
+    }
   }
 
   // REQ-042: Adjust accruals
