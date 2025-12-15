@@ -69,6 +69,24 @@ export default function HRManagerDashboardPage() {
             </CardContent>
           </Card>
 
+          {/* ADDED: Organization Structure Card */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle>Structure</CardTitle>
+              <CardDescription>
+                Submit requests for organizational changes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/organization-structure"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Organization Structure
+              </Link>
+            </CardContent>
+          </Card>
+
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Team</CardTitle>
@@ -82,23 +100,6 @@ export default function HRManagerDashboardPage() {
                 className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
               >
                 View Team
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>My Profile</CardTitle>
-              <CardDescription>
-                View and manage your personal information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/employee-profile/my-profile"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                My Profile
               </Link>
             </CardContent>
           </Card>
