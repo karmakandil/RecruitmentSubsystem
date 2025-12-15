@@ -3,21 +3,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth, useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
-import { policyConfigApi, LatenessRule } from "@/lib/api/time-management/policy-config.api";
+import { policyConfigApi, OvertimeRule } from "@/lib/api/time-management/policy-config.api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
-import LatenessRulesForm from "@/components/time-management/LatenessRulesForm";
+import OvertimeRulesForm from "@/components/time-management/OvertimeRulesForm";
 
-export default function LatenessPoliciesPage() {
+export default function OvertimeRulesPage() {
   const { user, loading: authLoading } = useAuth();
   useRequireAuth(SystemRole.HR_MANAGER);
   const { toast, showToast, hideToast } = useToast();
 
-  const [rules, setRules] = useState<LatenessRule[]>([]);
+  const [rules, setRules] = useState<OvertimeRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRule, setSelectedRule] = useState<LatenessRule | null>(null);
+  const [selectedRule, setSelectedRule] = useState<OvertimeRule | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -26,6 +26,7 @@ export default function LatenessPoliciesPage() {
   // Filters
   const [filters, setFilters] = useState({
     active: "",
+    approved: "",
     search: "",
   });
 
@@ -38,7 +39,10 @@ export default function LatenessPoliciesPage() {
       if (filters.active !== "") {
         queryFilters.active = filters.active === "true";
       }
-      const data = await policyConfigApi.getLatenessRules(queryFilters);
+      if (filters.approved !== "") {
+        queryFilters.approved = filters.approved === "true";
+      }
+      const data = await policyConfigApi.getOvertimeRules(queryFilters);
       
       // Apply search filter client-side
       let filteredData = data;
@@ -53,11 +57,12 @@ export default function LatenessPoliciesPage() {
       
       setRules(filteredData);
     } catch (error: any) {
-      showToast(error.message || "Failed to load lateness rules", "error");
+      console.error("Failed to load overtime rules:", error);
     } finally {
       setLoading(false);
     }
-  }, [filters, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.active, filters.approved, filters.search]);
 
   useEffect(() => {
     loadRules();
@@ -68,13 +73,13 @@ export default function LatenessPoliciesPage() {
     
     try {
       setDeleting(true);
-      await policyConfigApi.deleteLatenessRule(selectedRule._id);
-      showToast("Lateness rule deleted successfully", "success");
+      await policyConfigApi.deleteOvertimeRule(selectedRule._id);
+      showToast("Overtime rule deleted successfully", "success");
       setIsDeleteModalOpen(false);
       setSelectedRule(null);
       loadRules();
     } catch (error: any) {
-      showToast(error.message || "Failed to delete lateness rule", "error");
+      showToast(error.message || "Failed to delete overtime rule", "error");
     } finally {
       setDeleting(false);
     }
@@ -83,19 +88,20 @@ export default function LatenessPoliciesPage() {
   const handleCreateSuccess = () => {
     setIsCreateModalOpen(false);
     loadRules();
-    showToast("Lateness rule created successfully", "success");
+    showToast("Overtime rule created successfully", "success");
   };
 
   const handleEditSuccess = () => {
     setIsEditModalOpen(false);
     setSelectedRule(null);
     loadRules();
-    showToast("Lateness rule updated successfully", "success");
+    showToast("Overtime rule updated successfully", "success");
   };
 
   const clearFilters = () => {
     setFilters({
       active: "",
+      approved: "",
       search: "",
     });
   };
@@ -122,9 +128,9 @@ export default function LatenessPoliciesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Lateness Rules</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Overtime Rules</h1>
           <p className="text-gray-600 mt-1">
-            Configure grace periods, thresholds, and penalty settings (BR-TM-11)
+            Manage overtime calculation and eligibility rules (BR-TM-10)
           </p>
         </div>
         {canEdit && (
@@ -140,7 +146,7 @@ export default function LatenessPoliciesPage() {
           <CardTitle className="text-lg">Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
               <input
@@ -163,6 +169,18 @@ export default function LatenessPoliciesPage() {
                 <option value="false">Inactive</option>
               </select>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Approval Status</label>
+              <select
+                value={filters.approved}
+                onChange={(e) => setFilters(prev => ({ ...prev, approved: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All</option>
+                <option value="true">Approved</option>
+                <option value="false">Pending Approval</option>
+              </select>
+            </div>
             <div className="flex items-end">
               <Button variant="outline" onClick={clearFilters}>
                 Clear Filters
@@ -175,15 +193,15 @@ export default function LatenessPoliciesPage() {
       {/* Rules List */}
       <Card>
         <CardHeader>
-          <CardTitle>Lateness Rules ({rules.length})</CardTitle>
+          <CardTitle>Overtime Rules ({rules.length})</CardTitle>
           <CardDescription>
-            Define grace periods and automatic deductions for late arrivals
+            Define how overtime is calculated and which employees are eligible
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-center py-12">
-              <p className="text-gray-500">Loading lateness rules...</p>
+              <p className="text-gray-500">Loading overtime rules...</p>
             </div>
           ) : rules.length === 0 ? (
             <div className="text-center py-12">
@@ -192,14 +210,14 @@ export default function LatenessPoliciesPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Lateness Rules</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Overtime Rules</h3>
               <p className="text-gray-500 mb-4">
-                {filters.search || filters.active
+                {filters.search || filters.active || filters.approved
                   ? "No rules match your filters. Try adjusting the criteria."
-                  : "Get started by creating your first lateness rule."
+                  : "Get started by creating your first overtime rule."
                 }
               </p>
-              {canEdit && !filters.search && !filters.active && (
+              {canEdit && !filters.search && !filters.active && !filters.approved && (
                 <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
                   + Create Rule
                 </Button>
@@ -214,13 +232,13 @@ export default function LatenessPoliciesPage() {
                       Name
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Grace Period
+                      Description
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Deduction/Min
+                      Active
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      Approved
                     </th>
                     {canEdit && (
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -232,26 +250,12 @@ export default function LatenessPoliciesPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {rules.map((rule) => (
                     <tr key={rule._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{rule.name}</div>
+                      </td>
+                      <td className="px-6 py-4">
                         <div className="text-sm text-gray-500 max-w-xs truncate">
                           {rule.description || "-"}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {rule.gracePeriodMinutes} min
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {rule.gracePeriodMinutes === 0 ? "No grace period" : `${rule.gracePeriodMinutes} min tolerance`}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {rule.deductionForEachMinute}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          per minute late
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -263,6 +267,17 @@ export default function LatenessPoliciesPage() {
                           }`}
                         >
                           {rule.active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            rule.approved
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {rule.approved ? "Approved" : "Pending"}
                         </span>
                       </td>
                       {canEdit && (
@@ -304,11 +319,11 @@ export default function LatenessPoliciesPage() {
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Create Lateness Rule"
+        title="Create Overtime Rule"
         size="lg"
       >
-        <LatenessRulesForm
-          latenessRule={null}
+        <OvertimeRulesForm
+          overtimeRule={null}
           onSuccess={handleCreateSuccess}
           onCancel={() => setIsCreateModalOpen(false)}
         />
@@ -321,12 +336,12 @@ export default function LatenessPoliciesPage() {
           setIsEditModalOpen(false);
           setSelectedRule(null);
         }}
-        title="Edit Lateness Rule"
+        title="Edit Overtime Rule"
         size="lg"
       >
         {selectedRule && (
-          <LatenessRulesForm
-            latenessRule={selectedRule}
+          <OvertimeRulesForm
+            overtimeRule={selectedRule}
             onSuccess={handleEditSuccess}
             onCancel={() => {
               setIsEditModalOpen(false);
@@ -343,12 +358,12 @@ export default function LatenessPoliciesPage() {
           setIsDeleteModalOpen(false);
           setSelectedRule(null);
         }}
-        title="Delete Lateness Rule"
+        title="Delete Overtime Rule"
         size="sm"
       >
         <div className="p-4">
           <p className="text-gray-700 mb-6">
-            Are you sure you want to delete the lateness rule{" "}
+            Are you sure you want to delete the overtime rule{" "}
             <strong>&quot;{selectedRule?.name}&quot;</strong>? This action cannot be undone.
           </p>
           <div className="flex justify-end gap-3">
@@ -374,4 +389,3 @@ export default function LatenessPoliciesPage() {
     </div>
   );
 }
-
