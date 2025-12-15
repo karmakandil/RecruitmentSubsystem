@@ -68,6 +68,7 @@ api.interceptors.response.use(
         message: error.message,
         responseData: error.response?.data,
         headers: error.response?.headers,
+        requestData: error.config?.data, // ADDED TO SEE WHAT WAS SENT
       }
     );
 
