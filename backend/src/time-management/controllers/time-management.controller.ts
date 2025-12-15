@@ -47,7 +47,9 @@ import {
 @Controller('time-management')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TimeManagementController {
-  constructor(private readonly timeManagementService: TimeManagementService) {}
+  constructor(
+    private readonly timeManagementService: TimeManagementService,
+  ) {}
 
   // ===== US5: Clock-In/Out and Attendance Records =====
   // BR-TM-06: Time-in/out captured via Biometric, Web Login, Mobile App, or Manual Input (with audit trail)
@@ -1601,7 +1603,6 @@ export class TimeManagementController {
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
-    SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
   async generateOvertimeReport(
@@ -1618,7 +1619,6 @@ export class TimeManagementController {
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
-    SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
   async generateLatenessReport(
@@ -1635,7 +1635,6 @@ export class TimeManagementController {
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
-    SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
   async generateExceptionReport(
@@ -1652,7 +1651,6 @@ export class TimeManagementController {
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
-    SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
   async exportReport(
@@ -1961,7 +1959,6 @@ export class TimeManagementController {
   @Roles(
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
-    SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
   async exportOvertimeExceptionReport(
@@ -1981,6 +1978,89 @@ export class TimeManagementController {
         employeeId: body.employeeId,
         departmentId: body.departmentId,
         format: body.format,
+      },
+      user.userId,
+    );
+  }
+
+  // ===== DATA SYNCHRONIZATION (BR-TM-22) =====
+
+  /**
+   * Sync time management data with payroll, leaves, and benefits modules
+   * BR-TM-22: All time management data must sync daily with payroll, benefits, and leave modules
+   * As an HR Admin, I want attendance records to sync daily with payroll and leave systems
+   * As an HR Manager, I want attendance and time management data synchronized with payroll and leave modules
+   */
+  @Post('sync-data')
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  async syncData(
+    @Body() body: {
+      syncDate?: Date;
+      modules?: ('payroll' | 'leaves' | 'benefits')[];
+    },
+    @CurrentUser() user: any,
+  ) {
+    return this.timeManagementService.syncTimeManagementData(
+      {
+        syncDate: body.syncDate ? new Date(body.syncDate) : new Date(),
+        modules: body.modules || ['payroll', 'leaves', 'benefits'],
+      },
+      user.userId,
+    );
+  }
+
+  /**
+   * Get sync status
+   * BR-TM-22: Check sync status across modules
+   */
+  @Get('sync-status')
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  async getSyncStatus(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @CurrentUser() user?: any,
+  ) {
+    return this.timeManagementService.getSyncStatus(
+      {
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      },
+      user?.userId || 'system',
+    );
+  }
+
+  /**
+   * Device sync - sync attendance data from devices when they reconnect
+   * BR-TM-13: Attendance devices must sync automatically once reconnected online
+   */
+  @Post('sync-device')
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+  )
+  async syncDeviceData(
+    @Body() body: {
+      deviceId: string;
+      employeeId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+    @CurrentUser() user: any,
+  ) {
+    return this.timeManagementService.syncDeviceData(
+      {
+        deviceId: body.deviceId,
+        employeeId: body.employeeId,
+        startDate: body.startDate ? new Date(body.startDate) : undefined,
+        endDate: body.endDate ? new Date(body.endDate) : undefined,
       },
       user.userId,
     );

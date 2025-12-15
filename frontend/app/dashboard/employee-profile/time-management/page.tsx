@@ -39,8 +39,8 @@ export default function EmployeeTimeManagementPage() {
 
                 // Fallback: if no list came back, try current status record
                 if (records.length === 0) {
-                    const status = await timeManagementApi.getAttendanceStatus(user.id);
-                    if (status.currentRecord) {
+                const status = await timeManagementApi.getAttendanceStatus(user.id);
+                if (status.currentRecord) {
                         records = [status.currentRecord];
                     }
                 }

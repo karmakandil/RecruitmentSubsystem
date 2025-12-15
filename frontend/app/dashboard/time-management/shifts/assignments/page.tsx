@@ -23,7 +23,7 @@ import { Toast, useToast } from "@/components/leaves/Toast";
 import { ShiftAssignmentForm, AssignmentType } from "@/components/time-management/ShiftAssignmentForm";
 
 export default function ShiftAssignmentsPage() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   // Role check: Allow HR_ADMIN or SYSTEM_ADMIN (per BR-TM-01, BR-TM-05)

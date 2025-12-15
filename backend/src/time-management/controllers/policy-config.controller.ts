@@ -194,7 +194,6 @@ export class PolicyConfigController {
   @Post('overtime/validate-preapproval')
   @Roles(
     SystemRole.HR_MANAGER,
-    SystemRole.HR_ADMIN,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
     SystemRole.DEPARTMENT_HEAD,
@@ -225,7 +224,6 @@ export class PolicyConfigController {
   @Get('overtime/limits/config')
   @Roles(
     SystemRole.HR_MANAGER,
-    SystemRole.HR_ADMIN,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
   )
@@ -240,7 +238,6 @@ export class PolicyConfigController {
   @Post('overtime/limits/check')
   @Roles(
     SystemRole.HR_MANAGER,
-    SystemRole.HR_ADMIN,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.PAYROLL_SPECIALIST,
     SystemRole.DEPARTMENT_HEAD,

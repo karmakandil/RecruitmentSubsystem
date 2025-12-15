@@ -564,6 +564,12 @@ export interface AttendanceStatus {
   clockInTime?: Date | string;
   elapsedMinutes?: number;
   message?: string;
+  // BR-TM-11: Punch policy information
+  punchPolicy?: 'MULTIPLE' | 'FIRST_LAST' | 'ONLY_FIRST';
+  shiftName?: string;
+  canClockInMultiple?: boolean;
+  hasClockInToday?: boolean;
+  canClockIn?: boolean;
 }
 
 export interface ClockInRequest {

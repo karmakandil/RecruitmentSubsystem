@@ -19,14 +19,32 @@ export function CorrectionRequestList() {
             try {
                 setLoading(true);
                 setError(null);
-                const data = await timeManagementApi.getCorrectionRequestsByEmployee(
+                console.log("Fetching correction requests for employee:", user.id);
+                const response = await timeManagementApi.getCorrectionRequestsByEmployee(
                     user.id,
                     statusFilter !== "ALL" ? { status: statusFilter } : undefined
                 );
-                setRequests(Array.isArray(data) ? data : []);
+                
+                console.log("Correction requests response:", response);
+                
+                // Backend returns { employeeId, summary, requests: [...] }
+                let requests: AttendanceCorrectionRequest[] = [];
+                if (response?.requests && Array.isArray(response.requests)) {
+                    requests = response.requests;
+                } else if (Array.isArray(response)) {
+                    requests = response;
+                } else if (response?.data?.requests && Array.isArray(response.data.requests)) {
+                    requests = response.data.requests;
+                } else if (response?.data && Array.isArray(response.data)) {
+                    requests = response.data;
+                }
+                
+                console.log("Extracted requests:", requests);
+                setRequests(requests);
             } catch (err: any) {
                 console.error("Failed to fetch correction requests:", err);
                 setError(err.message || "Failed to load correction requests");
+                setRequests([]);
             } finally {
                 setLoading(false);
             }

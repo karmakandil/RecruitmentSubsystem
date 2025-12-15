@@ -122,6 +122,21 @@ export const shiftScheduleApi = {
     return Array.isArray(response) ? response : (response.data || []);
   },
   
+  // GET shift by ID
+  getShiftById: async (id: string): Promise<Shift> => {
+    return await api.get(`/shift-schedule/shift/${id}`);
+  },
+  
+  // PUT update shift
+  updateShift: async (id: string, data: CreateShiftDto): Promise<Shift> => {
+    return await api.put(`/shift-schedule/shift/${id}`, data);
+  },
+  
+  // DELETE shift
+  deleteShift: async (id: string): Promise<void> => {
+    return await api.delete(`/shift-schedule/shift/${id}`);
+  },
+  
   // ===== SHIFT ASSIGNMENT MANAGEMENT =====
   
   // GET all assignments (to view/manage)

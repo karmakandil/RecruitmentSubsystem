@@ -1,15 +1,64 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { SystemRole } from "@/types";
+import { shiftScheduleApi } from "@/lib/api/time-management/shift-schedule.api";
+import { ShiftAssignment, ShiftAssignmentStatus } from "@/types/time-management";
+import { Toast, useToast } from "@/components/leaves/Toast";
 
 export default function ShiftsPage() {
   const { user } = useAuth();
+  const { toast, showToast, hideToast } = useToast();
   const isAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) || 
                   user?.roles?.includes(SystemRole.SYSTEM_ADMIN) || 
                   user?.roles?.includes(SystemRole.HR_MANAGER);
+  
+  // Employee shift assignments state
+  const [myAssignments, setMyAssignments] = useState<ShiftAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load employee's shift assignments
+  useEffect(() => {
+    if (!isAdmin && user?.id) {
+      loadMyAssignments();
+    }
+  }, [user?.id, isAdmin]);
+
+  const loadMyAssignments = async () => {
+    try {
+      setLoading(true);
+      const assignments = await shiftScheduleApi.getEmployeeShiftAssignments(user!.id);
+      setMyAssignments(assignments || []);
+    } catch (error: any) {
+      console.error("Failed to load my shift assignments:", error);
+      showToast(error.message || "Failed to load shift assignments", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return "N/A";
+    return new Date(date).toLocaleDateString();
+  };
+
+  const getStatusColor = (status: ShiftAssignmentStatus) => {
+    switch (status) {
+      case ShiftAssignmentStatus.APPROVED:
+        return "text-green-600 bg-green-50";
+      case ShiftAssignmentStatus.PENDING:
+        return "text-yellow-600 bg-yellow-50";
+      case ShiftAssignmentStatus.CANCELLED:
+        return "text-red-600 bg-red-50";
+      case ShiftAssignmentStatus.EXPIRED:
+        return "text-gray-600 bg-gray-50";
+      default:
+        return "text-gray-600 bg-gray-50";
+    }
+  };
 
   return (
     <div className="container mx-auto px-6 py-8">
@@ -164,22 +213,65 @@ export default function ShiftsPage() {
 
       {/* Employee Section */}
       {!isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
+        <>
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            isVisible={toast.isVisible}
+            onClose={hideToast}
+          />
+          
+          <Card className="mb-6">
             <CardHeader>
-              <CardTitle>My Shift Schedule</CardTitle>
+              <CardTitle>My Shift Assignments</CardTitle>
               <CardDescription>View your assigned shifts and schedule</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 text-sm mb-4">
-                Your shift schedule will be displayed here. Contact your manager for shift changes.
-              </p>
-              <Link
-                href="/dashboard/time-management/shifts/assignments"
-                className="text-blue-600 hover:underline font-medium"
-              >
-                View My Assignments
-              </Link>
+              {loading ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Loading your shift assignments...</p>
+                </div>
+              ) : myAssignments.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-2">No shift assignments found.</p>
+                  <p className="text-gray-400 text-sm">
+                    Contact your manager to get assigned to a shift.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Shift Name</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Start Date</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">End Date</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {myAssignments.map((assignment) => {
+                        const shiftName = typeof assignment.shiftId === 'object' && assignment.shiftId !== null
+                          ? (assignment.shiftId as any).name || 'N/A'
+                          : assignment.shiftId || 'N/A';
+                        
+                        return (
+                          <tr key={assignment._id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4 text-gray-900">{shiftName}</td>
+                            <td className="py-3 px-4 text-gray-900">{formatDate(assignment.startDate)}</td>
+                            <td className="py-3 px-4 text-gray-900">{formatDate(assignment.endDate)}</td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(assignment.status)}`}>
+                                {assignment.status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -194,7 +286,7 @@ export default function ShiftsPage() {
               </p>
             </CardContent>
           </Card>
-        </div>
+        </>
       )}
 
       {/* Navigation */}
