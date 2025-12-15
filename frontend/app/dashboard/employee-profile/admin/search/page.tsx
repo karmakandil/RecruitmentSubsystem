@@ -715,13 +715,17 @@ export default function EmployeeManagementPage() {
                     onChange={(e) => setDepartmentFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="" className="text-gray-600">
+                    <option
+                      key="all-departments"
+                      value=""
+                      className="text-gray-600"
+                    >
                       All Departments
                     </option>
                     {departments.map((dept) => (
                       <option
-                        key={dept.id}
-                        value={dept.id}
+                        key={dept.id || dept._id}
+                        value={dept.id || dept._id}
                         className="text-gray-900"
                       >
                         {dept.name}
@@ -866,30 +870,14 @@ export default function EmployeeManagementPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option
-                          key={MaritalStatus.SINGLE}
-                          value={MaritalStatus.SINGLE}
-                        >
-                          Single
-                        </option>
-                        <option
-                          key={MaritalStatus.MARRIED}
-                          value={MaritalStatus.MARRIED}
-                        >
-                          Married
-                        </option>
-                        <option
-                          key={MaritalStatus.DIVORCED}
-                          value={MaritalStatus.DIVORCED}
-                        >
-                          Divorced
-                        </option>
-                        <option
-                          key={MaritalStatus.WIDOWED}
-                          value={MaritalStatus.WIDOWED}
-                        >
-                          Widowed
-                        </option>
+                        {Object.values(MaritalStatus).map((status) => (
+                          <option key={status} value={status}>
+                            {status
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -941,42 +929,14 @@ export default function EmployeeManagementPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option
-                          key={EmployeeStatus.ACTIVE}
-                          value={EmployeeStatus.ACTIVE}
-                        >
-                          Active
-                        </option>
-                        <option
-                          key={EmployeeStatus.ON_LEAVE}
-                          value={EmployeeStatus.ON_LEAVE}
-                        >
-                          On Leave
-                        </option>
-                        <option
-                          key={EmployeeStatus.TERMINATED}
-                          value={EmployeeStatus.TERMINATED}
-                        >
-                          Terminated
-                        </option>
-                        <option
-                          key={EmployeeStatus.SUSPENDED}
-                          value={EmployeeStatus.SUSPENDED}
-                        >
-                          Suspended
-                        </option>
-                        <option
-                          key={EmployeeStatus.PROBATION}
-                          value={EmployeeStatus.PROBATION}
-                        >
-                          Probation
-                        </option>
-                        <option
-                          key={EmployeeStatus.RETIRED}
-                          value={EmployeeStatus.RETIRED}
-                        >
-                          Retired
-                        </option>
+                        {Object.values(EmployeeStatus).map((status) => (
+                          <option key={status} value={status}>
+                            {status
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -1050,7 +1010,9 @@ export default function EmployeeManagementPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                         required
                       >
-                        <option value="">Select Department</option>
+                        <option key="select-dept" value="">
+                          Select Department
+                        </option>
                         {departments.map((dept) => (
                           <option
                             key={dept.id || dept._id}
@@ -1074,7 +1036,9 @@ export default function EmployeeManagementPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                         required
                       >
-                        <option value="">Select Position</option>
+                        <option key="select-pos" value="">
+                          Select Position
+                        </option>
                         {positions.map((pos) => (
                           <option
                             key={pos.id || pos._id}
@@ -1099,7 +1063,7 @@ export default function EmployeeManagementPage() {
                         required
                         disabled={loadingDropdowns}
                       >
-                        <option value="">
+                        <option key="select-grade" value="">
                           {loadingDropdowns
                             ? "Loading pay grades..."
                             : "Select Pay Grade"}
@@ -1142,7 +1106,9 @@ export default function EmployeeManagementPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value="">No Supervisor</option>
+                        <option key="no-supervisor" value="">
+                          No Supervisor
+                        </option>
                         {positions.map((pos) => (
                           <option
                             key={pos.id || pos._id}
@@ -1281,10 +1247,18 @@ export default function EmployeeManagementPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="GBP">GBP</option>
-                        <option value="EGP">EGP</option>
+                        <option key="USD" value="USD">
+                          USD
+                        </option>
+                        <option key="EUR" value="EUR">
+                          EUR
+                        </option>
+                        <option key="GBP" value="GBP">
+                          GBP
+                        </option>
+                        <option key="EGP" value="EGP">
+                          EGP
+                        </option>
                       </select>
                     </div>
                   </div>
