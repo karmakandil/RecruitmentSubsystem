@@ -74,7 +74,13 @@ export class LeaveController {
 
   @Get('calendar/:year')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.DEPARTMENT_EMPLOYEE,
+  )
   async getCalendar(@Param('year') year: string) {
     return await this.leavesService.getCalendarByYear(Number(year));
   }
@@ -531,7 +537,6 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
   )
   async autoAccrueLeave(@Body() accrueDto: AutoAccrueLeaveDto) {
     return await this.leavesService.autoAccrueLeave(
@@ -550,7 +555,7 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+
   )
   async autoAccrueAllEmployees(@Body() accrueAllDto: AccrueAllEmployeesDto) {
     return await this.leavesService.autoAccrueAllEmployees(
@@ -567,7 +572,7 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+
   )
   async runCarryForward(@Body() carryForwardDto: RunCarryForwardDto) {
     return await this.leavesService.runCarryForward(
@@ -584,7 +589,7 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+    
   )
   async adjustAccrual(@Body() adjustmentDto: AccrualAdjustmentDto) {
     return await this.leavesService.adjustAccrual(

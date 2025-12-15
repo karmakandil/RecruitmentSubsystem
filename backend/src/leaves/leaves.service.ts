@@ -1296,6 +1296,45 @@ export class LeavesService {
     );
   }
 
+  // Helper: Normalize ID to handle both ObjectId and string formats
+  // Returns both ObjectId and string versions for flexible querying
+  private normalizeId(id: any): { objectId: Types.ObjectId | null; string: string | null } {
+    if (!id) {
+      return { objectId: null, string: null };
+    }
+    
+    if (id instanceof Types.ObjectId) {
+      return { objectId: id, string: id.toString() };
+    }
+    
+    if (typeof id === 'string' && Types.ObjectId.isValid(id)) {
+      return { objectId: new Types.ObjectId(id), string: id };
+    }
+    
+    // If it's a string but not a valid ObjectId, return as string
+    return { objectId: null, string: String(id) };
+  }
+
+  // Helper: Create query that handles both ObjectId and string formats for position/department IDs
+  private createFlexibleIdQuery(fieldName: string, value: any): any {
+    const normalized = this.normalizeId(value);
+    
+    if (!normalized.objectId && !normalized.string) {
+      return null; // Invalid value
+    }
+    
+    // Use $in to match both ObjectId and string formats
+    const queryValues: any[] = [];
+    if (normalized.objectId) {
+      queryValues.push(normalized.objectId);
+    }
+    if (normalized.string) {
+      queryValues.push(normalized.string);
+    }
+    
+    return queryValues.length > 0 ? { [fieldName]: { $in: queryValues } } : null;
+  }
+
   //next method
   async assignPersonalizedEntitlement(
     employeeId: string,
@@ -1973,37 +2012,42 @@ export class LeavesService {
           console.log(`[NOTIFICATION] Searching for manager with primaryPositionId (as string): ${supervisorPosIdString}`);
           console.log(`[NOTIFICATION] supervisorPositionId type: ${typeof supervisorPositionId}, value: ${supervisorPositionId}`);
           
-          // Since primaryPositionId is stored as String, query with string directly
-          let managerProfile = await this.employeeProfileModel
-            .findOne({
-              primaryPositionId: supervisorPosIdString, // Direct string match
-              status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
-            })
-            .select('_id employeeNumber firstName lastName primaryPositionId')
-            .lean()
-            .exec();
+          // Use flexible query to handle both ObjectId and string formats
+          const primaryPositionQuery = this.createFlexibleIdQuery('primaryPositionId', supervisorPositionId);
           
-          // If not found, try without status filter (in case status is the issue)
-          if (!managerProfile) {
-            console.log(`[NOTIFICATION] Not found with status filter, trying without status filter...`);
-            managerProfile = await this.employeeProfileModel
+          if (primaryPositionQuery) {
+            // Try with status filter first
+            let managerProfile = await this.employeeProfileModel
               .findOne({
-                primaryPositionId: supervisorPosIdString, // Direct string match
+                ...primaryPositionQuery,
+                status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
               })
-              .select('_id employeeNumber firstName lastName primaryPositionId status')
+              .select('_id employeeNumber firstName lastName primaryPositionId')
               .lean()
               .exec();
-          }
-          
-          if (managerProfile) {
-            managerId = managerProfile._id.toString();
-            console.log(`[NOTIFICATION] ✅ Found Department Head via primaryPositionId: ${managerId} (${(managerProfile as any).employeeNumber || 'N/A'} - ${(managerProfile as any).firstName || ''} ${(managerProfile as any).lastName || ''})`);
-            console.log(`[NOTIFICATION] Manager's primaryPositionId: ${(managerProfile as any).primaryPositionId?.toString() || 'N/A'}`);
-          } else {
-            // Alternative approach: Since getTeamMembers works, let's reverse it
-            // Find all employees and check which one has this employee in their team
-            // This works even if the manager's primaryPositionId is not set correctly in the UI
-            console.warn(`[NOTIFICATION] ❌ No employee found with primaryPositionId matching supervisorPositionId ${supervisorPosIdString}`);
+            
+            // If not found, try without status filter (in case status is the issue)
+            if (!managerProfile) {
+              console.log(`[NOTIFICATION] Not found with status filter, trying without status filter...`);
+              managerProfile = await this.employeeProfileModel
+                .findOne(primaryPositionQuery)
+                .select('_id employeeNumber firstName lastName primaryPositionId status')
+                .lean()
+                .exec();
+            }
+            
+            if (managerProfile) {
+              managerId = managerProfile._id.toString();
+              console.log(`[NOTIFICATION] ✅ Found Department Head via primaryPositionId: ${managerId} (${(managerProfile as any).employeeNumber || 'N/A'} - ${(managerProfile as any).firstName || ''} ${(managerProfile as any).lastName || ''})`);
+              console.log(`[NOTIFICATION] Manager's primaryPositionId: ${(managerProfile as any).primaryPositionId?.toString() || 'N/A'}`);
+            } else {
+              // Alternative approach: Since getTeamMembers works, let's reverse it
+              // Find all employees and check which one has this employee in their team
+              // This works even if the manager's primaryPositionId is not set correctly in the UI
+              const supervisorPosIdString = supervisorPositionId instanceof Types.ObjectId 
+                ? supervisorPositionId.toString() 
+                : String(supervisorPositionId);
+              console.warn(`[NOTIFICATION] ❌ No employee found with primaryPositionId matching supervisorPositionId ${supervisorPosIdString}`);
             console.warn(`[NOTIFICATION] Trying alternative: Finding manager by checking who has this employee in their team...`);
             
             // Get all active employees who might be managers (have DEPARTMENT_HEAD role or have a primaryPositionId)
@@ -2039,13 +2083,14 @@ export class LeavesService {
             // If still not found, check all employees (including inactive)
             if (!managerProfile) {
               console.warn(`[NOTIFICATION] Not found in active employees, checking all employees (including inactive)...`);
-              const allEmployees = await this.employeeProfileModel
-                .find({
-                  primaryPositionId: supervisorPosIdString, // Direct string match
-                })
-                .select('_id employeeNumber firstName lastName status primaryPositionId')
-                .lean()
-                .exec();
+              const allEmployeesQuery = this.createFlexibleIdQuery('primaryPositionId', supervisorPositionId);
+              const allEmployees = allEmployeesQuery 
+                ? await this.employeeProfileModel
+                    .find(allEmployeesQuery)
+                    .select('_id employeeNumber firstName lastName status primaryPositionId')
+                    .lean()
+                    .exec()
+                : [];
               
               console.warn(`[NOTIFICATION] Found ${allEmployees.length} employees (any status) with primaryPositionId ${supervisorPosIdString}:`, 
                 allEmployees.map((e: any) => ({
@@ -2096,6 +2141,9 @@ export class LeavesService {
                 }
               }
             }
+            }
+          } else {
+            console.warn(`[NOTIFICATION] Invalid supervisorPositionId format: ${supervisorPositionId}`);
           }
         } else {
           console.warn(`[NOTIFICATION] Employee ${employeeId} does not have directManagerId or supervisorPositionId set!`);
@@ -2927,9 +2975,20 @@ export class LeavesService {
         };
       }
 
+      // Normalize manager's primaryPositionId to handle both ObjectId and string formats
+      const managerPositionQuery = this.createFlexibleIdQuery('supervisorPositionId', manager.primaryPositionId);
+      if (!managerPositionQuery) {
+        console.warn(`[getTeamLeaveBalances] Invalid manager primaryPositionId: ${manager.primaryPositionId}`);
+        return {
+          managerId,
+          teamMembers: [],
+          totalTeamMembers: 0,
+        };
+      }
+
       // Get team members where supervisorPositionId matches manager's position
       const baseQuery: any = {
-        supervisorPositionId: manager.primaryPositionId,
+        ...managerPositionQuery,
         status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
       };
 
@@ -2938,40 +2997,23 @@ export class LeavesService {
       // Filter by department if provided and valid
       if (departmentId && departmentId.trim()) {
         const trimmedDeptId = departmentId.trim();
-        if (Types.ObjectId.isValid(trimmedDeptId)) {
+        const departmentQuery = this.createFlexibleIdQuery('primaryDepartmentId', trimmedDeptId);
+        
+        if (departmentQuery) {
           console.log(`[getTeamLeaveBalances] Filtering by department: ${trimmedDeptId}`);
-          
-          // Try ObjectId first
-          const objectIdQuery = {
+          const finalQuery = {
             ...baseQuery,
-            primaryDepartmentId: new Types.ObjectId(trimmedDeptId)
+            ...departmentQuery,
           };
-          console.log(`[getTeamLeaveBalances] Trying ObjectId query`);
           
           teamMembers = await this.employeeProfileModel
-            .find(objectIdQuery)
+            .find(finalQuery)
             .populate('primaryDepartmentId', 'name code')
             .populate('primaryPositionId', 'title code')
             .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
             .exec();
           
-          // If no results with ObjectId, try string comparison
-          if (teamMembers.length === 0) {
-            console.log(`[getTeamLeaveBalances] No results with ObjectId, trying string comparison`);
-            const stringQuery = {
-              ...baseQuery,
-              primaryDepartmentId: trimmedDeptId
-            };
-            teamMembers = await this.employeeProfileModel
-              .find(stringQuery)
-              .populate('primaryDepartmentId', 'name code')
-              .populate('primaryPositionId', 'title code')
-              .select('_id firstName lastName middleName fullName primaryDepartmentId primaryPositionId')
-              .exec();
-            console.log(`[getTeamLeaveBalances] Found ${teamMembers.length} team members with string comparison`);
-          } else {
-            console.log(`[getTeamLeaveBalances] Found ${teamMembers.length} team members with ObjectId`);
-          }
+          console.log(`[getTeamLeaveBalances] Found ${teamMembers.length} team members with flexible department query`);
         } else {
           console.warn(`[getTeamLeaveBalances] Invalid departmentId format: ${trimmedDeptId}`);
           // Fallback to base query without department filter
@@ -3041,7 +3083,7 @@ export class LeavesService {
               : 'N/A');
 
           // Handle entitlements with fallback for null populate - only include valid leave types
-          const leaveBalances = (await Promise.all(
+          const processedEntitlements = (await Promise.all(
             entitlements.map(async (ent) => {
               let leaveTypeName = (ent.leaveTypeId as any)?.name;
               let leaveTypeIdValue = (ent.leaveTypeId as any)?._id;
@@ -3082,6 +3124,41 @@ export class LeavesService {
               };
             })
           )).filter(balance => balance !== null);
+
+          // Group entitlements by leaveTypeId and aggregate values
+          const leaveBalancesMap = new Map<string, {
+            leaveTypeId: any;
+            leaveTypeName: string;
+            remaining: number;
+            pending: number;
+            taken: number;
+          }>();
+
+          processedEntitlements.forEach((balance) => {
+            if (!balance) return;
+            
+            const leaveTypeIdKey = balance.leaveTypeId?.toString() || balance.leaveTypeId;
+            
+            if (leaveBalancesMap.has(leaveTypeIdKey)) {
+              // Aggregate values for duplicate leave types
+              const existing = leaveBalancesMap.get(leaveTypeIdKey)!;
+              existing.remaining += balance.remaining || 0;
+              existing.pending += balance.pending || 0;
+              existing.taken += balance.taken || 0;
+            } else {
+              // First occurrence of this leave type
+              leaveBalancesMap.set(leaveTypeIdKey, {
+                leaveTypeId: balance.leaveTypeId,
+                leaveTypeName: balance.leaveTypeName,
+                remaining: balance.remaining || 0,
+                pending: balance.pending || 0,
+                taken: balance.taken || 0,
+              });
+            }
+          });
+
+          // Convert map to array
+          const leaveBalances = Array.from(leaveBalancesMap.values());
 
           // Handle upcomingLeaves with fallback for null populate - only include valid leave types
           const upcomingLeavesMapped = (await Promise.all(
@@ -3173,58 +3250,99 @@ export class LeavesService {
         };
       }
 
+      // Normalize manager's primaryPositionId to handle both ObjectId and string formats
+      const managerPositionQuery = this.createFlexibleIdQuery('supervisorPositionId', manager.primaryPositionId);
+      if (!managerPositionQuery) {
+        console.warn(`[filterTeamLeaveData] Invalid manager primaryPositionId: ${manager.primaryPositionId}`);
+        return {
+          total: 0,
+          filters: {
+            managerId,
+            departmentId: filters.departmentId,
+            leaveTypeId: filters.leaveTypeId,
+            dateRange:
+              filters.fromDate || filters.toDate
+                ? { from: filters.fromDate, to: filters.toDate }
+                : undefined,
+            status: filters.status,
+          },
+          items: [],
+        };
+      }
+
       // Get team members where supervisorPositionId matches manager's position
-      const teamMembersQuery: any = {
-        supervisorPositionId: manager.primaryPositionId,
+      const baseQuery: any = {
+        ...managerPositionQuery,
         status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
       };
 
-      // Filter by department if provided
-      if (filters.departmentId) {
-        console.log(`[filterTeamLeaveData] Department filter received:`, {
-          value: filters.departmentId,
-          type: typeof filters.departmentId,
-          isValidObjectId: Types.ObjectId.isValid(filters.departmentId),
-        });
-        
-        // Convert to ObjectId for proper MongoDB comparison
-        // MongoDB stores primaryDepartmentId as ObjectId, so we need to match that format
-        // Note: This will exclude employees who don't have a department assigned (primaryDepartmentId is null/undefined)
-        if (Types.ObjectId.isValid(filters.departmentId)) {
-          teamMembersQuery.primaryDepartmentId = new Types.ObjectId(filters.departmentId);
-          console.log(`[filterTeamLeaveData] Converted to ObjectId:`, teamMembersQuery.primaryDepartmentId.toString());
-          console.log(`[filterTeamLeaveData] ⚠️ Note: This filter will exclude employees without a department assigned`);
-        } else {
-          console.warn(`[filterTeamLeaveData] Invalid ObjectId format, trying as string:`, filters.departmentId);
-          // Try as string (shouldn't normally happen, but handle edge cases)
-          teamMembersQuery.primaryDepartmentId = filters.departmentId;
-        }
-      }
+      let teamMembers: any[] = [];
 
-      const teamMembers = await this.employeeProfileModel
-        .find(teamMembersQuery)
-        .select('_id primaryDepartmentId')
-        .exec();
+      // Filter by department if provided and valid (same logic as getTeamLeaveBalances)
+      if (filters.departmentId && filters.departmentId.trim()) {
+        const trimmedDeptId = filters.departmentId.trim();
+        const departmentQuery = this.createFlexibleIdQuery('primaryDepartmentId', trimmedDeptId);
+        
+        if (departmentQuery) {
+          console.log(`[filterTeamLeaveData] Filtering by department: ${trimmedDeptId}`);
+          const finalQuery = {
+            ...baseQuery,
+            ...departmentQuery,
+          };
+          
+          teamMembers = await this.employeeProfileModel
+            .find(finalQuery)
+            .select('_id primaryDepartmentId')
+            .exec();
+          
+          console.log(`[filterTeamLeaveData] Found ${teamMembers.length} team members with flexible department query`);
+        } else {
+          console.warn(`[filterTeamLeaveData] Invalid departmentId format: ${trimmedDeptId}`);
+          // Fallback to base query without department filter
+          teamMembers = await this.employeeProfileModel
+            .find(baseQuery)
+            .select('_id primaryDepartmentId')
+            .exec();
+        }
+      } else {
+        console.log(`[filterTeamLeaveData] No department filter applied`);
+        teamMembers = await this.employeeProfileModel
+          .find(baseQuery)
+          .select('_id primaryDepartmentId')
+          .exec();
+      }
       
-      console.log(`[filterTeamLeaveData] Found ${teamMembers.length} team members`);
-      console.log(`[filterTeamLeaveData] Department filter applied:`, filters.departmentId);
-      console.log(`[filterTeamLeaveData] Team members query:`, JSON.stringify(teamMembersQuery, null, 2));
+      console.log(`[filterTeamLeaveData] Total found: ${teamMembers.length} team members`);
+      if (teamMembers.length > 0 && filters.departmentId) {
+        teamMembers.forEach((member, idx) => {
+          const deptId = (member as any).primaryDepartmentId;
+          const deptIdStr = deptId?.toString ? deptId.toString() : (deptId || 'N/A');
+          const deptIdType = deptId instanceof Types.ObjectId ? 'ObjectId' : (deptId ? typeof deptId : 'null/undefined');
+          console.log(`[filterTeamLeaveData] Member ${idx + 1}: Department ID: ${deptIdStr}, Type: ${deptIdType}`);
+          if (filters.departmentId && filters.departmentId.trim()) {
+            const matches = deptIdStr === filters.departmentId.trim() || 
+                           (deptId instanceof Types.ObjectId && deptId.equals(new Types.ObjectId(filters.departmentId.trim())));
+            console.log(`[filterTeamLeaveData]   - Matches filter (${filters.departmentId.trim()}): ${matches}`);
+          }
+        });
+      }
       
-      if (teamMembers.length > 0) {
+      if (teamMembers.length > 0 && filters.departmentId) {
+        const trimmedDeptId = filters.departmentId.trim();
         console.log(`[filterTeamLeaveData] Sample team members:`, teamMembers.slice(0, 3).map(m => {
           const deptId = (m as any).primaryDepartmentId;
+          const deptIdStr = deptId?.toString ? deptId.toString() : (deptId || 'N/A');
           return {
             employeeId: m._id.toString(),
-            departmentId: deptId?.toString() || deptId || 'N/A',
-            departmentIdType: deptId ? (deptId instanceof Types.ObjectId ? 'ObjectId' : typeof deptId) : 'N/A',
-            matchesFilter: filters.departmentId ? (
-              deptId?.toString() === filters.departmentId || 
-              (deptId instanceof Types.ObjectId && deptId.equals(new Types.ObjectId(filters.departmentId)))
-            ) : 'N/A'
+            departmentId: deptIdStr,
+            departmentIdType: deptId instanceof Types.ObjectId ? 'ObjectId' : (deptId ? typeof deptId : 'null/undefined'),
+            matchesFilter: deptIdStr === trimmedDeptId || 
+              (deptId instanceof Types.ObjectId && deptId.equals(new Types.ObjectId(trimmedDeptId)))
           };
         }));
-      } else if (filters.departmentId) {
-        console.warn(`[filterTeamLeaveData] ⚠️ No team members found for department ${filters.departmentId}`);
+      } else if (filters.departmentId && filters.departmentId.trim()) {
+        const trimmedDeptId = filters.departmentId.trim();
+        console.warn(`[filterTeamLeaveData] ⚠️ No team members found for department ${trimmedDeptId}`);
         console.warn(`[filterTeamLeaveData] Possible reasons:`);
         console.warn(`  1. No employees in this department have supervisorPositionId matching manager's position`);
         console.warn(`  2. Employees don't have a department assigned (primaryDepartmentId is null/undefined)`);
@@ -3232,9 +3350,9 @@ export class LeavesService {
         
         // Diagnostic: Check if any employees exist in this department at all
         const diagnosticQuery: any = {
-          primaryDepartmentId: Types.ObjectId.isValid(filters.departmentId)
-            ? new Types.ObjectId(filters.departmentId)
-            : filters.departmentId,
+          primaryDepartmentId: Types.ObjectId.isValid(trimmedDeptId)
+            ? new Types.ObjectId(trimmedDeptId)
+            : trimmedDeptId,
         };
         const allEmployeesInDept = await this.employeeProfileModel
           .find(diagnosticQuery)
@@ -3278,7 +3396,7 @@ export class LeavesService {
 
       // If no team members found, return empty results
       if (memberIds.length === 0) {
-        console.warn('No team members found. Query:', JSON.stringify(teamMembersQuery));
+        console.warn('[filterTeamLeaveData] No team members found. Base query:', JSON.stringify(baseQuery));
         return {
           total: 0,
           filters: {
@@ -3855,23 +3973,35 @@ export class LeavesService {
       }
 
       // Save and get the updated doc back
+      // For reduction/adjustment: only update remaining (don't touch accrued)
+      // For suspension/restoration: update accrued and let remaining be recalculated
+      const updateData: any = {};
+      
+      if (adjustmentType === 'reduction' || adjustmentType === 'adjustment') {
+        // Direct remaining change - don't pass accrued fields to avoid recalculation
+        updateData.remaining = entitlement.remaining;
+      } else {
+        // Suspension/restoration affect accrued, so update accrued fields
+        updateData.accruedActual = entitlement.accruedActual;
+        updateData.accruedRounded = entitlement.accruedRounded;
+        // remaining will be recalculated below
+      }
+      
       const updated = await this.updateLeaveEntitlement(
         entitlement._id.toString(),
-        {
-          accruedActual: entitlement.accruedActual,
-          accruedRounded: entitlement.accruedRounded,
-          remaining: adjustmentType === 'reduction' || adjustmentType === 'adjustment'
-            ? entitlement.remaining
-            : undefined, // Will be recalculated below
-        },
+        updateData,
       );
 
       if (!updated) {
         throw new Error('Failed to update entitlement');
       }
 
-      // Recalculate remaining using helper method for consistency
-      updated.remaining = this.calculateRemaining(updated);
+      // Recalculate remaining ONLY for suspension/restoration (which affect accrued)
+      // For reduction/adjustment, we directly modified remaining, so don't recalculate
+      if (adjustmentType === 'suspension' || adjustmentType === 'restoration') {
+        updated.remaining = this.calculateRemaining(updated);
+      }
+      // For reduction/adjustment, remaining was already set directly above, keep it as is
       
       // Clamp to avoid negative remaining (optional - depends on business rules)
       // updated.remaining = Math.max(0, updated.remaining);
@@ -4504,11 +4634,16 @@ export class LeavesService {
             continue;
           }
           
-          // Get the manager (department head)
-          const supervisorPosIdString = String(employee.supervisorPositionId);
+          // Get the manager (department head) - use flexible query to handle both ObjectId and string
+          const primaryPositionQuery = this.createFlexibleIdQuery('primaryPositionId', employee.supervisorPositionId);
+          if (!primaryPositionQuery) {
+            console.warn(`[AUTO-ESCALATION] Invalid supervisorPositionId format: ${employee.supervisorPositionId}`);
+            continue;
+          }
+          
           const manager = await this.employeeProfileModel
             .findOne({
-              primaryPositionId: supervisorPosIdString,
+              ...primaryPositionQuery,
               status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
             })
             .select('_id employeeNumber firstName lastName')
