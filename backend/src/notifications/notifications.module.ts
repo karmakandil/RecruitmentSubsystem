@@ -6,6 +6,7 @@ import { NotificationsController } from './notifications.controller';
 import { NotificationLogSchema } from '../time-management/models/notification-log.schema';
 import { ShiftAssignmentSchema } from '../time-management/models/shift-assignment.schema';
 import { EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
+import { EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { EmployeeProfileSchema } from '../employee-profile/models/employee-profi
       { name: 'NotificationLog', schema: NotificationLogSchema },
       { name: 'ShiftAssignment', schema: ShiftAssignmentSchema },
       { name: 'EmployeeProfile', schema: EmployeeProfileSchema },
+      { name: 'EmployeeSystemRole', schema: EmployeeSystemRoleSchema }, // Add this line
     ]),
   ],
   controllers: [NotificationsController],

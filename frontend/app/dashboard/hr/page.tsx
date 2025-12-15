@@ -22,7 +22,9 @@ export default function HRManagerDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">HR Manager Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white-900">
+          HR Manager Dashboard
+        </h1>
         <p className="text-gray-600 mt-1">
           Welcome, {user?.fullName || "Manager"}. Manage HR operations and
           employee workflows.
@@ -31,7 +33,7 @@ export default function HRManagerDashboardPage() {
 
       {/* HR Operations Section */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-white-900 mb-4">
           HR Operations
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -111,7 +113,8 @@ export default function HRManagerDashboardPage() {
           <CardHeader>
             <CardTitle className="text-xl">Leave Management</CardTitle>
             <CardDescription>
-              Manage leave requests: finalize approved requests, override decisions, process in bulk, and verify medical documents
+              Manage leave requests: finalize approved requests, override
+              decisions, process in bulk, and verify medical documents
             </CardDescription>
           </CardHeader>
           <CardContent>

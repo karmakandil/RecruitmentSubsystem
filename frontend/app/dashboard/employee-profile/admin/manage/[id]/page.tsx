@@ -92,10 +92,10 @@ export default function ManageProfilePage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-white-900">
             Manage Employee Profile
           </h1>
-          <p className="text-gray-600 mt-1">Employee ID: {id}</p>
+          <p className="text-white-600 mt-1">Employee ID: {id}</p>
         </div>
         <div className="flex gap-3 mt-4 md:mt-0">
           <Button
@@ -223,6 +223,7 @@ export default function ManageProfilePage() {
             </CardContent>
           </Card>
           {/* Organization */}
+
           <Card>
             <CardHeader>
               <CardTitle>Organization Information</CardTitle>
@@ -232,18 +233,65 @@ export default function ManageProfilePage() {
               <div>
                 <p className="text-sm font-medium text-gray-800">Department</p>
                 <p className="mt-1 text-gray-900">
-                  {profile.primaryDepartment?.name || "Not assigned"}
+                  {/* Handle both cases: object or string ID */}
+                  {(() => {
+                    if (
+                      profile.primaryDepartmentId &&
+                      typeof profile.primaryDepartmentId === "object"
+                    ) {
+                      return (
+                        (profile.primaryDepartmentId as any).name ||
+                        "Not assigned"
+                      );
+                    }
+                    return profile.primaryDepartment?.name || "Not assigned";
+                  })()}
                 </p>
+                {profile.primaryDepartmentId &&
+                  typeof profile.primaryDepartmentId === "object" &&
+                  (profile.primaryDepartmentId as any).code && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Code: {(profile.primaryDepartmentId as any).code}
+                    </p>
+                  )}
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-800">Position</p>
                 <p className="mt-1 text-gray-900">
-                  {profile.primaryPosition?.title || "Not assigned"}
+                  {/* Handle both cases: object or string ID */}
+                  {(() => {
+                    if (
+                      profile.primaryPositionId &&
+                      typeof profile.primaryPositionId === "object"
+                    ) {
+                      return (
+                        (profile.primaryPositionId as any).title ||
+                        "Not assigned"
+                      );
+                    }
+                    return profile.primaryPosition?.title || "Not assigned";
+                  })()}
                 </p>
+                {profile.primaryPositionId &&
+                  typeof profile.primaryPositionId === "object" &&
+                  (profile.primaryPositionId as any).code && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Code: {(profile.primaryPositionId as any).code}
+                    </p>
+                  )}
               </div>
+              {profile.payGradeId && (
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Pay Grade</p>
+                  <p className="mt-1 text-gray-900">
+                    {typeof profile.payGradeId === "object"
+                      ? (profile.payGradeId as any).grade || "Not set"
+                      : "Not set"}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
-
           {/* Education & Qualifications */}
           <Card className="lg:col-span-3">
             <CardHeader>
