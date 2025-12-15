@@ -51,8 +51,12 @@ api.interceptors.response.use(
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
-      },
-    });
+        message: error.message,
+        responseData: error.response?.data,
+        headers: error.response?.headers,
+        requestData: error.config?.data, // ADDED TO SEE WHAT WAS SENT
+      }
+    );
 
     // Handle specific status codes
     if (error.response?.status === 401) {
