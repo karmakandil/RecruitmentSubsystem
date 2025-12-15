@@ -44,6 +44,7 @@ export interface AssignShiftToDepartmentDto {
   includePositions?: string[];
   startDate?: Date;
   endDate?: Date;
+  status?: ShiftAssignmentStatus;
 }
 
 export interface AssignShiftToPositionDto {
@@ -51,6 +52,7 @@ export interface AssignShiftToPositionDto {
   shiftId: string;
   startDate?: Date;
   endDate?: Date;
+  status?: ShiftAssignmentStatus;
 }
 
 export interface UpdateShiftAssignmentDto {

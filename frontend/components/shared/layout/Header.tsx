@@ -20,6 +20,8 @@ export default function Header() {
   const isHR = isHRAdminOrManager(user);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN) ?? false;
+  const canConfigureShifts = isHRAdmin || isHRManager || isSystemAdmin;
 
   const navItemClass = (href: string) =>
     `text-sm font-medium transition-colors ${
@@ -79,6 +81,46 @@ export default function Header() {
                 >
                   Leaves
                 </Link>
+
+                <Link
+                  href="/dashboard/time-management"
+                  className={navItemClass("/dashboard/time-management")}
+                >
+                  Time Management
+                </Link>
+              </>
+            )}
+
+            {/* System Admin Navigation */}
+            {isSystemAdmin && !isHRAdmin && (
+              <>
+                <Link
+                  href="/dashboard/employee-profile/admin/search"
+                  className={navItemClass("/dashboard/employee-profile/admin")}
+                >
+                  Employees
+                </Link>
+
+                <Link
+                  href="/dashboard/time-management"
+                  className={navItemClass("/dashboard/time-management")}
+                >
+                  Time Management
+                </Link>
+
+                <Link
+                  href="/dashboard/admin"
+                  className={navItemClass("/dashboard/admin")}
+                >
+                  Admin
+                </Link>
+
+                <Link
+                  href="/dashboard/leaves"
+                  className={navItemClass("/dashboard/leaves")}
+                >
+                  Leaves
+                </Link>
               </>
             )}
 
@@ -102,6 +144,13 @@ export default function Header() {
                 </Link>
 
                 <Link
+                  href="/dashboard/time-management"
+                  className={navItemClass("/dashboard/time-management")}
+                >
+                  Time Management
+                </Link>
+
+                <Link
                   href="/dashboard/employee-profile/team"
                   className={navItemClass("/dashboard/employee-profile/team")}
                 >
@@ -118,13 +167,21 @@ export default function Header() {
             )}
 
             {/* Regular Employee Navigation */}
-            {!isHR && (
-              <Link
-                href="/dashboard/employee-profile/my-profile"
-                className={navItemClass("/dashboard/employee-profile/my-profile")}
-              >
-                My Profile
-              </Link>
+            {!isHR && !isSystemAdmin && (
+              <>
+                <Link
+                  href="/dashboard/employee-profile/my-profile"
+                  className={navItemClass("/dashboard/employee-profile/my-profile")}
+                >
+                  My Profile
+                </Link>
+                <Link
+                  href="/dashboard/time-management"
+                  className={navItemClass("/dashboard/time-management")}
+                >
+                  Time Management
+                </Link>
+              </>
             )}
 
             {/* Notification Bell - Available for All Users */}
