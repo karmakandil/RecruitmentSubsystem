@@ -15,13 +15,19 @@ export const api: AxiosInstance = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor
+// 🔐 Request interceptor – attach JWT if present
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Only run on client side
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("auth_token");
+      // Try multiple common keys so we don't depend on one name
+      const token =
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("jwt");
+
       if (token) {
+        config.headers = config.headers ?? {};
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
@@ -30,10 +36,10 @@ api.interceptors.request.use(
   (error) => {
     console.error("Request interceptor error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
-// Response interceptor - returns data directly
+// ✅ Response interceptor – return data directly
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     // Return the data property if it exists, otherwise return the full response
@@ -61,8 +67,16 @@ api.interceptors.response.use(
     // Handle specific status codes
     if (error.response?.status === 401) {
       console.log("Unauthorized - Clearing auth tokens");
+      },
+    );
+
+    if (error.response?.status === 401) {
+      console.log("🔒 401 Unauthorized - Clearing auth tokens");
       if (typeof window !== "undefined") {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("token");
+        localStorage.removeItem("jwt");
         localStorage.removeItem("user");
         window.location.href = "/auth/login";
       }
@@ -103,7 +117,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(new Error(errorMessage));
-  }
+  },
 );
 
 export default api;

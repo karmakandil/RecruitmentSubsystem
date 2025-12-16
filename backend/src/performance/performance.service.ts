@@ -143,7 +143,8 @@ export class PerformanceService {
       startDate: dto.startDate,
       endDate: dto.endDate,
       managerDueDate: dto.managerDueDate,
-      employeeAcknowledgementDueDate: dto.employeeAcknowledgementDueDate,
+      employeeAcknowledgementDueDate: dto
+        .employeeAcknowledgementDueDate,
       templateAssignments: dto.templateAssignments || [],
       status: AppraisalCycleStatus.PLANNED,
     }).save();
@@ -155,7 +156,9 @@ export class PerformanceService {
         employeeProfileId: new Types.ObjectId(a.employeeProfileId),
         managerProfileId: new Types.ObjectId(a.managerProfileId),
         departmentId: new Types.ObjectId(a.departmentId),
-        positionId: a.positionId ? new Types.ObjectId(a.positionId) : undefined,
+        positionId: a.positionId
+          ? new Types.ObjectId(a.positionId)
+          : undefined,
         status: AppraisalAssignmentStatus.NOT_STARTED,
         dueDate: a.dueDate ?? dto.managerDueDate ?? dto.endDate,
         assignedAt: new Date(),
@@ -189,7 +192,7 @@ export class PerformanceService {
     return cycle;
   }
 
-  async publishCycle(id: string): Promise<void> {
+  async publishCycle(id: string): Promise<AppraisalCycle> {
     const cycle = await this.cycleModel.findById(id).exec();
     if (!cycle) throw new NotFoundException('Appraisal cycle not found');
 
@@ -209,6 +212,8 @@ export class PerformanceService {
     cycle.status = AppraisalCycleStatus.CLOSED;
     cycle.publishedAt = new Date();
     await cycle.save();
+
+    return cycle;
   }
 
   async closeCycle(id: string): Promise<AppraisalCycle> {
@@ -255,30 +260,146 @@ export class PerformanceService {
   }
 
   // =============================================================
+  //                 CYCLE PROGRESS & REMINDERS
+  // =============================================================
+
+  async getCycleProgress(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).lean().exec();
+    if (!cycle) throw new NotFoundException('Appraisal cycle not found');
+
+    const assignments = await this.assignmentModel
+      .find({ cycleId: cycle._id })
+      .lean()
+      .exec();
+
+    const total = assignments.length;
+
+    const byStatus: Record<string, number> = {};
+    for (const a of assignments) {
+      const key = a.status || AppraisalAssignmentStatus.NOT_STARTED;
+      byStatus[key] = (byStatus[key] || 0) + 1;
+    }
+
+    const completedCount =
+      byStatus[AppraisalAssignmentStatus.SUBMITTED] || 0;
+
+    const byDepartmentMap: Record<
+      string,
+      { total: number; submitted: number }
+    > = {};
+
+    for (const a of assignments) {
+      const depId = String(a.departmentId);
+      if (!byDepartmentMap[depId]) {
+        byDepartmentMap[depId] = { total: 0, submitted: 0 };
+      }
+      byDepartmentMap[depId].total += 1;
+      if (a.status === AppraisalAssignmentStatus.SUBMITTED) {
+        byDepartmentMap[depId].submitted += 1;
+      }
+    }
+
+    const byDepartment = Object.entries(byDepartmentMap).map(
+      ([departmentId, stats]) => ({
+        departmentId,
+        totalAssignments: stats.total,
+        submitted: stats.submitted,
+        completionRate:
+          stats.total === 0
+            ? 0
+            : Math.round((stats.submitted / stats.total) * 100),
+      }),
+    );
+
+    return {
+      cycleId: cycle._id,
+      name: cycle.name,
+      status: cycle.status,
+      totalAssignments: total,
+      byStatus,
+      completionRate:
+        total === 0 ? 0 : Math.round((completedCount / total) * 100),
+      byDepartment,
+    };
+  }
+
+  async sendCycleReminders(cycleId: string) {
+    const cycle = await this.cycleModel.findById(cycleId).lean().exec();
+    if (!cycle) throw new NotFoundException('Appraisal cycle not found');
+
+    const pendingAssignments = await this.assignmentModel
+      .find({
+        cycleId: cycle._id,
+        status: {
+          $in: [
+            AppraisalAssignmentStatus.NOT_STARTED,
+            AppraisalAssignmentStatus.IN_PROGRESS,
+          ],
+        },
+      })
+      .lean()
+      .exec();
+
+    // TODO: integrate with Notification subsystem
+    // For now just return the list we would send reminders to
+    return {
+      cycleId: cycle._id,
+      cycleName: cycle.name,
+      pendingCount: pendingAssignments.length,
+      pendingAssignments,
+    };
+  }
+
+  // =============================================================
   //                 ASSIGNMENT QUERY LOGIC
   // =============================================================
 
   async getAssignmentsForManager(managerProfileId: string, cycleId?: string) {
-    const filter: any = { managerProfileId };
-    if (cycleId) filter.cycleId = cycleId;
-
-    return this.assignmentModel
-      .find(filter)
-      .populate('employeeProfileId templateId cycleId')
-      .lean()
-      .exec();
+  if (!Types.ObjectId.isValid(managerProfileId)) {
+    throw new BadRequestException('Invalid managerProfileId');
   }
+
+  const filter: any = {
+    managerProfileId: new Types.ObjectId(managerProfileId),
+  };
+  if (cycleId) {
+    if (!Types.ObjectId.isValid(cycleId)) {
+      throw new BadRequestException('Invalid cycleId');
+    }
+    filter.cycleId = new Types.ObjectId(cycleId);
+  }
+
+  // Optional debug logging while you test
+  // console.log('getAssignmentsForManager filter =', filter);
+
+  return this.assignmentModel
+    .find(filter)
+    .populate('employeeProfileId templateId cycleId')
+    .lean()
+    .exec();
+}
 
   async getAssignmentsForEmployee(employeeProfileId: string, cycleId?: string) {
-    const filter: any = { employeeProfileId };
-    if (cycleId) filter.cycleId = cycleId;
-
-    return this.assignmentModel
-      .find(filter)
-      .populate('templateId cycleId')
-      .lean()
-      .exec();
+  if (!Types.ObjectId.isValid(employeeProfileId)) {
+    throw new BadRequestException('Invalid employeeProfileId');
   }
+
+  const filter: any = {
+    employeeProfileId: new Types.ObjectId(employeeProfileId),
+  };
+  if (cycleId) {
+    if (!Types.ObjectId.isValid(cycleId)) {
+      throw new BadRequestException('Invalid cycleId');
+    }
+    filter.cycleId = new Types.ObjectId(cycleId);
+  }
+
+  return this.assignmentModel
+    .find(filter)
+    .populate('templateId cycleId')
+    .lean()
+    .exec();
+}
 
   // =============================================================
   //                 APPRAISAL RECORD LOGIC
@@ -370,6 +491,58 @@ export class PerformanceService {
       .exec();
   }
 
+  async getAppraisalById(id: string) {
+    const record = await this.recordModel
+      .findById(id)
+      .populate('assignmentId cycleId templateId managerProfileId')
+      .lean()
+      .exec();
+
+    if (!record) {
+      throw new NotFoundException('Appraisal record not found');
+    }
+
+    return record;
+  }
+
+  async getAppraisalsForReporting(filter: {
+    cycleId?: string;
+    departmentId?: string;
+    status?: string;
+  }) {
+    const query: any = {};
+
+    if (filter.cycleId) {
+      query.cycleId = new Types.ObjectId(filter.cycleId);
+    }
+    if (filter.status) {
+      query.status = filter.status;
+    }
+
+    if (filter.departmentId) {
+      const assignmentIds = await this.assignmentModel
+        .find({
+          departmentId: new Types.ObjectId(filter.departmentId),
+        })
+        .distinct('_id')
+        .exec();
+
+      if (assignmentIds.length === 0) {
+        return [];
+      }
+
+      query.assignmentId = { $in: assignmentIds };
+    }
+
+    return this.recordModel
+      .find(query)
+      .populate(
+        'assignmentId cycleId templateId employeeProfileId managerProfileId',
+      )
+      .lean()
+      .exec();
+  }
+
   // =============================================================
   //                          DISPUTES
   // =============================================================
@@ -393,7 +566,6 @@ export class PerformanceService {
       .exec();
     if (!assignment) throw new NotFoundException('Assignment not found');
 
-    // ✅ FIX: Add _id manually because your schema defines _id manually
     const dispute = new this.disputeModel({
       _id: new Types.ObjectId(),
       appraisalId: record._id,
@@ -423,6 +595,35 @@ export class PerformanceService {
     dispute.resolvedByEmployeeId = resolverEmployeeId as any;
 
     await dispute.save();
+    return dispute;
+  }
+
+  async getDisputesForAppraisal(appraisalId: string) {
+    return this.disputeModel
+      .find({ appraisalId: new Types.ObjectId(appraisalId) })
+      .lean()
+      .exec();
+  }
+
+  async getDisputes(filter: { cycleId?: string; status?: string }) {
+    const query: any = {};
+    if (filter.cycleId) {
+      query.cycleId = new Types.ObjectId(filter.cycleId);
+    }
+    if (filter.status) {
+      query.status = filter.status;
+    }
+
+    return this.disputeModel.find(query).lean().exec();
+  }
+
+  async getDisputeById(id: string) {
+    const dispute = await this.disputeModel.findById(id).lean().exec();
+
+    if (!dispute) {
+      throw new NotFoundException('Dispute not found');
+    }
+
     return dispute;
   }
 }
