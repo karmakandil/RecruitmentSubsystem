@@ -5,7 +5,6 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-
 // Format date
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return "—";

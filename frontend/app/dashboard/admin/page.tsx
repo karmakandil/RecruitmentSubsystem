@@ -68,6 +68,24 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
 
+          {/* ADDED: Organization Structure Card in HR Operations section */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle>Structure</CardTitle>
+              <CardDescription>
+                Manage departments and positions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/organization-structure"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Organization Structure
+              </Link>
+            </CardContent>
+          </Card>
+
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Team</CardTitle>
@@ -84,23 +102,6 @@ export default function AdminDashboardPage() {
               </Link>
             </CardContent>
           </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>My Profile</CardTitle>
-              <CardDescription>
-                View and manage your personal information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/employee-profile/my-profile"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                My Profile
-              </Link>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
@@ -110,6 +111,38 @@ export default function AdminDashboardPage() {
           System Administration
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* PROMOTED: Organization Structure in System Admin section with more prominent styling */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle className="text-lg">Organization Structure</CardTitle>
+              <CardDescription>
+                Define departments, positions, and manage hierarchy
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link
+                href="/dashboard/organization-structure"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Manage Structure
+              </Link>
+              <div className="grid grid-cols-2 gap-2">
+                <Link
+                  href="/dashboard/organization-structure/departments"
+                  className="text-center border border-green-600 text-green-600 py-2 px-3 rounded-md hover:bg-green-50 transition text-sm"
+                >
+                  Departments
+                </Link>
+                <Link
+                  href="/dashboard/organization-structure/positions"
+                  className="text-center border border-green-600 text-green-600 py-2 px-3 rounded-md hover:bg-green-50 transition text-sm"
+                >
+                  Positions
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Leaves Configuration</CardTitle>
@@ -174,23 +207,6 @@ export default function AdminDashboardPage() {
                 className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
               >
                 Manage Performance →
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <CardTitle>Organization Structure</CardTitle>
-              <CardDescription>
-                Manage departments, positions, and organizational hierarchy
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                href="/dashboard/organization-structure"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
-              >
-                Manage Structure →
               </Link>
             </CardContent>
           </Card>
