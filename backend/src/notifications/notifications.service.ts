@@ -38,7 +38,7 @@ export class NotificationsService {
     leaveDetails: any,
   ) {
     const notifications = [];
-
+    
     // Handle missing leaveDetails gracefully
     const details = leaveDetails || {
       employeeName: 'Employee',
@@ -46,8 +46,12 @@ export class NotificationsService {
       toDate: '',
       status: 'APPROVED',
     };
-
+    
     const message = `Leave request from ${details.employeeName} (${details.fromDate} to ${details.toDate}) has been finalized with status: ${details.status}`;
+
+    console.log(`[NOTIFICATION SERVICE] Creating LEAVE_FINALIZED notifications:`);
+    console.log(`  - Employee ID: ${employeeId}`);
+    console.log(`  - Manager ID: ${managerId}`);
 
     // Notify Employee
     notifications.push(
@@ -58,26 +62,32 @@ export class NotificationsService {
       }),
     );
 
-    // Notify Manager
-    notifications.push(
-      this.notificationLogModel.create({
-        to: new Types.ObjectId(managerId),
-        type: NotificationType.LEAVE_FINALIZED,
-        message: message,
-      }),
-    );
+    // Notify Manager (Department Head)
+    if (managerId) {
+      notifications.push(
+        this.notificationLogModel.create({
+          to: new Types.ObjectId(managerId),
+          type: NotificationType.LEAVE_FINALIZED,
+          message: message,
+        }),
+      );
+    }
 
-    // Notify Attendance Coordinator
-    notifications.push(
-      this.notificationLogModel.create({
-        to: new Types.ObjectId(coordinatorId),
-        type: NotificationType.LEAVE_FINALIZED,
-        message: message,
-      }),
-    );
+    // Note: coordinatorId is kept for backward compatibility but not used if it's the same as managerId
+    // Only notify coordinator if it's different from managerId to avoid duplicate notifications
+    if (coordinatorId && coordinatorId !== managerId) {
+      notifications.push(
+        this.notificationLogModel.create({
+          to: new Types.ObjectId(coordinatorId),
+          type: NotificationType.LEAVE_FINALIZED,
+          message: message,
+        }),
+      );
+    }
 
     await Promise.all(notifications);
-    return { success: true, notificationsCreated: 3 };
+    console.log(`[NOTIFICATION SERVICE] Created ${notifications.length} notifications for finalized leave request`);
+    return { success: true, notificationsCreated: notifications.length };
   }
 
   /**

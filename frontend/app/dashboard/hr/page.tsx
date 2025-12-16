@@ -135,24 +135,61 @@ export default function HRManagerDashboardPage() {
 
       {/* Leave Management Section */}
       <div className="mb-10">
-        <Card className="border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardHeader>
-            <CardTitle className="text-xl">Leave Management</CardTitle>
-            <CardDescription>
-              Manage leave requests: finalize approved requests, override
-              decisions, process in bulk, and verify medical documents
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={() => router.push("/dashboard/leaves/hr-manager")}
-              variant="primary"
-              className="w-full text-lg py-3"
-            >
-              Manage Leave Requests
-            </Button>
-          </CardContent>
-        </Card>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Leave Management
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+            <CardHeader>
+              <CardTitle>Manage Leave Requests</CardTitle>
+              <CardDescription>
+                Finalize approved requests, override decisions, process in bulk, and verify medical documents
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/hr-manager"
+                className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                Manage Leave Requests
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle>Manual Accrual</CardTitle>
+              <CardDescription>
+                Manually add leave days to employee balances for single or multiple employees
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/accrual"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Manual Accrual Management
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200">
+            <CardHeader>
+              <CardTitle>Manual Carry-Forward</CardTitle>
+              <CardDescription>
+                Run year-end/period carry-forward to move unused leave days to the next period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/carry-forward"
+                className="block w-full text-center bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition font-medium"
+              >
+                Manual Carry-Forward Management
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Time Management Section */}
