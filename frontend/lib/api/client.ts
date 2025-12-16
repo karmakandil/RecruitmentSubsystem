@@ -36,7 +36,7 @@ api.interceptors.request.use(
   (error) => {
     console.error("Request interceptor error:", error);
     return Promise.reject(error);
-  },
+  }
 );
 
 // ✅ Response interceptor – return data directly
@@ -64,21 +64,39 @@ api.interceptors.response.use(
       },
     });
 
-    // Handle specific status codes
     if (error.response?.status === 401) {
-      console.log("Unauthorized - Clearing auth tokens");
-      },
-    );
-
-    if (error.response?.status === 401) {
-      console.log("🔒 401 Unauthorized - Clearing auth tokens");
+      console.log("🔒 401 Unauthorized - Token may be invalid");
+      
+      // Only redirect if we're not already on the login page and it's not a network error
       if (typeof window !== "undefined") {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("token");
-        localStorage.removeItem("jwt");
-        localStorage.removeItem("user");
-        window.location.href = "/auth/login";
+        const currentPath = window.location.pathname;
+        const isLoginPage = currentPath.startsWith("/auth/login");
+        const isNetworkError = !error.response; // Network errors don't have response
+        
+        // Don't redirect if already on login page or if it's a network error
+        if (!isLoginPage && !isNetworkError) {
+          // Check if token exists - if not, might be a temporary issue
+          const token = localStorage.getItem("auth_token");
+          
+          if (token) {
+            // Token exists but got 401 - likely expired or invalid
+            console.log("Token exists but unauthorized - clearing and redirecting");
+            localStorage.removeItem("auth_token");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("token");
+            localStorage.removeItem("jwt");
+            localStorage.removeItem("user");
+            
+            // Use router if available, otherwise use window.location
+            // Add a small delay to prevent redirect loops
+            setTimeout(() => {
+              window.location.href = "/auth/login";
+            }, 100);
+          } else {
+            // No token - might be a temporary API issue, don't redirect aggressively
+            console.log("No token found - might be temporary issue, not redirecting");
+          }
+        }
       }
     }
 
@@ -117,7 +135,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(new Error(errorMessage));
-  },
+  }
 );
 
 export default api;

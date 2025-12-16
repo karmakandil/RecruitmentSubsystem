@@ -24,6 +24,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   initialize: () => {
+    // Set loading to true initially to prevent premature redirects
+    set({ loading: true });
+    
     const token = authApi.getToken();
     const user = authApi.getUser();
 
@@ -32,6 +35,13 @@ export const useAuthStore = create<AuthState>((set) => ({
         token,
         user,
         isAuthenticated: true,
+        loading: false,
+      });
+    } else {
+      // No token/user found, but mark loading as complete
+      set({
+        isAuthenticated: false,
+        loading: false,
       });
     }
   },
@@ -87,14 +97,31 @@ export const useAuthStore = create<AuthState>((set) => ({
     set((state) => {
       if (!state.user) return state;
 
+      // If updating profile picture, add cache-busting timestamp for display
+      // Extract clean URL (remove existing timestamp if any)
+      const cleanProfilePictureUrl = updates.profilePictureUrl
+        ? updates.profilePictureUrl.split('?')[0]
+        : state.user.profilePictureUrl?.split('?')[0];
+
+      const processedUpdates = updates.profilePictureUrl
+        ? {
+            ...updates,
+            profilePictureUrl: `${cleanProfilePictureUrl}?t=${Date.now()}`,
+          }
+        : updates;
+
       const updatedUser = {
         ...state.user,
-        ...updates,
+        ...processedUpdates,
       };
 
-      // Also update localStorage
+      // Store clean URL in localStorage (without timestamp)
       if (typeof window !== "undefined") {
-        localStorage.setItem("user", JSON.stringify(updatedUser));
+        const userForStorage = {
+          ...updatedUser,
+          profilePictureUrl: cleanProfilePictureUrl || updatedUser.profilePictureUrl?.split('?')[0],
+        };
+        localStorage.setItem("user", JSON.stringify(userForStorage));
       }
 
       return { user: updatedUser };

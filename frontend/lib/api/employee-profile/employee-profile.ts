@@ -273,7 +273,12 @@ export const employeeProfileApi = {
     const response = await api.get<{ message: string; data: string }>(
       `/employee-profile/${id}/pdf`
     );
-    return (response.data as any).data || response.data; // This should be the base64 string
+    // Interceptor returns response.data directly, so response is already the data object
+    // Handle nested data.data structure if backend returns it
+    if (response && typeof response === "object" && "data" in response) {
+      return (response as any).data || response;
+    }
+    return response as string;
   },
 
   // Update contact info
@@ -347,9 +352,10 @@ export const employeeProfileApi = {
       });
       console.log("Direct method response:", response);
 
-      // Simple extraction
-      if (response && response.data && Array.isArray(response.data)) {
-        return response.data;
+      // Interceptor returns response.data directly, so response is already the data
+      // Handle nested data structure if backend wraps it
+      if (response && typeof response === "object" && "data" in response && Array.isArray((response as any).data)) {
+        return (response as any).data;
       }
       if (Array.isArray(response)) {
         return response;

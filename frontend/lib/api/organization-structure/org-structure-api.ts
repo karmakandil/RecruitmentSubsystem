@@ -1,4 +1,6 @@
 import { api } from "../client";
+// NOTE: The api interceptor returns response.data directly, so we use type assertions
+// to tell TypeScript the actual return type (not AxiosResponse)
 
 // Interfaces for Organization Structure - These will be refined based on backend API
 export interface Department {
@@ -190,26 +192,24 @@ export interface StructureChangeLog {
 }
 
 // API calls for Departments
+// NOTE: The Axios interceptor returns response.data directly, so we don't need to access .data here
 export const organizationStructureApi = {
   createDepartment: async (data: CreateDepartmentDto): Promise<Department> => {
-    const response = await api.post<Department>("/organization-structure/departments", data);
-    return response.data;
+    const response = await api.post("/organization-structure/departments", data);
+    return response as unknown as Department;
   },
 
   getDepartments: async (isActive?: boolean): Promise<Department[]> => {
     const params = isActive !== undefined ? { isActive } : {};
-    const response = await api.get<Department[]>("/organization-structure/departments", { params });
-    return response.data;
+    return (await api.get("/organization-structure/departments", { params })) as unknown as Department[];
   },
 
   getDepartmentById: async (id: string): Promise<Department> => {
-    const response = await api.get<Department>(`/organization-structure/departments/${id}`);
-    return response.data;
+    return (await api.get(`/organization-structure/departments/${id}`)) as unknown as Department;
   },
 
   updateDepartment: async (id: string, data: UpdateDepartmentDto): Promise<Department> => {
-    const response = await api.put<Department>(`/organization-structure/departments/${id}`, data);
-    return response.data;
+    return (await api.put(`/organization-structure/departments/${id}`, data)) as unknown as Department;
   },
 
   deactivateDepartment: async (id: string): Promise<void> => {
@@ -217,14 +217,12 @@ export const organizationStructureApi = {
   },
 
   getDepartmentHierarchy: async (): Promise<any> => {
-    const response = await api.get("/organization-structure/departments/hierarchy/all");
-    return response.data;
+    return await api.get("/organization-structure/departments/hierarchy/all");
   },
 
   // API calls for Positions
   createPosition: async (data: CreatePositionDto): Promise<Position> => {
-    const response = await api.post<Position>("/organization-structure/positions", data);
-    return response.data;
+    return (await api.post("/organization-structure/positions", data)) as unknown as Position;
   },
 
   getPositions: async (departmentId?: string, isActive?: boolean): Promise<Position[]> => {
@@ -235,18 +233,15 @@ export const organizationStructureApi = {
     if (isActive !== undefined) {
       params.isActive = isActive;
     }
-    const response = await api.get<Position[]>("/organization-structure/positions", { params });
-    return response.data;
+    return (await api.get("/organization-structure/positions", { params })) as unknown as Position[];
   },
 
   getPositionById: async (id: string): Promise<Position> => {
-    const response = await api.get<Position>(`/organization-structure/positions/${id}`);
-    return response.data;
+    return (await api.get(`/organization-structure/positions/${id}`)) as unknown as Position;
   },
 
   updatePosition: async (id: string, data: UpdatePositionDto): Promise<Position> => {
-    const response = await api.put<Position>(`/organization-structure/positions/${id}`, data);
-    return response.data;
+    return (await api.put(`/organization-structure/positions/${id}`, data)) as unknown as Position;
   },
 
   deactivatePosition: async (id: string): Promise<void> => {
@@ -254,83 +249,68 @@ export const organizationStructureApi = {
   },
 
   getPositionHierarchy: async (id: string): Promise<any> => {
-    const response = await api.get(`/organization-structure/positions/${id}/hierarchy`);
-    return response.data;
+    return await api.get(`/organization-structure/positions/${id}/hierarchy`);
   },
 
   // API calls for Position Assignments
   createPositionAssignment: async (data: CreatePositionAssignmentDto): Promise<PositionAssignment> => {
-    const response = await api.post<PositionAssignment>("/organization-structure/assignments", data);
-    return response.data;
+    return (await api.post("/organization-structure/assignments", data)) as unknown as PositionAssignment;
   },
 
   getEmployeeAssignments: async (employeeProfileId: string, activeOnly?: boolean): Promise<PositionAssignment[]> => {
     const params = activeOnly !== undefined ? { activeOnly } : {};
-    const response = await api.get<PositionAssignment[]>(`/organization-structure/assignments/employee/${employeeProfileId}`, { params });
-    return response.data;
+    return (await api.get(`/organization-structure/assignments/employee/${employeeProfileId}`, { params })) as unknown as PositionAssignment[];
   },
 
   getPositionAssignments: async (positionId: string): Promise<PositionAssignment[]> => {
-    const response = await api.get<PositionAssignment[]>(`/organization-structure/assignments/position/${positionId}`);
-    return response.data;
+    return (await api.get(`/organization-structure/assignments/position/${positionId}`)) as unknown as PositionAssignment[];
   },
 
   updatePositionAssignment: async (id: string, data: UpdatePositionAssignmentDto): Promise<PositionAssignment> => {
-    const response = await api.patch<PositionAssignment>(`/organization-structure/assignments/${id}`, data);
-    return response.data;
+    return (await api.patch(`/organization-structure/assignments/${id}`, data)) as unknown as PositionAssignment;
   },
 
   endPositionAssignment: async (id: string, endDate: string): Promise<PositionAssignment> => {
-    const response = await api.patch<PositionAssignment>(`/organization-structure/assignments/${id}/end`, { endDate });
-    return response.data;
+    return (await api.patch(`/organization-structure/assignments/${id}/end`, { endDate })) as unknown as PositionAssignment;
   },
 
   // API calls for Change Requests
   createChangeRequest: async (data: CreateStructureChangeRequestDto): Promise<StructureChangeRequest> => {
-    const response = await api.post<StructureChangeRequest>("/organization-structure/change-requests", data);
-    return response.data;
+    return (await api.post("/organization-structure/change-requests", data)) as unknown as StructureChangeRequest;
   },
 
   getAllChangeRequests: async (status?: StructureRequestStatus): Promise<StructureChangeRequest[]> => {
     const params = status ? { status } : {};
-    const response = await api.get<StructureChangeRequest[]>("/organization-structure/change-requests", { params });
-    return response.data;
+    return (await api.get("/organization-structure/change-requests", { params })) as unknown as StructureChangeRequest[];
   },
 
   getChangeRequestById: async (id: string): Promise<StructureChangeRequest> => {
-    const response = await api.get<StructureChangeRequest>(`/organization-structure/change-requests/${id}`);
-    return response.data;
+    return (await api.get(`/organization-structure/change-requests/${id}`)) as unknown as StructureChangeRequest;
   },
 
   updateChangeRequest: async (id: string, data: UpdateStructureChangeRequestDto): Promise<StructureChangeRequest> => {
-    const response = await api.put<StructureChangeRequest>(`/organization-structure/change-requests/${id}`, data);
-    return response.data;
+    return (await api.put(`/organization-structure/change-requests/${id}`, data)) as unknown as StructureChangeRequest;
   },
 
   submitChangeRequest: async (id: string, data: SubmitChangeRequestDto): Promise<StructureChangeRequest> => {
-    const response = await api.post<StructureChangeRequest>(`/organization-structure/change-requests/${id}/submit`, data);
-    return response.data;
+    return (await api.post(`/organization-structure/change-requests/${id}/submit`, data)) as unknown as StructureChangeRequest;
   },
 
   cancelChangeRequest: async (id: string): Promise<StructureChangeRequest> => {
-    const response = await api.post<StructureChangeRequest>(`/organization-structure/change-requests/${id}/cancel`);
-    return response.data;
+    return (await api.post(`/organization-structure/change-requests/${id}/cancel`)) as unknown as StructureChangeRequest;
   },
 
   // API calls for Approvals
   createApproval: async (data: CreateStructureApprovalDto): Promise<StructureApproval> => {
-    const response = await api.post<StructureApproval>("/organization-structure/approvals", data);
-    return response.data;
+    return (await api.post("/organization-structure/approvals", data)) as unknown as StructureApproval;
   },
 
   updateApprovalDecision: async (id: string, data: UpdateApprovalDecisionDto): Promise<StructureApproval> => {
-    const response = await api.patch<StructureApproval>(`/organization-structure/approvals/${id}/decision`, data);
-    return response.data;
+    return (await api.patch(`/organization-structure/approvals/${id}/decision`, data)) as unknown as StructureApproval;
   },
 
   getRequestApprovals: async (changeRequestId: string): Promise<StructureApproval[]> => {
-    const response = await api.get<StructureApproval[]>(`/organization-structure/approvals/change-request/${changeRequestId}`);
-    return response.data;
+    return (await api.get(`/organization-structure/approvals/change-request/${changeRequestId}`)) as unknown as StructureApproval[];
   },
 
   // API calls for Change Logs
@@ -342,12 +322,10 @@ export const organizationStructureApi = {
     if (entityId) {
       params.entityId = entityId;
     }
-    const response = await api.get<StructureChangeLog[]>("/organization-structure/change-logs", { params });
-    return response.data;
+    return (await api.get("/organization-structure/change-logs", { params })) as unknown as StructureChangeLog[];
   },
 
   getEntityChangeLogs: async (entityType: string, entityId: string): Promise<StructureChangeLog[]> => {
-    const response = await api.get<StructureChangeLog[]>(`/organization-structure/change-logs/${entityType}/${entityId}`);
-    return response.data;
+    return (await api.get(`/organization-structure/change-logs/${entityType}/${entityId}`)) as unknown as StructureChangeLog[];
   },
 };

@@ -64,20 +64,28 @@ export default function ProfilePhotoUpload({
 
       showToast("Profile photo updated successfully", "success");
 
-      // 1. Update parent component if needed
+      // 1. Update auth store FIRST (HEADER WILL UPDATE IMMEDIATELY)
+      // Add cache-busting timestamp to force browser refresh
+      const urlWithTimestamp = `${profilePictureUrl}?t=${Date.now()}`;
+      updateUser({ profilePictureUrl: urlWithTimestamp });
+
+      // 2. Update parent component if needed
       if (onPhotoUpdated) {
         onPhotoUpdated(profilePictureUrl);
       }
 
-      // 2. Update auth store (HEADER WILL UPDATE IMMEDIATELY)
-      updateUser({ profilePictureUrl });
-
-      // 3. Optional: Force slight delay for smooth UI update
+      // 3. Clear preview and force image refresh by updating the display URL
+      setPreviewUrl(null);
+      
+      // Force a re-render by updating the current photo URL with timestamp
+      // This ensures the image refreshes immediately
       setTimeout(() => {
-        setPreviewUrl(null);
-      }, 500);
+        // Trigger a state update to force image reload
+        window.dispatchEvent(new Event('profilePictureUpdated'));
+      }, 100);
     } catch (error: any) {
       showToast(error.message || "Failed to upload photo", "error");
+      setPreviewUrl(null);
     } finally {
       setUploading(false);
     }
@@ -101,6 +109,11 @@ export default function ProfilePhotoUpload({
                 src={displayUrl}
                 alt="Profile"
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
+                key={displayUrl}
+                onError={(e) => {
+                  // Hide image if it fails to load
+                  e.currentTarget.style.display = 'none';
+                }}
               />
               {previewUrl && (
                 <button

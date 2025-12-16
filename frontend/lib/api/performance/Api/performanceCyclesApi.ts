@@ -1,10 +1,10 @@
-// frontend/components/Performance/Api/performanceCyclesApi.ts
+// frontend/lib/api/performance/Api/performanceCyclesApi.ts
 
 import api from "@/lib/api/client";
 import {
   AppraisalCycle,
   CreateAppraisalCycleInput,
-} from "../performanceCycles";
+} from "@/components/Performance/performanceCycles";
 
 const CYCLES_BASE_PATH = "/performance/cycles";
 

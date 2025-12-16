@@ -60,77 +60,20 @@ export default function Header() {
           <div className="flex items-center space-x-6">
             {/* Navigation Links */}
             <nav className="flex items-center space-x-6">
-              {/* HR Admin Navigation */}
-              {isHRAdmin && (
-                <>
-                  <Link
-                    href="/dashboard/employee-profile/admin/search"
-                    className={navItemClass(
-                      "/dashboard/employee-profile/admin"
-                    )}
-                  >
-                    Employees
-                  </Link>
-
-                  <Link
-                    href="/dashboard/employee-profile/admin/approvals"
-                    className={navItemClass(
-                      "/dashboard/employee-profile/admin/approvals"
-                    )}
-                  >
-                    Approvals
-                  </Link>
-
-                  <Link
-                    href="/dashboard/employee-profile/team"
-                    className={navItemClass("/dashboard/employee-profile/team")}
-                  >
-                    Team
-                  </Link>
-
-                  <Link
-                    href="/dashboard/admin"
-                    className={navItemClass("/dashboard/admin")}
-                  >
-                    Admin
-                  </Link>
-                </>
-              )}
-
-              {/* HR Manager Navigation */}
-              {isHRManager && !isHRAdmin && (
-                <>
-                  <Link
-                    href="/dashboard/employee-profile/admin/search"
-                    className={navItemClass(
-                      "/dashboard/employee-profile/admin"
-                    )}
-                  >
-                    Employees
-                  </Link>
-
-                  <Link
-                    href="/dashboard/employee-profile/admin/approvals"
-                    className={navItemClass(
-                      "/dashboard/employee-profile/admin/approvals"
-                    )}
-                  >
-                    Approvals
-                  </Link>
-
-                  <Link
-                    href="/dashboard/employee-profile/team"
-                    className={navItemClass("/dashboard/employee-profile/team")}
-                  >
-                    Team
-                  </Link>
-                </>
-              )}
-
               {/* All Authenticated Users */}
               <Link href="/dashboard" className={navItemClass("/dashboard")}>
                 Dashboard
               </Link>
+
+              {/* Admin Link - Only for HR Admins */}
+              {isHRAdmin && (
+                <Link
+                  href="/dashboard/admin"
+                  className={navItemClass("/dashboard/admin")}
+                >
+                  Admin
+                </Link>
+              )}
 
               {/* Notification Bell */}
               <NotificationBell />
@@ -149,6 +92,11 @@ export default function Header() {
                       src={user.profilePictureUrl}
                       alt={user.fullName || "User"}
                       className="w-9 h-9 rounded-full object-cover border-2 border-white shadow-sm"
+                      key={user.profilePictureUrl}
+                      onError={(e) => {
+                        // Fallback to default avatar if image fails to load
+                        e.currentTarget.style.display = 'none';
+                      }}
                     />
                   ) : (
                     <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm">
@@ -208,21 +156,12 @@ export default function Header() {
 
                   {/* Menu Items */}
                   <Link
-                    href="/dashboard/employee-profile/my-profile"
-                    onClick={() => setIsProfileOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    <UserCircle className="h-4 w-4 text-gray-500" />
-                    <span>My Profile</span>
-                  </Link>
-
-                  <Link
-                    href="/dashboard/employee-profile/my-profile/edit"
+                    href="/dashboard"
                     onClick={() => setIsProfileOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     <Settings className="h-4 w-4 text-gray-500" />
-                    <span>Edit Profile</span>
+                    <span>Dashboard</span>
                   </Link>
 
                   {isHRAdmin && (

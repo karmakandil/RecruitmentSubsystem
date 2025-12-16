@@ -23,6 +23,7 @@ export const useRequireAuth = (
   const router = useRouter();
   const { isAuthenticated, user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [hasChecked, setHasChecked] = useState(false);
 
   const hasRequiredRole = useMemo(() => {
     if (!requiredRole) return true;
@@ -34,22 +35,44 @@ export const useRequireAuth = (
   }, [user, requiredRole]);
 
   useEffect(() => {
-    if (!loading) {
-      if (!isAuthenticated) {
-        router.replace(redirectTo || "/auth/login");
-      } else if (!hasRequiredRole) {
-        const fallback = getPrimaryDashboard(user);
-        router.replace(fallback);
-      } else if (
-        requiredUserType &&
-        user?.userType &&
-        user.userType !== requiredUserType
-      ) {
-        const fallback = getPrimaryDashboard(user);
-        router.replace(fallback);
-      }
-      setIsLoading(false);
+    // Wait for loading to complete before making decisions
+    if (loading) {
+      setHasChecked(false);
+      return;
     }
+
+    // Mark that we've checked
+    setHasChecked(true);
+
+    // Only redirect if we're certain after loading completes
+    if (!isAuthenticated) {
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      if (!currentPath.startsWith("/auth/login")) {
+        // Small delay to prevent redirect loops
+        const timer = setTimeout(() => {
+          router.replace(redirectTo || "/auth/login");
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    } else if (!hasRequiredRole) {
+      const fallback = getPrimaryDashboard(user);
+      const timer = setTimeout(() => {
+        router.replace(fallback);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (
+      requiredUserType &&
+      user?.userType &&
+      user.userType !== requiredUserType
+    ) {
+      const fallback = getPrimaryDashboard(user);
+      const timer = setTimeout(() => {
+        router.replace(fallback);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+    
+    setIsLoading(false);
   }, [
     loading,
     isAuthenticated,
@@ -58,9 +81,10 @@ export const useRequireAuth = (
     user?.userType,
     redirectTo,
     router,
+    user,
   ]);
 
-  return { isLoading };
+  return { isLoading: isLoading || !hasChecked };
 };
 
 export const useRequireUserType = (
@@ -70,6 +94,7 @@ export const useRequireUserType = (
   const router = useRouter();
   const { isAuthenticated, user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [hasChecked, setHasChecked] = useState(false);
 
   const matchesType = useMemo(() => {
     if (!user) return false;
@@ -77,15 +102,35 @@ export const useRequireUserType = (
   }, [user, expectedType]);
 
   useEffect(() => {
-    if (!loading) {
-      if (!isAuthenticated) {
-        router.replace(redirectTo || "/auth/login");
-      } else if (!matchesType) {
-        router.replace(redirectTo || "/auth/login");
-      }
-      setIsLoading(false);
+    // Wait for loading to complete
+    if (loading) {
+      setHasChecked(false);
+      return;
     }
+
+    setHasChecked(true);
+
+    // Only redirect if we're certain after loading completes
+    if (!isAuthenticated) {
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      if (!currentPath.startsWith("/auth/login")) {
+        const timer = setTimeout(() => {
+          router.replace(redirectTo || "/auth/login");
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    } else if (!matchesType) {
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      if (!currentPath.startsWith("/auth/login")) {
+        const timer = setTimeout(() => {
+          router.replace(redirectTo || "/auth/login");
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+    
+    setIsLoading(false);
   }, [loading, isAuthenticated, matchesType, redirectTo, router]);
 
-  return { isLoading };
+  return { isLoading: isLoading || !hasChecked };
 };

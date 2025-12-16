@@ -3,7 +3,7 @@ import {
   AppraisalTemplate,
   CreateAppraisalTemplateInput,
   UpdateAppraisalTemplateInput,
-} from "../performanceTemplates";
+} from "@/components/Performance/performanceTemplates";
 
 // Matches NestJS controller: /api/v1/performance/templates
 const TEMPLATES_BASE_PATH = "/performance/templates";
