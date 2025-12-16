@@ -108,6 +108,7 @@ export interface TeamMember {
   dateOfHire: string;
   workEmail?: string;
   mobilePhone?: string;
+  profilePictureUrl?: string; // ADD THIS LINE
 }
 
 // Update Profile DTO - based on your backend DTOs
@@ -160,6 +161,7 @@ export interface User {
   userType: "employee" | "candidate";
   username?: string;
   permissions?: string[];
+  profilePictureUrl?: string; // ADD THIS
 }
 
 // Add the rest of your existing types...
@@ -246,4 +248,33 @@ export enum MaritalStatus {
   MARRIED = "MARRIED",
   DIVORCED = "DIVORCED",
   WIDOWED = "WIDOWED",
+}
+
+export interface EmployeeQualification {
+  id: string;
+  _id?: string;
+  employeeProfileId: string;
+  establishmentName: string;
+  graduationType: GraduationType | string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export enum GraduationType {
+  UNDERGRADE = "UNDERGRADE",
+  BACHELOR = "BACHELOR",
+  MASTER = "MASTER",
+  PHD = "PHD",
+  OTHER = "OTHER",
+}
+
+// Add to existing types
+export interface CreateQualificationDto {
+  establishmentName: string;
+  graduationType: string;
+}
+
+export interface UpdateQualificationDto {
+  establishmentName?: string;
+  graduationType?: string;
 }

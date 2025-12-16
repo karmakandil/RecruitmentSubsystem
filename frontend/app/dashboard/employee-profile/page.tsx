@@ -61,11 +61,11 @@ export default function EmployeeProfileDashboardPage() {
       <div className="container mx-auto px-6 py-8">
         {/* Top Context Section - Enhanced for HR Workspace */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-white-900">
             {isHRWorkspace ? "HR Workspace" : "Employee Profile Dashboard"}
           </h1>
           <div className="mt-2 flex items-center gap-3">
-            <p className="text-gray-600">
+            <p className="text-white-600">
               Welcome, {user?.fullName || "User"}
             </p>
             {isHR && (

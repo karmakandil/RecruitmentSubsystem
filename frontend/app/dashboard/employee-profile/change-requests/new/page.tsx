@@ -1,3 +1,4 @@
+// app/dashboard/employee-profile/change-requests/new/page.tsx - FIXED TEXT COLORS
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -74,7 +75,6 @@ export default function NewChangeRequestPage() {
       }
 
       const payload = JSON.stringify({ type: changeType, changes });
-      // Auto-subject based on type if not provided
       const autoSubjectMap: Record<string, string> = {
         LEGAL_NAME: "Legal Name Change Request",
         NATIONAL_ID: "National ID Change Request",
@@ -117,7 +117,9 @@ export default function NewChangeRequestPage() {
           isVisible={toast.isVisible}
           onClose={hideToast}
         />
-        <h1 className="text-3xl font-bold text-gray-900">New Change Request</h1>
+        <h1 className="text-3xl font-bold text-white-900">
+          New Change Request
+        </h1>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <Select
             label="Change Type"
@@ -140,6 +142,7 @@ export default function NewChangeRequestPage() {
               { value: "MARITAL_STATUS", label: "Marital Status" },
             ]}
             placeholder="Select type"
+            className="text-black"
           />
 
           {changeType === "LEGAL_NAME" && (
@@ -149,18 +152,21 @@ export default function NewChangeRequestPage() {
                 placeholder="First name"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
+                className="text-white-900"
               />
               <Input
                 label="Middle Name"
                 placeholder="Middle name"
                 value={middleName}
                 onChange={(e) => setMiddleName(e.target.value)}
+                className="text-white-900"
               />
               <Input
                 label="Last Name"
                 placeholder="Last name"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
+                className="text-white-900"
               />
             </div>
           )}
@@ -171,6 +177,7 @@ export default function NewChangeRequestPage() {
               placeholder="14-digit ID"
               value={nationalId}
               onChange={(e) => setNationalId(e.target.value)}
+              className="text-white-900"
             />
           )}
 
@@ -181,12 +188,14 @@ export default function NewChangeRequestPage() {
                 placeholder="Position ObjectId"
                 value={positionId}
                 onChange={(e) => setPositionId(e.target.value)}
+                className="text-white-900"
               />
               <Input
                 label="Department ID (optional)"
                 placeholder="Department ObjectId"
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
+                className="text-white-900"
               />
             </div>
           )}
@@ -203,6 +212,7 @@ export default function NewChangeRequestPage() {
                 { value: "WIDOWED", label: "Widowed" },
               ]}
               placeholder="Select status"
+              className="text-white-900"
             />
           )}
 
@@ -211,6 +221,7 @@ export default function NewChangeRequestPage() {
             placeholder="Request subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
+            className="text-white-900"
           />
           <Textarea
             label="Details"
@@ -218,6 +229,7 @@ export default function NewChangeRequestPage() {
             placeholder="Describe your request"
             value={details}
             onChange={(e) => setDetails(e.target.value)}
+            className="text-white"
           />
           <Button type="submit" isLoading={saving}>
             Submit Request

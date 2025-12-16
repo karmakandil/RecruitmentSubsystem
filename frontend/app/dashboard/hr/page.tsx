@@ -22,7 +22,9 @@ export default function HRManagerDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">HR Manager Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white-900">
+          HR Manager Dashboard
+        </h1>
         <p className="text-gray-600 mt-1">
           Welcome, {user?.fullName || "Manager"}. Manage HR operations and
           employee workflows.
@@ -31,7 +33,7 @@ export default function HRManagerDashboardPage() {
 
       {/* HR Operations Section */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-white-900 mb-4">
           HR Operations
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -69,6 +71,24 @@ export default function HRManagerDashboardPage() {
             </CardContent>
           </Card>
 
+          {/* ADDED: Organization Structure Card */}
+          <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+            <CardHeader>
+              <CardTitle>Structure</CardTitle>
+              <CardDescription>
+                Submit requests for organizational changes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/organization-structure"
+                className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+              >
+                Organization Structure
+              </Link>
+            </CardContent>
+          </Card>
+
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <CardTitle>Team</CardTitle>
@@ -85,20 +105,28 @@ export default function HRManagerDashboardPage() {
               </Link>
             </CardContent>
           </Card>
+        </div>
+      </div>
 
-          <Card className="hover:shadow-lg transition-shadow">
+      {/* Performance Management Section – Appraisal Templates */}
+      <div className="mb-10">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+          Performance Management
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50">
             <CardHeader>
-              <CardTitle>My Profile</CardTitle>
+              <CardTitle>Appraisal Templates</CardTitle>
               <CardDescription>
-                View and manage your personal information
+                Configure standardized appraisal templates and rating scales
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/employee-profile/my-profile"
-                className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+                href="/dashboard/performance/templates"
+                className="block w-full text-center bg-indigo-600 text-white py-3 px-4 rounded-md hover:bg-indigo-700 transition font-medium"
               >
-                My Profile
+                Manage Appraisal Templates
               </Link>
             </CardContent>
           </Card>
@@ -111,7 +139,8 @@ export default function HRManagerDashboardPage() {
           <CardHeader>
             <CardTitle className="text-xl">Leave Management</CardTitle>
             <CardDescription>
-              Manage leave requests: finalize approved requests, override decisions, process in bulk, and verify medical documents
+              Manage leave requests: finalize approved requests, override
+              decisions, process in bulk, and verify medical documents
             </CardDescription>
           </CardHeader>
           <CardContent>

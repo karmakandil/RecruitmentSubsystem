@@ -19,16 +19,31 @@ export function ProtectedRoute({
   requiredUserType,
   redirectTo = "/dashboard",
 }: ProtectedRouteProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
-
-    if (!user) {
-      router.push("/auth/login");
+    // Wait for loading to complete
+    if (loading) {
+      setHasChecked(false);
       return;
+    }
+
+    // Mark that we've checked
+    setHasChecked(true);
+
+    // Only redirect if we're sure there's no user (after loading completes)
+    if (!user && !isAuthenticated) {
+      // Small delay to prevent redirect loops during navigation
+      const timer = setTimeout(() => {
+        const currentPath = window.location.pathname;
+        if (!currentPath.startsWith("/auth/login")) {
+          router.push("/auth/login");
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
 
     let hasAccess = true;
@@ -67,9 +82,10 @@ export function ProtectedRoute({
     }
 
     setIsAuthorized(true);
-  }, [user, loading, allowedRoles, requiredUserType, router, redirectTo]);
+  }, [user, loading, isAuthenticated, allowedRoles, requiredUserType, router, redirectTo]);
 
-  if (loading || !isAuthorized) {
+  // Show loading while checking auth or if not yet authorized
+  if (loading || !hasChecked || (!isAuthorized && hasChecked)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

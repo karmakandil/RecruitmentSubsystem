@@ -65,8 +65,15 @@ export const fetchPositions = async (activeOnly: boolean = true, departmentId?: 
 
 export const fetchEmployees = async (): Promise<any[]> => {
   const response = await api.get('/employee-profile');
-  // The API returns { message, data: [...], total, ... }
-  return response.data || response;
+  // Interceptor returns response.data directly, so response is already the data
+  // Handle nested data structure if backend wraps it
+  if (response && typeof response === "object" && "data" in response && Array.isArray((response as any).data)) {
+    return (response as any).data;
+  }
+  if (Array.isArray(response)) {
+    return response;
+  }
+  return [];
 };
 
 export const shiftScheduleApi = {

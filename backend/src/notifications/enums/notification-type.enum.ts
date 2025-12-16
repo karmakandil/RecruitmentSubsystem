@@ -16,4 +16,10 @@ export enum NotificationType {
   MISSED_PUNCH = 'missed_punch',
   MISSED_PUNCH_EMPLOYEE_ALERT = 'MISSED_PUNCH_EMPLOYEE_ALERT',
   MISSED_PUNCH_MANAGER_ALERT = 'MISSED_PUNCH_MANAGER_ALERT',
+
+  // Employee Profile Module Notifications
+  PROFILE_CHANGE_REQUEST_SUBMITTED = 'profile_change_request_submitted',
+  PROFILE_CHANGE_APPROVED = 'profile_change_approved',
+  PROFILE_CHANGE_REJECTED = 'profile_change_rejected',
+  PROFILE_UPDATED = 'profile_updated',
 }

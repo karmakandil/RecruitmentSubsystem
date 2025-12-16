@@ -1,3 +1,4 @@
+// app/dashboard/employee-profile/change-requests/page.tsx - FIXED TEXT COLORS
 "use client";
 
 import Link from "next/link";
@@ -73,19 +74,29 @@ export default function ChangeRequestsPage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3">Request ID</th>
-                      <th className="text-left py-2 px-3">Description</th>
-                      <th className="text-left py-2 px-3">Status</th>
-                      <th className="text-left py-2 px-3">Submitted</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-700">
+                        Request ID
+                      </th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-700">
+                        Description
+                      </th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-700">
+                        Status
+                      </th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-700">
+                        Submitted
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {requests.map((r) => (
                       <tr key={r.id} className="border-b border-gray-100">
-                        <td className="py-2 px-3 font-mono">
+                        <td className="py-2 px-3 font-mono text-gray-900">
                           {r.requestId || r.id}
                         </td>
-                        <td className="py-2 px-3">{r.requestDescription}</td>
+                        <td className="py-2 px-3 text-gray-900">
+                          {r.requestDescription}
+                        </td>
                         <td className="py-2 px-3">
                           <span
                             className={`inline-block px-2 py-1 text-xs rounded-full ${
@@ -101,7 +112,7 @@ export default function ChangeRequestsPage() {
                             {r.status}
                           </span>
                         </td>
-                        <td className="py-2 px-3">
+                        <td className="py-2 px-3 text-gray-900">
                           {r.submittedAt
                             ? new Date(r.submittedAt).toLocaleString()
                             : "—"}

@@ -4,6 +4,12 @@ import { Model, Types } from 'mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CreateNotificationDto } from './dtos/notification.dto';
 import { NotificationType } from './enums/notification-type.enum';
+import {
+  SystemRole,
+  EmployeeStatus,
+} from '../employee-profile/enums/employee-profile.enums';
+
+import { EmployeeSystemRole } from '../employee-profile/models/employee-system-role.schema';
 
 @Injectable()
 export class NotificationsService {
@@ -14,12 +20,14 @@ export class NotificationsService {
     private shiftAssignmentModel: Model<any>,
     @InjectModel('EmployeeProfile')
     private employeeProfileModel: Model<any>,
+    @InjectModel(EmployeeSystemRole.name)
+    private employeeSystemRoleModel: Model<any>,
   ) {}
 
   // ===== LEAVE MODULE NOTIFICATIONS =====
 
   /**
-   * REQ: As an HR manager, I want the system to notify the employee, the employee's manager, 
+   * REQ: As an HR manager, I want the system to notify the employee, the employee's manager,
    * and the attendance coordinator when a leave request is finalized so that everyone is informed.
    */
   async notifyLeaveRequestFinalized(
@@ -30,7 +38,7 @@ export class NotificationsService {
     leaveDetails: any,
   ) {
     const notifications = [];
-    
+
     // Handle missing leaveDetails gracefully
     const details = leaveDetails || {
       employeeName: 'Employee',
@@ -38,7 +46,7 @@ export class NotificationsService {
       toDate: '',
       status: 'APPROVED',
     };
-    
+
     const message = `Leave request from ${details.employeeName} (${details.fromDate} to ${details.toDate}) has been finalized with status: ${details.status}`;
 
     // Notify Employee
@@ -73,7 +81,7 @@ export class NotificationsService {
   }
 
   /**
-   * REQ: As a direct manager, I want to receive notifications when a new leave request 
+   * REQ: As a direct manager, I want to receive notifications when a new leave request
    * is assigned to me so that I can review it promptly.
    */
   async notifyLeaveRequestCreated(
@@ -99,7 +107,7 @@ export class NotificationsService {
   }
 
   /**
-   * REQ: As an employee, I want to receive notifications when my leave request is approved, 
+   * REQ: As an employee, I want to receive notifications when my leave request is approved,
    * rejected, returned for correction, or modified so that I am always informed about the progress.
    */
   async notifyLeaveRequestStatusChanged(
@@ -110,7 +118,8 @@ export class NotificationsService {
     const statusMessages = {
       APPROVED: 'Your leave request has been approved',
       REJECTED: 'Your leave request has been rejected',
-      RETURNED_FOR_CORRECTION: 'Your leave request has been returned for correction',
+      RETURNED_FOR_CORRECTION:
+        'Your leave request has been returned for correction',
       MODIFIED: 'Your leave request has been modified',
     };
 
@@ -126,7 +135,7 @@ export class NotificationsService {
   // ===== TIME MANAGEMENT MODULE NOTIFICATIONS =====
 
   /**
-   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry 
+   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry
    * so that schedules can be renewed or reassigned.
    * Send shift expiry notification to HR Admin
    */
@@ -139,13 +148,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} for employee ${employeeId} is expiring in ${daysRemaining} days (${endDate.toISOString().split('T')[0]}). Please renew or reassign.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_EXPIRY_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -166,23 +175,27 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const notifications: any[] = [];
-    
+
     for (const hrAdminId of hrAdminIds) {
       // Create summary message for HR Admin
-      const message = `${expiringAssignments.length} shift assignment(s) expiring soon:\n` +
+      const message =
+        `${expiringAssignments.length} shift assignment(s) expiring soon:\n` +
         expiringAssignments
-          .map(a => `- ${a.employeeName || a.employeeId}: ${a.shiftName || 'Shift'} expires in ${a.daysRemaining} days`)
+          .map(
+            (a) =>
+              `- ${a.employeeName || a.employeeId}: ${a.shiftName || 'Shift'} expires in ${a.daysRemaining} days`,
+          )
           .join('\n');
-      
+
       const notification = await this.notificationLogModel.create({
         to: new Types.ObjectId(hrAdminId),
         type: NotificationType.SHIFT_EXPIRY_BULK_ALERT,
         message,
       });
-      
+
       notifications.push(notification);
     }
-    
+
     return {
       notificationsSent: notifications.length,
       notifications,
@@ -196,11 +209,16 @@ export class NotificationsService {
     const notifications = await this.notificationLogModel
       .find({
         to: new Types.ObjectId(hrAdminId),
-        type: { $in: [NotificationType.SHIFT_EXPIRY_ALERT, NotificationType.SHIFT_EXPIRY_BULK_ALERT] },
+        type: {
+          $in: [
+            NotificationType.SHIFT_EXPIRY_ALERT,
+            NotificationType.SHIFT_EXPIRY_BULK_ALERT,
+          ],
+        },
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -218,13 +236,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} has been renewed. New end date: ${newEndDate.toISOString().split('T')[0]}.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_RENEWAL_CONFIRMATION,
       message,
     });
-    
+
     return notification;
   }
 
@@ -239,13 +257,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} for employee ${employeeId} has been archived/expired. Consider creating a new assignment if needed.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_ARCHIVE_NOTIFICATION,
       message,
     });
-    
+
     return notification;
   }
 
@@ -267,20 +285,22 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Group by type for better organization
     const grouped = {
-      expiryAlerts: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_EXPIRY_ALERT || n.type === NotificationType.SHIFT_EXPIRY_BULK_ALERT
+      expiryAlerts: notifications.filter(
+        (n) =>
+          n.type === NotificationType.SHIFT_EXPIRY_ALERT ||
+          n.type === NotificationType.SHIFT_EXPIRY_BULK_ALERT,
       ),
-      renewalConfirmations: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_RENEWAL_CONFIRMATION
+      renewalConfirmations: notifications.filter(
+        (n) => n.type === NotificationType.SHIFT_RENEWAL_CONFIRMATION,
       ),
-      archiveNotifications: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_ARCHIVE_NOTIFICATION
+      archiveNotifications: notifications.filter(
+        (n) => n.type === NotificationType.SHIFT_ARCHIVE_NOTIFICATION,
       ),
     };
-    
+
     return {
       totalCount: notifications.length,
       grouped,
@@ -300,13 +320,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Missed ${missedPunchType === 'CLOCK_IN' ? 'clock-in' : 'clock-out'} detected on ${date.toISOString().split('T')[0]}. Please submit a correction request.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(employeeId),
       type: NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -323,13 +343,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Employee ${employeeName} (${employeeId}) has a missed ${missedPunchType === 'CLOCK_IN' ? 'clock-in' : 'clock-out'} on ${date.toISOString().split('T')[0]}. Pending correction review.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(managerId),
       type: NotificationType.MISSED_PUNCH_MANAGER_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -348,7 +368,7 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const notifications: any[] = [];
-    
+
     for (const alert of alerts) {
       // Send to employee
       const employeeNotification = await this.sendMissedPunchAlertToEmployee(
@@ -358,8 +378,11 @@ export class NotificationsService {
         alert.date,
         currentUserId,
       );
-      notifications.push({ type: 'employee', notification: employeeNotification });
-      
+      notifications.push({
+        type: 'employee',
+        notification: employeeNotification,
+      });
+
       // Send to manager if provided
       if (alert.managerId) {
         const managerNotification = await this.sendMissedPunchAlertToManager(
@@ -371,10 +394,13 @@ export class NotificationsService {
           alert.date,
           currentUserId,
         );
-        notifications.push({ type: 'manager', notification: managerNotification });
+        notifications.push({
+          type: 'manager',
+          notification: managerNotification,
+        });
       }
     }
-    
+
     return {
       alertsProcessed: alerts.length,
       notificationsSent: notifications.length,
@@ -393,7 +419,7 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -411,7 +437,7 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -421,29 +447,39 @@ export class NotificationsService {
   /**
    * Get all missed punch notifications (for HR Admin)
    */
-  async getAllMissedPunchNotifications(
-    filters: { startDate?: Date; endDate?: Date },
-  ) {
+  async getAllMissedPunchNotifications(filters: {
+    startDate?: Date;
+    endDate?: Date;
+  }) {
     const query: any = {
-      type: { $in: [NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT, NotificationType.MISSED_PUNCH_MANAGER_ALERT] },
+      type: {
+        $in: [
+          NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
+          NotificationType.MISSED_PUNCH_MANAGER_ALERT,
+        ],
+      },
     };
-    
+
     if (filters.startDate && filters.endDate) {
       query.createdAt = {
         $gte: filters.startDate,
         $lte: filters.endDate,
       };
     }
-    
+
     const notifications = await this.notificationLogModel
       .find(query)
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Group by type
-    const employeeAlerts = notifications.filter(n => n.type === NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT);
-    const managerAlerts = notifications.filter(n => n.type === NotificationType.MISSED_PUNCH_MANAGER_ALERT);
-    
+    const employeeAlerts = notifications.filter(
+      (n) => n.type === NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
+    );
+    const managerAlerts = notifications.filter(
+      (n) => n.type === NotificationType.MISSED_PUNCH_MANAGER_ALERT,
+    );
+
     return {
       total: notifications.length,
       employeeAlerts: {
@@ -459,7 +495,7 @@ export class NotificationsService {
 
   /**
    * Legacy method for backward compatibility
-   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry 
+   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry
    * so that schedules can be renewed or reassigned.
    */
   async notifyShiftAssignmentExpiry(
@@ -492,9 +528,11 @@ export class NotificationsService {
     coordinatorId: string,
     attendanceDetails: any,
   ) {
-    const date = attendanceDetails.date ? new Date(attendanceDetails.date) : new Date();
+    const date = attendanceDetails.date
+      ? new Date(attendanceDetails.date)
+      : new Date();
     const missedPunchType = attendanceDetails.missedPunchType || 'CLOCK_IN';
-    
+
     const notifications = [];
 
     // Notify Employee
@@ -545,7 +583,9 @@ export class NotificationsService {
         .lean()
         .exec();
 
-      console.log(`Found ${allNotifications.length} notifications for user ${userId}`);
+      console.log(
+        `Found ${allNotifications.length} notifications for user ${userId}`,
+      );
 
       // Ensure isRead field is always present (default to false if not set)
       const transformed = allNotifications.map((notif: any) => ({
@@ -558,7 +598,10 @@ export class NotificationsService {
       return transformed;
     } catch (error) {
       console.error('Error fetching notifications:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
+      console.error(
+        'Error details:',
+        error instanceof Error ? error.message : String(error),
+      );
       return [];
     }
   }
@@ -590,7 +633,8 @@ export class NotificationsService {
       const testNotification = await this.notificationLogModel.create({
         to: new Types.ObjectId(userId),
         type: NotificationType.LEAVE_CREATED,
-        message: 'This is a test notification. New leave request from John Doe (Dec 15-20) awaiting your review',
+        message:
+          'This is a test notification. New leave request from John Doe (Dec 15-20) awaiting your review',
       });
       return testNotification;
     } catch (error) {
@@ -607,7 +651,9 @@ export class NotificationsService {
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async handleShiftExpiryNotifications() {
     try {
-      console.log('[SCHEDULED TASK] Running shift expiry notification check...');
+      console.log(
+        '[SCHEDULED TASK] Running shift expiry notification check...',
+      );
 
       const now = new Date();
       const expiryDate = new Date(now);
@@ -692,7 +738,12 @@ export class NotificationsService {
               shiftName: shiftName,
               endDate: assignment.endDate?.toISOString() || '',
               daysRemaining: daysRemaining,
-              urgency: daysRemaining <= 2 ? 'HIGH' : daysRemaining <= 4 ? 'MEDIUM' : 'LOW',
+              urgency:
+                daysRemaining <= 2
+                  ? 'HIGH'
+                  : daysRemaining <= 4
+                    ? 'MEDIUM'
+                    : 'LOW',
             },
             isRead: false,
             createdAt: new Date(),
@@ -709,7 +760,10 @@ export class NotificationsService {
         );
       }
     } catch (error) {
-      console.error('[SCHEDULED TASK] Error in shift expiry notification:', error);
+      console.error(
+        '[SCHEDULED TASK] Error in shift expiry notification:',
+        error,
+      );
       // Don't throw - let the scheduled task continue even if it fails
     }
   }
@@ -717,9 +771,7 @@ export class NotificationsService {
   /**
    * Helper method to map status to notification type
    */
-  private mapStatusToNotificationType(
-    status: string,
-  ): string {
+  private mapStatusToNotificationType(status: string): string {
     const statusMap = {
       APPROVED: NotificationType.LEAVE_APPROVED,
       REJECTED: NotificationType.LEAVE_REJECTED,
@@ -727,5 +779,363 @@ export class NotificationsService {
       MODIFIED: NotificationType.LEAVE_MODIFIED,
     };
     return statusMap[status] || NotificationType.LEAVE_MODIFIED;
+  }
+
+  // ===== EMPLOYEE PROFILE MODULE NOTIFICATIONS =====
+
+  /**
+   * N-040: Notify HR Manager/Admin when profile change request is submitted
+   * @param employeeProfileId - The ID of the employee making the request
+   * @param changeRequestId - The requestId (string) of the change request
+   * @param changeDescription - Description of the requested change
+   */
+  async notifyProfileChangeRequestSubmitted(
+    employeeProfileId: string,
+    changeRequestId: string,
+    changeDescription: string,
+  ): Promise<{ success: boolean; notificationsSent: number; error?: string }> {
+    try {
+      console.log(
+        '[NOTIFICATION SERVICE] Creating PROFILE_CHANGE_REQUEST_SUBMITTED notifications',
+      );
+
+      // FIXED: Get HR users from employee_system_roles collection
+      const hrRoles = [
+        SystemRole.HR_MANAGER,
+        SystemRole.HR_ADMIN,
+        SystemRole.SYSTEM_ADMIN,
+        SystemRole.HR_EMPLOYEE,
+      ];
+
+      let hrUsers = [];
+
+      try {
+        // Find all employee system roles with HR roles
+        const hrSystemRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: hrRoles },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .exec();
+
+        console.log(`Found ${hrSystemRoles.length} HR system role records`);
+
+        // Extract employee IDs
+        const hrEmployeeIds = hrSystemRoles.map(
+          (role) => role.employeeProfileId,
+        );
+
+        if (hrEmployeeIds.length > 0) {
+          // Get employee profiles for these IDs
+          hrUsers = await this.employeeProfileModel
+            .find({
+              _id: { $in: hrEmployeeIds },
+              status: EmployeeStatus.ACTIVE,
+            })
+            .select('_id firstName lastName email')
+            .exec();
+        }
+
+        console.log(
+          `Found ${hrUsers.length} HR users to notify from system roles`,
+        );
+      } catch (roleError) {
+        console.warn('Error querying system roles, using fallback:', roleError);
+      }
+
+      // Fallback if no HR users found or error
+      if (hrUsers.length === 0) {
+        console.warn(
+          'No HR users found via system roles, using fallback approach',
+        );
+
+        // Try known HR user IDs from logs
+        const knownHRUserIds = [
+          '692b63778b731e72cccc10cd', // HR Manager from your logs
+        ].filter((id) => id && id.length === 24);
+
+        if (knownHRUserIds.length > 0) {
+          hrUsers = await this.employeeProfileModel
+            .find({
+              _id: { $in: knownHRUserIds.map((id) => new Types.ObjectId(id)) },
+              status: EmployeeStatus.ACTIVE,
+            })
+            .select('_id firstName lastName email')
+            .exec();
+
+          console.log(
+            `Fallback: Found ${hrUsers.length} HR users via known IDs`,
+          );
+        }
+      }
+
+      if (hrUsers.length === 0) {
+        console.warn(
+          'No HR users found to notify. Please check employee_system_roles collection.',
+        );
+        return { success: true, notificationsSent: 0 };
+      }
+
+      const notifications = [];
+      const employee = await this.employeeProfileModel
+        .findById(employeeProfileId)
+        .select('firstName lastName employeeNumber')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Unknown Employee';
+      const employeeNumber = employee?.employeeNumber || 'N/A';
+
+      // Parse change description to get type if it's JSON
+      let changeType = 'Profile Update';
+      let parsedChanges = '';
+
+      try {
+        const parsedDesc = JSON.parse(changeDescription);
+        if (parsedDesc.type) {
+          changeType = parsedDesc.type.replace(/_/g, ' ');
+        }
+        if (parsedDesc.changes && typeof parsedDesc.changes === 'object') {
+          parsedChanges = Object.entries(parsedDesc.changes)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+        }
+      } catch {
+        // Not JSON, use as-is
+        parsedChanges =
+          changeDescription.length > 50
+            ? changeDescription.substring(0, 47) + '...'
+            : changeDescription;
+      }
+
+      const message = `New ${changeType} request from ${employeeName} (${employeeNumber})`;
+
+      // Create notifications for each HR user
+      for (const hrUser of hrUsers) {
+        try {
+          const notification = await this.notificationLogModel.create({
+            to: hrUser._id,
+            type: NotificationType.PROFILE_CHANGE_REQUEST_SUBMITTED,
+            message,
+            isRead: false,
+            data: {
+              employeeProfileId,
+              employeeName,
+              employeeNumber,
+              changeRequestId,
+              changeType,
+              changeDescription: parsedChanges,
+              link: `/dashboard/employee-profile/admin/approvals`,
+              timestamp: new Date(),
+            },
+          });
+          notifications.push(notification);
+          console.log(`Notification created for HR user: ${hrUser.email}`);
+        } catch (userError) {
+          console.error(
+            `Failed to create notification for HR user ${hrUser._id}:`,
+            userError,
+          );
+          // Continue with other users
+        }
+      }
+
+      console.log(`Successfully created ${notifications.length} notifications`);
+      return {
+        success: true,
+        notificationsSent: notifications.length,
+      };
+    } catch (error) {
+      console.error(
+        'Failed to create profile change request notifications:',
+        error,
+      );
+      // Don't throw - notification failure shouldn't block main action
+      return {
+        success: false,
+        notificationsSent: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * N-037: Notify employee when change request is approved/rejected
+   * @param employeeProfileId - The ID of the employee who made the request
+   * @param changeRequestId - The requestId (string) of the change request
+   * @param status - 'APPROVED' or 'REJECTED'
+   * @param reason - Optional reason for rejection
+   */
+  async notifyProfileChangeRequestProcessed(
+    employeeProfileId: string,
+    changeRequestId: string,
+    status: 'APPROVED' | 'REJECTED',
+    reason?: string,
+  ): Promise<{ success: boolean; notification?: any; error?: string }> {
+    try {
+      console.log(
+        `[NOTIFICATION SERVICE] Creating PROFILE_CHANGE_${status} notification`,
+      );
+
+      // FIXED: Clean employeeProfileId if it's an object string
+      let cleanEmployeeId = employeeProfileId;
+
+      // If it looks like an object string (from your error logs), extract the ID
+      if (
+        typeof employeeProfileId === 'string' &&
+        employeeProfileId.includes('ObjectId')
+      ) {
+        try {
+          // Extract ObjectId from the string representation
+          const match = employeeProfileId.match(
+            /ObjectId\("([0-9a-fA-F]{24})"\)/,
+          );
+          if (match && match[1]) {
+            cleanEmployeeId = match[1];
+            console.log(`✅ Extracted clean employee ID: ${cleanEmployeeId}`);
+          } else {
+            // Try alternative pattern
+            const altMatch = employeeProfileId.match(/"([0-9a-fA-F]{24})"/);
+            if (altMatch && altMatch[1]) {
+              cleanEmployeeId = altMatch[1];
+              console.log(
+                `✅ Extracted clean employee ID (alt): ${cleanEmployeeId}`,
+              );
+            }
+          }
+        } catch (extractError) {
+          console.warn(
+            'Could not extract ID from string, using as-is:',
+            extractError,
+          );
+        }
+      }
+
+      // Get employee details for better context
+      const employee = await this.employeeProfileModel
+        .findById(cleanEmployeeId)
+        .select('firstName lastName email')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Employee';
+
+      const statusMessages = {
+        APPROVED: `Your profile change request has been approved`,
+        REJECTED: reason
+          ? `Your profile change request has been rejected. Reason: ${reason}`
+          : 'Your profile change request has been rejected',
+      };
+
+      const notificationType =
+        status === 'APPROVED'
+          ? NotificationType.PROFILE_CHANGE_APPROVED
+          : NotificationType.PROFILE_CHANGE_REJECTED;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(cleanEmployeeId),
+        type: notificationType,
+        message: statusMessages[status],
+        isRead: false,
+        data: {
+          changeRequestId,
+          status,
+          reason,
+          employeeName,
+          link: `/dashboard/employee-profile/change-requests`,
+          timestamp: new Date(),
+        },
+      });
+
+      console.log(`Notification created for employee: ${employeeName}`);
+      return {
+        success: true,
+        notification,
+      };
+    } catch (error) {
+      console.error(
+        'Failed to create profile change processed notification:',
+        error,
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Notify employee when profile is updated by HR
+   * @param employeeProfileId - The ID of the employee whose profile was updated
+   * @param updatedBy - The ID of the HR user who made the update
+   * @param changes - Array of field names that were changed
+   */
+  async notifyProfileUpdated(
+    employeeProfileId: string,
+    updatedBy: string,
+    changes: string[],
+  ): Promise<{ success: boolean; notification?: any; error?: string }> {
+    try {
+      console.log(
+        '[NOTIFICATION SERVICE] Creating PROFILE_UPDATED notification',
+      );
+
+      // Get updater details
+      const updater = await this.employeeProfileModel
+        .findById(updatedBy)
+        .select('firstName lastName')
+        .exec();
+
+      const updaterName = updater
+        ? `${updater.firstName} ${updater.lastName}`.trim()
+        : 'HR Admin';
+
+      // Get employee details
+      const employee = await this.employeeProfileModel
+        .findById(employeeProfileId)
+        .select('firstName lastName')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Employee';
+
+      const changesText =
+        changes.length > 0
+          ? `Changes: ${changes.join(', ')}`
+          : 'Profile updated';
+
+      const message = `Your profile has been updated by ${updaterName}. ${changesText}`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(employeeProfileId),
+        type: NotificationType.PROFILE_UPDATED,
+        message,
+        isRead: false,
+        data: {
+          updatedBy,
+          updaterName,
+          changes,
+          employeeName,
+          link: `/dashboard/employee-profile/my-profile`,
+          timestamp: new Date(),
+        },
+      });
+
+      console.log(`Profile update notification created for: ${employeeName}`);
+      return {
+        success: true,
+        notification,
+      };
+    } catch (error) {
+      console.error('Failed to create profile updated notification:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 }
