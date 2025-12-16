@@ -573,6 +573,335 @@ export class RecruitmentService {
     return updated;
   }
 
+  // =============================================================================
+  // ELECTRONIC SCREENING WITH FLEXIBLE RULE MATCHING
+  // =============================================================================
+  // BR: Electronic screening includes rule-based filters with flexible matching
+  // Handles variations in wording, case-insensitive matching, partial matches
+  // =============================================================================
+
+  /**
+   * Flexible text matching - handles variations in wording
+   * Case-insensitive, partial matching, handles synonyms
+   */
+  private flexibleTextMatch(text: string, pattern: string): boolean {
+    if (!text || !pattern) return false;
+    
+    const normalizedText = text.toLowerCase().trim();
+    const normalizedPattern = pattern.toLowerCase().trim();
+    
+    // Exact match
+    if (normalizedText === normalizedPattern) return true;
+    
+    // Contains match
+    if (normalizedText.includes(normalizedPattern) || normalizedPattern.includes(normalizedText)) {
+      return true;
+    }
+    
+    // Word boundary matching (handles "JavaScript" matching "JS" or "javascript")
+    const textWords = normalizedText.split(/\s+/);
+    const patternWords = normalizedPattern.split(/\s+/);
+    
+    // Check if all pattern words appear in text (in any order)
+    const allWordsMatch = patternWords.every(patternWord => 
+      textWords.some(textWord => 
+        textWord.includes(patternWord) || patternWord.includes(textWord)
+      )
+    );
+    
+    if (allWordsMatch) return true;
+    
+    // Synonym matching for common tech terms
+    const synonyms: Record<string, string[]> = {
+      'js': ['javascript', 'ecmascript'],
+      'react': ['reactjs', 'react.js'],
+      'node': ['nodejs', 'node.js'],
+      'vue': ['vuejs', 'vue.js'],
+      'angular': ['angularjs', 'angular.js'],
+      'python': ['py'],
+      'c++': ['cpp', 'c plus plus'],
+      'c#': ['csharp', 'c sharp'],
+      'ai': ['artificial intelligence', 'machine learning', 'ml'],
+      'ui': ['user interface', 'ux', 'user experience'],
+      'api': ['application programming interface'],
+    };
+    
+    // Check synonyms
+    for (const [key, values] of Object.entries(synonyms)) {
+      if (normalizedPattern.includes(key) || normalizedText.includes(key)) {
+        if (values.some(syn => normalizedText.includes(syn) || normalizedPattern.includes(syn))) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Extract years of experience from text
+   * Handles: "3 years", "3+ years", "minimum 3 years", "3yrs", etc.
+   */
+  private extractYearsOfExperience(text: string): number {
+    if (!text) return 0;
+    
+    const normalized = text.toLowerCase();
+    // Match patterns like: "3 years", "3+", "3yrs", "minimum 3", etc.
+    const patterns = [
+      /(\d+)\s*\+?\s*(?:years?|yrs?|y\.?)/i,
+      /(?:minimum|min|at least|over)\s*(\d+)/i,
+      /(\d+)\s*(?:years?|yrs?)\s*(?:of|experience|exp)/i,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern);
+      if (match && match[1]) {
+        return parseInt(match[1], 10);
+      }
+    }
+    
+    // Fallback: find any number that might be years
+    const numberMatch = normalized.match(/(\d+)/);
+    if (numberMatch && numberMatch[1]) {
+      const num = parseInt(numberMatch[1], 10);
+      // Reasonable assumption: if number is between 0-50, might be years
+      if (num >= 0 && num <= 50) {
+        return num;
+      }
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Extract education level from text
+   * Handles: "Bachelor", "Bachelor's", "BS", "BSc", "Master's", "PhD", etc.
+   */
+  private extractEducationLevel(text: string): string[] {
+    if (!text) return [];
+    
+    const normalized = text.toLowerCase();
+    const educationLevels: string[] = [];
+    
+    const educationPatterns = {
+      'phd': ['phd', 'ph.d', 'doctorate', 'doctoral'],
+      'masters': ['master', 'masters', 'ms', 'msc', 'm.sc', 'mba', 'ma'],
+      'bachelors': ['bachelor', 'bachelors', 'bs', 'bsc', 'b.sc', 'ba', 'be', 'b.eng'],
+      'diploma': ['diploma', 'certificate', 'cert'],
+      'highschool': ['high school', 'secondary', 'hs'],
+    };
+    
+    for (const [level, patterns] of Object.entries(educationPatterns)) {
+      if (patterns.some(pattern => normalized.includes(pattern))) {
+        educationLevels.push(level);
+      }
+    }
+    
+    return educationLevels;
+  }
+
+  /**
+   * Check if candidate meets qualification requirements (flexible matching)
+   */
+  private checkQualificationsMatch(
+    candidateText: string,
+    requiredQualifications: string[],
+  ): { matched: string[]; missing: string[] } {
+    const matched: string[] = [];
+    const missing: string[] = [];
+    
+    if (!candidateText) {
+      return { matched: [], missing: requiredQualifications };
+    }
+    
+    const candidateLower = candidateText.toLowerCase();
+    
+    for (const qualification of requiredQualifications) {
+      if (this.flexibleTextMatch(candidateText, qualification)) {
+        matched.push(qualification);
+      } else {
+        missing.push(qualification);
+      }
+    }
+    
+    return { matched, missing };
+  }
+
+  /**
+   * Check if candidate meets skill requirements (flexible matching)
+   */
+  private checkSkillsMatch(
+    candidateText: string,
+    requiredSkills: string[],
+  ): { matched: string[]; missing: string[] } {
+    return this.checkQualificationsMatch(candidateText, requiredSkills);
+  }
+
+  /**
+   * Perform electronic screening with flexible rule matching
+   * BR: Electronic screening includes rule-based filters
+   */
+  private async performElectronicScreening(
+    candidate: CandidateDocument,
+    jobTemplate: any,
+  ): Promise<{
+    passed: boolean;
+    score: number;
+    reasons: string[];
+    warnings: string[];
+  }> {
+    const reasons: string[] = [];
+    const warnings: string[] = [];
+    let score = 0;
+    const maxScore = 100;
+    
+    // Combine candidate information for screening
+    const candidateInfo = [
+      candidate.notes || '',
+      candidate.resumeUrl ? 'Resume uploaded' : '',
+    ].filter(Boolean).join(' ').toLowerCase();
+    
+    // 1. Resume check (basic requirement)
+    if (candidate.resumeUrl) {
+      score += 20;
+      reasons.push('✓ Resume uploaded');
+    } else {
+      warnings.push('⚠ Resume not uploaded');
+    }
+    
+    // 2. Qualifications matching (flexible)
+    if (jobTemplate.qualifications && jobTemplate.qualifications.length > 0) {
+      const qualMatch = this.checkQualificationsMatch(
+        candidateInfo,
+        jobTemplate.qualifications,
+      );
+      
+      if (qualMatch.matched.length > 0) {
+        const qualScore = (qualMatch.matched.length / jobTemplate.qualifications.length) * 40;
+        score += qualScore;
+        reasons.push(`✓ Matched ${qualMatch.matched.length}/${jobTemplate.qualifications.length} qualifications: ${qualMatch.matched.join(', ')}`);
+      }
+      
+      if (qualMatch.missing.length > 0) {
+        warnings.push(`⚠ Missing qualifications: ${qualMatch.missing.join(', ')}`);
+      }
+    } else {
+      // No qualifications specified, give partial credit
+      score += 20;
+    }
+    
+    // 3. Skills matching (flexible)
+    if (jobTemplate.skills && jobTemplate.skills.length > 0) {
+      const skillMatch = this.checkSkillsMatch(candidateInfo, jobTemplate.skills);
+      
+      if (skillMatch.matched.length > 0) {
+        const skillScore = (skillMatch.matched.length / jobTemplate.skills.length) * 30;
+        score += skillScore;
+        reasons.push(`✓ Matched ${skillMatch.matched.length}/${jobTemplate.skills.length} skills: ${skillMatch.matched.join(', ')}`);
+      }
+      
+      if (skillMatch.missing.length > 0) {
+        warnings.push(`⚠ Missing skills: ${skillMatch.missing.join(', ')}`);
+      }
+    } else {
+      // No skills specified, give partial credit
+      score += 15;
+    }
+    
+    // 4. Parse description for additional rules (flexible)
+    if (jobTemplate.description) {
+      const desc = jobTemplate.description.toLowerCase();
+      
+      // Check for experience requirement
+      const expYears = this.extractYearsOfExperience(desc);
+      if (expYears > 0) {
+        const candidateExp = this.extractYearsOfExperience(candidateInfo);
+        if (candidateExp >= expYears) {
+          score += 10;
+          reasons.push(`✓ Meets experience requirement (${candidateExp} years >= ${expYears} years)`);
+        } else {
+          warnings.push(`⚠ Experience requirement: ${expYears} years, candidate has: ${candidateExp} years`);
+        }
+      }
+      
+      // Check for education requirement
+      const requiredEducation = this.extractEducationLevel(desc);
+      if (requiredEducation.length > 0) {
+        const candidateEducation = this.extractEducationLevel(candidateInfo);
+        const hasRequiredEducation = requiredEducation.some(req => 
+          candidateEducation.some(cand => 
+            this.flexibleTextMatch(cand, req) || 
+            (req === 'masters' && cand === 'phd') || // Masters requirement met by PhD
+            (req === 'bachelors' && (cand === 'masters' || cand === 'phd')) // Bachelor's requirement met by higher degree
+          )
+        );
+        
+        if (hasRequiredEducation) {
+          score += 10;
+          reasons.push(`✓ Meets education requirement: ${requiredEducation.join(' or ')}`);
+        } else {
+          warnings.push(`⚠ Education requirement: ${requiredEducation.join(' or ')}, candidate: ${candidateEducation.join(', ') || 'not specified'}`);
+        }
+      }
+    }
+    
+    // Determine if passed (threshold: 60% or more)
+    const passed = score >= (maxScore * 0.6);
+    
+    return {
+      passed,
+      score: Math.round(score),
+      reasons,
+      warnings,
+    };
+  }
+
+  /**
+   * Identify if candidate is an internal candidate (existing employee)
+   * BR: Internal candidate preference for tie-breaking
+   */
+  private async identifyInternalCandidate(
+    candidate: CandidateDocument,
+  ): Promise<boolean> {
+    if (!candidate.personalEmail && !candidate.nationalId) {
+      return false;
+    }
+    
+    try {
+      // Check by email (personalEmail matches employee's personalEmail or workEmail)
+      if (candidate.personalEmail) {
+        const employeeByEmail = await this.employeeModel.findOne({
+          $or: [
+            { personalEmail: candidate.personalEmail },
+            { workEmail: candidate.personalEmail },
+          ],
+          status: { $ne: EmployeeStatus.TERMINATED },
+        }).lean();
+        
+        if (employeeByEmail) {
+          return true;
+        }
+      }
+      
+      // Check by national ID
+      if (candidate.nationalId) {
+        const employeeByNationalId = await this.employeeModel.findOne({
+          nationalId: candidate.nationalId,
+          status: { $ne: EmployeeStatus.TERMINATED },
+        }).lean();
+        
+        if (employeeByNationalId) {
+          return true;
+        }
+      }
+    } catch (error) {
+      console.warn('[SCREENING] Error identifying internal candidate:', error);
+      // Don't fail if check fails, just return false
+    }
+    
+    return false;
+  }
+
   async apply(
     dto: CreateApplicationDto,
     consentGiven: boolean = false,
@@ -650,8 +979,60 @@ export class RecruitmentService {
         'You have already applied to this position',
       );
     }
-////////////////////////////CHANGED///////////////////////////////////////////
-    // changed - convert strings to ObjectId to fix query matching
+
+    // =========================================================================
+    // ELECTRONIC SCREENING WITH RULE-BASED FILTERS
+    // =========================================================================
+    // BR: Electronic screening includes rule-based filters
+    // Performs flexible matching against job requirements
+    // =========================================================================
+    let screeningResult: {
+      passed: boolean;
+      score: number;
+      reasons: string[];
+      warnings: string[];
+    } | null = null;
+    
+    try {
+      const jobTemplate = await this.jobTemplateModel
+        .findById(jobRequisition.templateId)
+        .lean()
+        .exec();
+      
+      if (jobTemplate) {
+        screeningResult = await this.performElectronicScreening(candidate, jobTemplate);
+        console.log(`[SCREENING] Application screening result:`, {
+          passed: screeningResult.passed,
+          score: screeningResult.score,
+          candidateId: dto.candidateId,
+        });
+      }
+    } catch (screeningError) {
+      console.warn('[SCREENING] Electronic screening failed, continuing with manual review:', screeningError);
+      // Don't fail application if screening fails
+    }
+
+    // =========================================================================
+    // IDENTIFY INTERNAL CANDIDATE
+    // =========================================================================
+    // BR: Internal candidate preference for tie-breaking
+    // =========================================================================
+    const isInternalCandidate = await this.identifyInternalCandidate(candidate);
+    if (isInternalCandidate) {
+      console.log(`[SCREENING] Internal candidate identified: ${candidate.personalEmail || candidate.nationalId}`);
+    }
+
+    // =========================================================================
+    // CREATE APPLICATION
+    // =========================================================================
+    // Store screening results in notes field (since we can't modify schema)
+    const applicationNotes = screeningResult
+      ? `[ELECTRONIC SCREENING] Score: ${screeningResult.score}/100, Passed: ${screeningResult.passed ? 'Yes' : 'No'}. ` +
+        `Reasons: ${screeningResult.reasons.join('; ')}. ` +
+        (screeningResult.warnings.length > 0 ? `Warnings: ${screeningResult.warnings.join('; ')}. ` : '') +
+        (isInternalCandidate ? '[INTERNAL CANDIDATE]' : '')
+      : (isInternalCandidate ? '[INTERNAL CANDIDATE]' : '');
+    
     const application = new this.applicationModel({
       candidateId: new Types.ObjectId(dto.candidateId),
       requisitionId: new Types.ObjectId(dto.requisitionId),
@@ -659,7 +1040,16 @@ export class RecruitmentService {
       currentStage: ApplicationStage.SCREENING,
       status: ApplicationStatus.SUBMITTED,
     });
+    
+    // Store screening metadata (we'll add it to the returned object, not schema)
     const savedApplication = await application.save();
+    
+    // Add screening metadata to application object (for frontend use)
+    const applicationWithMetadata = {
+      ...savedApplication.toObject(),
+      screeningResult: screeningResult || null,
+      isInternalCandidate: isInternalCandidate,
+    };
 
     // =========================================================================
     // NOTIFICATION: Notify HR Employees and HR Managers about new application
@@ -679,6 +1069,9 @@ export class RecruitmentService {
       const isReferral = await this.referralModel.exists({
         candidateId: new Types.ObjectId(dto.candidateId),
       });
+      
+      // Include internal candidate status in notification
+      const isInternal = isInternalCandidate;
 
       // Find all HR Employees and HR Managers to notify
       const hrStaff = await this.employeeSystemRoleModel
@@ -695,15 +1088,27 @@ export class RecruitmentService {
         .filter(Boolean);
 
       if (hrRecipientIds.length > 0) {
+        // Prepare notification data (only include fields that exist in the interface)
+        const notificationData: any = {
+          applicationId: savedApplication._id.toString(),
+          candidateName: candidate.firstName + ' ' + (candidate.lastName || ''),
+          positionTitle: positionTitle,
+          requisitionId: dto.requisitionId,
+          isReferral: !!isReferral,
+        };
+        
+        // Add optional screening metadata if available
+        if (screeningResult) {
+          notificationData.screeningScore = screeningResult.score;
+          notificationData.screeningPassed = screeningResult.passed;
+        }
+        if (isInternal) {
+          notificationData.isInternalCandidate = true;
+        }
+        
         await this.notificationsService.notifyHRNewApplication(
           hrRecipientIds,
-          {
-            applicationId: savedApplication._id.toString(),
-            candidateName: candidate.firstName + ' ' + (candidate.lastName || ''),
-            positionTitle: positionTitle,
-            requisitionId: dto.requisitionId,
-            isReferral: !!isReferral,
-          },
+          notificationData,
         );
         console.log(`[APPLICATION] Notified ${hrRecipientIds.length} HR staff about new application`);
       }
@@ -712,7 +1117,7 @@ export class RecruitmentService {
       // Don't fail the application submission if notification fails
     }
 
-    return savedApplication;
+    return applicationWithMetadata as any;
   }
 
   async getAllApplications(
@@ -781,10 +1186,9 @@ export class RecruitmentService {
     }
 
     // =============================================================
-    // REFERRAL HANDLING - Add isReferral flag and prioritize
+    // REFERRAL & INTERNAL CANDIDATE HANDLING
     // =============================================================
-    // Referrals get higher priority in the recruitment process
-    // (internal candidate preference / tie-breaking rule)
+    // BR: Tie-breaking rules - Internal candidate > Referral > Score > Date
     // =============================================================
     const referralCandidates = await this.referralModel
       .find()
@@ -794,36 +1198,68 @@ export class RecruitmentService {
       referralCandidates.map((ref: any) => ref.candidateId.toString()),
     );
 
-    // Add isReferral flag to each application
-    const applicationsWithReferralFlag = applicationsWithInterviews.map((app: any) => {
+    // Identify internal candidates (existing employees)
+    const candidateIds = applicationsWithInterviews.map((app: any) => {
+      return app.candidateId?._id?.toString() || app.candidateId?.toString();
+    }).filter(Boolean);
+    
+    const internalCandidateIds = new Set<string>();
+    if (candidateIds.length > 0) {
+      try {
+        // Check by email and national ID
+        const candidates = await this.candidateModel
+          .find({ _id: { $in: candidateIds.map(id => new Types.ObjectId(id)) } })
+          .select('personalEmail nationalId')
+          .lean();
+        
+        for (const candidate of candidates) {
+          const candidateId = candidate._id.toString();
+          const isInternal = await this.identifyInternalCandidate(candidate as any);
+          if (isInternal) {
+            internalCandidateIds.add(candidateId);
+          }
+        }
+      } catch (error) {
+        console.warn('[APPLICATIONS] Error identifying internal candidates:', error);
+      }
+    }
+
+    // Add isReferral and isInternalCandidate flags to each application
+    const applicationsWithFlags = applicationsWithInterviews.map((app: any) => {
       const candidateId =
         app.candidateId?._id?.toString() ||
         app.candidateId?.toString();
       const isReferral = candidateId ? referralCandidateIds.has(candidateId) : false;
+      const isInternal = candidateId ? internalCandidateIds.has(candidateId) : false;
       return {
         ...app,
         isReferral,
+        isInternalCandidate: isInternal,
       };
     });
 
-    // Sort referrals first if prioritization is enabled
+    // Sort by priority: Internal Candidates > Referrals > Others
+    // BR: Tie-breaking rules - Internal candidate preference
     if (prioritizeReferrals) {
+      const internalCandidates: any[] = [];
       const referrals: any[] = [];
-      const nonReferrals: any[] = [];
+      const others: any[] = [];
 
-      for (const app of applicationsWithReferralFlag) {
-        if (app.isReferral) {
+      for (const app of applicationsWithFlags) {
+        if (app.isInternalCandidate) {
+          internalCandidates.push(app);
+        } else if (app.isReferral) {
           referrals.push(app);
         } else {
-          nonReferrals.push(app);
+          others.push(app);
         }
       }
 
-      // Return referrals first, then non-referrals
-      return [...referrals, ...nonReferrals];
+      // Return: Internal candidates first, then referrals, then others
+      return [...internalCandidates, ...referrals, ...others];
     }
 
-    return applicationsWithReferralFlag;
+    return applicationsWithFlags;
   }
 
   async updateApplicationStatus(
@@ -1197,6 +1633,22 @@ export class RecruitmentService {
       );
     }
 
+    // =============================================================
+    // INTERVIEW STAGE SELECTION LOGIC
+    // =============================================================
+    // The interview stage (SCREENING, DEPARTMENT_INTERVIEW, HR_INTERVIEW, OFFER)
+    // must be manually selected because:
+    // 1. An application can have multiple interviews at different stages
+    //    (e.g., department interview, then HR interview)
+    // 2. The stage determines what type of interview it is and which
+    //    department/team should conduct it
+    // 3. The stage is used to track progress through the hiring process
+    // 
+    // The stage selection is required and validated against ApplicationStage enum.
+    // When an interview is scheduled, the application's currentStage is updated
+    // to match the interview stage, and status changes from SUBMITTED to IN_PROCESS.
+    // =============================================================
+    
     // Check for duplicate interview for same application and stage
     const existingInterview = await this.interviewModel.findOne({
       applicationId: new Types.ObjectId(dto.applicationId),
@@ -3815,6 +4267,75 @@ Due: ${context.dueDate}`
   }
 
   /**
+   * CHANGED BY RECRUITMENT SUBSYSTEM - Talent Pool Feature
+   * Download candidate resume/CV by candidate ID
+   * This method finds the CV document associated with a candidate and downloads it
+   */
+  async downloadCandidateResume(candidateId: string, res: Response): Promise<void> {
+    try {
+      // 1. Validate candidateId
+      if (!Types.ObjectId.isValid(candidateId)) {
+        throw new BadRequestException('Invalid candidate ID format');
+      }
+
+      // 2. Find candidate to get resumeUrl
+      const candidate = await this.candidateModel.findById(candidateId).lean();
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      if (!candidate.resumeUrl) {
+        throw new NotFoundException('No resume found for this candidate');
+      }
+
+      // 3. Try to find document record first (preferred method)
+      const document = await this.documentModel
+        .findOne({
+          ownerId: new Types.ObjectId(candidateId),
+          type: DocumentType.CV,
+        })
+        .sort({ uploadedAt: -1 }) // Get most recent CV
+        .lean();
+
+      let filePath: string;
+
+      if (document && document.filePath) {
+        // Use document record file path
+        filePath = document.filePath;
+      } else if (candidate.resumeUrl) {
+        // Fallback to candidate's resumeUrl
+        filePath = candidate.resumeUrl;
+      } else {
+        throw new NotFoundException('Resume file path not found');
+      }
+
+      // 4. Check if file exists
+      const fileExists = await fs.pathExists(filePath);
+      if (!fileExists) {
+        throw new NotFoundException('Resume file not found on server');
+      }
+
+      // 5. Determine file extension for proper download name
+      const fileExtension = filePath.split('.').pop() || 'pdf';
+      const candidateName = `${candidate.firstName || ''}_${candidate.lastName || ''}`.trim() || 'Candidate';
+      
+      // 6. Set headers and send file
+      res.setHeader('Content-Disposition', `attachment; filename="${candidateName}_Resume.${fileExtension}"`);
+      res.download(filePath);
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to download candidate resume: ' + this.getErrorMessage(error),
+      );
+    }
+  }
+
+  /**
    * Get document attached to specific task
    */
   async getTaskDocument(onboardingId: string, taskIndex: number): Promise<any> {
@@ -4213,7 +4734,36 @@ Due: ${context.dueDate}`
         console.warn('Failed to create onboarding automatically:', e);
       }
 
-      // 11. Return success response with employee and contract details (ONB-002)
+      // 11. Update application status to HIRED after employee creation
+      // BR: Once employee is created, application status should be HIRED
+      // This prevents showing "Create Employee" button again for already-hired candidates
+      try {
+        if (offer.applicationId) {
+          const applicationObjectId = new Types.ObjectId(
+            typeof offer.applicationId === 'string' 
+              ? offer.applicationId 
+              : (offer.applicationId as any)._id?.toString() || offer.applicationId.toString()
+          );
+          
+          await this.applicationModel.findByIdAndUpdate(
+            applicationObjectId,
+            {
+              $set: {
+                status: ApplicationStatus.HIRED,
+                currentStage: ApplicationStage.OFFER,
+              },
+            },
+            { new: true }
+          ).exec();
+          
+          console.log(`✅ Application ${applicationObjectId} status updated to HIRED after employee creation`);
+        }
+      } catch (appUpdateError) {
+        // Non-critical - log but don't fail employee creation
+        console.warn('Failed to update application status to HIRED:', this.getErrorMessage(appUpdateError));
+      }
+
+      // 12. Return success response with employee and contract details (ONB-002)
       return {
         message: 'Employee profile created successfully from signed contract',
         employee: employee,
@@ -4239,6 +4789,112 @@ Due: ${context.dueDate}`
         'Failed to create employee from contract: ' +
           this.getErrorMessage(error),
       );
+    }
+  }
+
+  // ============= EMPLOYEE EXISTENCE CHECK =============
+
+  /**
+   * Check if an employee already exists for a candidate/application
+   * Used to determine if "Create Employee" button should be shown
+   */
+  async checkEmployeeExistsForApplication(applicationId: string): Promise<{
+    employeeExists: boolean;
+    employee: any | null;
+    message: string;
+  }> {
+    try {
+      if (!Types.ObjectId.isValid(applicationId)) {
+        throw new BadRequestException('Invalid application ID format');
+      }
+
+      // Find application to get candidateId
+      const application = await this.applicationModel
+        .findById(applicationId)
+        .populate('candidateId')
+        .lean();
+      
+      if (!application) {
+        throw new NotFoundException('Application not found');
+      }
+
+      const candidateId = application.candidateId?._id?.toString() || 
+                         (application.candidateId as any)?.toString() ||
+                         application.candidateId?.toString();
+      
+      if (!candidateId) {
+        return {
+          employeeExists: false,
+          employee: null,
+          message: 'Candidate information not found in application',
+        };
+      }
+
+      // Get candidate to check by nationalId or email
+      const candidate = await this.candidateModel.findById(candidateId).lean();
+      if (!candidate) {
+        return {
+          employeeExists: false,
+          employee: null,
+          message: 'Candidate not found',
+        };
+      }
+
+      // Check if employee exists by nationalId (most reliable)
+      let employee = null;
+      if (candidate.nationalId) {
+        employee = await this.employeeModel
+          .findOne({
+            nationalId: candidate.nationalId,
+            status: { $ne: EmployeeStatus.TERMINATED },
+          })
+          .select('_id employeeNumber firstName lastName workEmail status')
+          .lean();
+      }
+
+      // If not found by nationalId, check by email
+      if (!employee && candidate.personalEmail) {
+        employee = await this.employeeModel
+          .findOne({
+            $or: [
+              { personalEmail: candidate.personalEmail },
+              { workEmail: candidate.personalEmail },
+            ],
+            status: { $ne: EmployeeStatus.TERMINATED },
+          })
+          .select('_id employeeNumber firstName lastName workEmail status')
+          .lean();
+      }
+
+      if (employee) {
+        return {
+          employeeExists: true,
+          employee: {
+            _id: employee._id,
+            employeeNumber: employee.employeeNumber,
+            fullName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+            workEmail: employee.workEmail,
+            status: employee.status,
+          },
+          message: `Employee already exists: ${employee.employeeNumber}`,
+        };
+      }
+
+      return {
+        employeeExists: false,
+        employee: null,
+        message: 'No employee found for this candidate',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('Error checking employee existence:', error);
+      return {
+        employeeExists: false,
+        employee: null,
+        message: 'Error checking employee existence',
+      };
     }
   }
 
@@ -4965,7 +5621,7 @@ Due: ${context.dueDate}`
       });
 
       // Check if all panel members have submitted feedback
-      // If so, mark interview as 'completed'
+      // If so, mark interview as 'completed' and send notifications
       try {
         const panelSize = interview.panel?.length || 0;
         const feedbackCount = await this.assessmentResultModel.countDocuments({
@@ -4980,6 +5636,86 @@ Due: ${context.dueDate}`
             status: 'completed',
           });
           console.log(`✅ Interview ${interviewId} marked as COMPLETED - all feedback received`);
+
+          // =============================================================
+          // NOTIFICATIONS: Interview Completed - All Feedback Submitted
+          // =============================================================
+          // When all panel members submit feedback:
+          // 1. Notify candidate: "Interview completed, waiting for decision"
+          // 2. Notify HR Manager: "Application ready for review"
+          // =============================================================
+          try {
+            // Get application and candidate details
+            const application = await this.applicationModel
+              .findById(interview.applicationId)
+              .populate('candidateId')
+              .populate('requisitionId')
+              .lean()
+              .exec();
+
+            if (application) {
+              const candidate = (application as any).candidateId;
+              const jobRequisition = (application as any).requisitionId;
+              const jobTemplate = jobRequisition?.templateId
+                ? await this.jobTemplateModel.findById(jobRequisition.templateId).lean().exec()
+                : null;
+              const positionTitle = (jobTemplate as any)?.title || 'Position';
+              const candidateName = candidate?.fullName || 
+                `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 
+                'Candidate';
+
+              // 1. Notify candidate that interview is completed (waiting for decision)
+              if (candidate && candidate._id) {
+                try {
+                  await this.notificationsService.notifyCandidateInterviewCompleted(
+                    candidate._id.toString(),
+                    {
+                      positionTitle: positionTitle,
+                      applicationId: application._id.toString(),
+                      interviewId: interviewId,
+                    },
+                  );
+                  console.log(`[INTERVIEW] Notified candidate ${candidate._id} that interview is completed`);
+                } catch (candidateNotifError) {
+                  console.warn('Failed to notify candidate about interview completion:', candidateNotifError);
+                }
+              }
+
+              // 2. Notify HR Managers that feedback is ready for review
+              try {
+                const hrManagers = await this.employeeSystemRoleModel
+                  .find({
+                    roles: { $in: [SystemRole.HR_MANAGER] },
+                    isActive: true,
+                  })
+                  .select('employeeProfileId')
+                  .lean()
+                  .exec();
+
+                const hrManagerIds = hrManagers
+                  .map((hr: any) => hr.employeeProfileId?.toString())
+                  .filter(Boolean);
+
+                if (hrManagerIds.length > 0) {
+                  await this.notificationsService.notifyHRManagerFeedbackReady(
+                    hrManagerIds,
+                    {
+                      candidateName: candidateName,
+                      positionTitle: positionTitle,
+                      applicationId: application._id.toString(),
+                      interviewId: interviewId,
+                    },
+                  );
+                  console.log(`[INTERVIEW] Notified ${hrManagerIds.length} HR Manager(s) that feedback is ready for review`);
+                }
+              } catch (hrManagerNotifError) {
+                console.warn('Failed to notify HR Managers about ready feedback:', hrManagerNotifError);
+              }
+            }
+          } catch (notifError) {
+            // Non-critical - don't fail the feedback submission if notifications fail
+            console.warn('Failed to send interview completion notifications:', notifError);
+          }
         }
       } catch (statusError) {
         // Non-critical - don't fail the feedback submission
@@ -5092,27 +5828,64 @@ Due: ${context.dueDate}`
       }
     }
 
-    // Rank applications
+    // Identify internal candidates for tie-breaking
+    const internalCandidateIds = new Set<string>();
+    try {
+      const candidateIds = applications.map((app: any) => {
+        return app.candidateId?._id?.toString() || app.candidateId?.toString();
+      }).filter(Boolean);
+      
+      if (candidateIds.length > 0) {
+        const candidates = await this.candidateModel
+          .find({ _id: { $in: candidateIds.map(id => new Types.ObjectId(id)) } })
+          .select('personalEmail nationalId')
+          .lean();
+        
+        for (const candidate of candidates) {
+          const candidateId = candidate._id.toString();
+          const isInternal = await this.identifyInternalCandidate(candidate as any);
+          if (isInternal) {
+            internalCandidateIds.add(candidateId);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[RANKING] Error identifying internal candidates:', error);
+    }
+
+    // Rank applications with enhanced tie-breaking rules
+    // BR: Tie-breaking priority: Internal Candidate (+20) > Referral (+10) > Score > Date
     const ranked = applications.map((app: any) => {
       const candidateId =
         app.candidateId?._id?.toString() || app.candidateId?.toString();
       const isReferral = candidateId && referralCandidateIds.has(candidateId);
+      const isInternal = candidateId && internalCandidateIds.has(candidateId);
       const appId = app._id.toString();
       const score = interviewScores[appId] || 0;
+
+      // Calculate ranking score with tie-breaking bonuses
+      let rankingScore = score;
+      if (isInternal) {
+        rankingScore += 20; // Internal candidates get highest priority
+      } else if (isReferral) {
+        rankingScore += 10; // Referrals get second priority
+      }
 
       return {
         ...app,
         isReferral,
+        isInternalCandidate: isInternal,
         averageScore: score,
-        rankingScore: isReferral ? score + 10 : score, // Referrals get +10 bonus
+        rankingScore: rankingScore,
       };
     });
 
-    // Sort by ranking score (descending), then by application date
+    // Sort by ranking score (descending), then by application date (earlier preferred)
     ranked.sort((a, b) => {
       if (b.rankingScore !== a.rankingScore) {
         return b.rankingScore - a.rankingScore;
       }
+      // Tie-breaker: earlier application date preferred
       return (
         new Date(a.createdAt || 0).getTime() -
         new Date(b.createdAt || 0).getTime()
@@ -6906,6 +7679,53 @@ Due: ${context.dueDate}`
     }
 
     const saved = await termination.save();
+
+    // =========================================================================
+    // UPDATE EMPLOYEE STATUS ON TERMINATION/RESIGNATION APPROVAL
+    // =========================================================================
+    // BR: When termination/resignation is approved, update employee status:
+    // - Resignation (employee-initiated) → RETIRED
+    // - Termination (HR/Manager-initiated) → TERMINATED
+    // This prevents retired/terminated employees from accessing the system
+    // =========================================================================
+    if (dto.status === TerminationStatus.APPROVED) {
+      try {
+        const employee = await this.employeeModel.findById(termination.employeeId).exec();
+        if (employee) {
+          const isResignation = termination.initiator === TerminationInitiation.EMPLOYEE;
+          const newStatus = isResignation ? EmployeeStatus.RETIRED : EmployeeStatus.TERMINATED;
+          const statusReason = isResignation ? 'resignation' : 'termination';
+          
+          // Only update if employee is currently ACTIVE
+          if (employee.status === EmployeeStatus.ACTIVE) {
+            await this.employeeModel.findByIdAndUpdate(
+              termination.employeeId,
+              {
+                $set: {
+                  status: newStatus,
+                  statusEffectiveFrom: termination.terminationDate || new Date(),
+                },
+              },
+              { new: true },
+            ).exec();
+            console.log(
+              `✅ Employee ${employee.employeeNumber} (${termination.employeeId.toString()}) status automatically changed from ACTIVE to ${newStatus} after ${statusReason} approval`,
+            );
+          } else {
+            console.log(
+              `ℹ️ Employee ${employee.employeeNumber} status is ${employee.status}, not updating to ${newStatus} (only ACTIVE employees are updated)`,
+            );
+          }
+        }
+      } catch (statusError) {
+        // Non-blocking: log but don't fail if status update fails
+        console.warn(
+          `⚠️ Failed to auto-update employee status after termination/resignation approval:`,
+          this.getErrorMessage(statusError),
+        );
+      }
+    }
+    // =========================================================================
 
     // When approved → create clearance checklist (if it doesn't already exist)
     if (dto.status === TerminationStatus.APPROVED) {

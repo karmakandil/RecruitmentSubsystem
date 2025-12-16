@@ -201,15 +201,17 @@ export class RecruitmentController {
   // =============================================================
   // Returns only HR Employees who can be assigned as panel members
   // for conducting interviews.
+  // CHANGED: Added RECRUITER role to allow recruiters to select panel members
+  // when scheduling interviews (recruiters need to assign HR employees to panels)
   // =============================================================
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.RECRUITER)
   @Get('hr-employees')
   getHREmployeesForPanel() {
     return this.service.getHREmployeesForPanel();
   }
 
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
@@ -217,7 +219,26 @@ export class RecruitmentController {
     SystemRole.SYSTEM_ADMIN,
   )
   @Post('interview')
-  scheduleInterview(@Body() dto: ScheduleInterviewDto) {
+  scheduleInterview(@Body() dto: ScheduleInterviewDto, @Req() req: any) {
+    // CHANGED: Automatically add recruiter to panel if they schedule the interview
+    // Recruiters who schedule interviews are automatically included as panel members
+    const currentUserId = req.user?.userId || req.user?.id || req.user?._id;
+    const userRoles = req.user?.roles || [];
+    const isRecruiter = userRoles.includes(SystemRole.RECRUITER);
+    
+    // If recruiter schedules interview, automatically add them to panel
+    if (isRecruiter && currentUserId) {
+      // Ensure panel array exists
+      if (!dto.panel) {
+        dto.panel = [];
+      }
+      // Add recruiter to panel if not already included
+      const recruiterIdStr = String(currentUserId);
+      if (!dto.panel.includes(recruiterIdStr)) {
+        dto.panel.push(recruiterIdStr);
+      }
+    }
+    
     return this.service.scheduleInterview(dto);
   }
 
@@ -235,12 +256,14 @@ export class RecruitmentController {
   ) {
     return this.service.updateInterviewStatus(id, dto);
   }
-////////////////change////////////////
-  // CHANGED - Removed RECRUITER from feedback submission (per user story, only HR Employee can provide feedback)
+  // CHANGED: Added RECRUITER role to allow recruiters to submit feedback
+  // Recruiters who schedule interviews are automatically added to the panel,
+  // so they should be able to submit feedback just like HR employees
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
+    SystemRole.RECRUITER,
     SystemRole.SYSTEM_ADMIN,
   )
   @Post('interview/:id/feedback')
@@ -249,7 +272,6 @@ export class RecruitmentController {
     @Body() dto: { score: number; comments?: string },
     @Req() req: any,
   ) {
-    //////////////////////////change/////////////////////
     const interviewerId = req.user?.userId || req.user?.id || req.user?._id;
     if (!interviewerId) {
       throw new BadRequestException('Interviewer ID not found in request');
@@ -424,6 +446,18 @@ export class RecruitmentController {
     return this.service.getOnboardingByEmployeeId(employeeId);
   }
 
+  // Check if employee already exists for an application
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  @Get('application/:id/employee-status')
+  async checkEmployeeExistsForApplication(@Param('id') applicationId: string) {
+    return this.service.checkEmployeeExistsForApplication(applicationId);
+  }
+
   @UseGuards(RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Put('onboarding/:id')
@@ -515,6 +549,24 @@ export class RecruitmentController {
     @Res() res: Response,
   ) {
     return this.service.downloadDocument(documentId, res);
+  }
+
+  // CHANGED BY RECRUITMENT SUBSYSTEM - Talent Pool Feature
+  // Download candidate resume/CV by candidate ID
+  // This endpoint allows HR to download resumes from the Talent Pool
+  @UseGuards(RolesGuard)
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.RECRUITER,
+  )
+  @Get('candidate/:candidateId/resume/download')
+  async downloadCandidateResume(
+    @Param('candidateId') candidateId: string,
+    @Res() res: Response,
+  ) {
+    return this.service.downloadCandidateResume(candidateId, res);
   }
 
   @UseGuards(RolesGuard)

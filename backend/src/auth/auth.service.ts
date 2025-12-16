@@ -71,16 +71,28 @@ export class AuthService {
     password: string,
   ): Promise<any> {
     // ========================================================================
-    // RECRUITMENT SYSTEM - OFF-007: System Access Revocation Check
+    // RECRUITMENT SYSTEM - Employee Status Access Control
     // ========================================================================
-    // When an employee is offboarded (resignation/termination), the System Admin
-    // revokes their system access via the Access Management page. This sets the
-    // employee status to 'INACTIVE'. This check prevents INACTIVE employees from
-    // logging into the system, enforcing the access revocation.
-    // 
-    // Related User Story: OFF-007 - "As a System Admin, I want to revoke system
-    // and account access upon termination, so security is maintained."
+    // Employees with RETIRED or TERMINATED status cannot log in to the system.
+    // - RETIRED: Employee resigned and left the organization
+    // - TERMINATED: Employee was terminated by HR/Management
+    // - INACTIVE: System access manually revoked (backward compatibility)
+    // - PROBATION: New hires can log in normally (onboarding in progress)
+    // - ACTIVE: Full access (normal operation)
     // ========================================================================
+    if (employee.status === 'RETIRED') {
+      throw new UnauthorizedException(
+        'Your account has been retired due to resignation. System access has been revoked. Please contact HR for assistance.',
+      );
+    }
+    
+    if (employee.status === 'TERMINATED') {
+      throw new UnauthorizedException(
+        'Your account has been terminated. System access has been revoked. Please contact HR for assistance.',
+      );
+    }
+    
+    // Backward compatibility: INACTIVE status (manual access revocation)
     if (employee.status === 'INACTIVE') {
       throw new UnauthorizedException(
         'Your account has been deactivated. System access has been revoked. Please contact HR for assistance.',

@@ -373,6 +373,21 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
+              {/* Talent Pool - Browse all candidates with resumes */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200 bg-indigo-50">
+                <CardHeader>
+                  <CardTitle className="text-indigo-800">🎯 Talent Pool</CardTitle>
+                  <CardDescription className="text-indigo-700">
+                    Browse and search all candidates with resumes in the organization's talent pool
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/talent-pool">
+                    <Button className="w-full bg-indigo-600 hover:bg-indigo-700">View Talent Pool</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
               {/* Referrals */}
               <Card className="hover:shadow-lg transition-shadow border-2 border-gray-200">
                 <CardHeader>
@@ -439,6 +454,21 @@ export default function RecruitmentPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Talent Pool - Browse all candidates with resumes */}
+              <Card className="border-indigo-200 bg-indigo-50">
+                <CardHeader>
+                  <CardTitle className="text-indigo-800">🎯 Talent Pool</CardTitle>
+                  <CardDescription className="text-indigo-700">
+                    Browse and search all candidates with resumes in the organization's talent pool
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/talent-pool">
+                    <Button className="w-full bg-indigo-600 hover:bg-indigo-700">View Talent Pool</Button>
+                  </Link>
+                </CardContent>
+              </Card>
 
               <Card>
                 <CardHeader>

@@ -9,7 +9,9 @@ import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { recruitmentApi } from "@/lib/api/recruitment/recruitment";
+import { employeeProfileApi } from "@/lib/api/employee-profile/employee-profile";
 import { Onboarding, OnboardingTask, OnboardingTaskStatus } from "@/types/recruitment";
+import type { EmployeeProfile } from "@/types";
 import {
   Card,
   CardHeader,
@@ -113,6 +115,7 @@ export default function MyOnboardingPage() {
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [employeeStatus, setEmployeeStatus] = useState<string | null>(null);
   
   // CHANGED - ONB-007: Document upload state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -129,9 +132,23 @@ export default function MyOnboardingPage() {
 
   useEffect(() => {
     if (user?.id || user?.userId) {
+      loadEmployeeStatus();
       loadOnboarding();
     }
   }, [user]);
+
+  // Load employee status to determine appropriate message
+  const loadEmployeeStatus = async () => {
+    try {
+      const profile = await employeeProfileApi.getMyProfile();
+      if (profile && typeof profile === "object" && "status" in profile) {
+        setEmployeeStatus((profile as EmployeeProfile).status);
+      }
+    } catch (error) {
+      console.warn("Could not load employee status:", error);
+      // Don't show error to user, just continue without status
+    }
+  };
 
   const loadOnboarding = async () => {
     try {
@@ -164,7 +181,7 @@ export default function MyOnboardingPage() {
         error.response?.status === 404;
       
       if (isNotFound) {
-        console.info("No onboarding record found for this employee - this is normal for new users");
+        console.info("No onboarding record found for this employee");
         setOnboarding(null);
       } else {
         showToast(error.message || "Failed to load your onboarding", "error");
@@ -340,24 +357,46 @@ export default function MyOnboardingPage() {
             <p className="text-gray-500">Loading your onboarding...</p>
           </div>
         ) : !onboarding ? (
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className={employeeStatus === "ACTIVE" ? "bg-green-50 border-green-200" : "bg-blue-50 border-blue-200"}>
             <CardContent className="py-16 text-center">
-              <div className="text-6xl mb-4">👋</div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Welcome to the Team!
-              </h2>
-              <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                Your onboarding checklist will appear here once HR creates your employee profile from your accepted offer. 
-                This happens automatically after you upload your signed contract and HR finalizes the offer.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <Link href="/dashboard/recruitment/offers">
-                  <Button variant="outline">View My Offers</Button>
-                </Link>
-                <Link href="/dashboard">
-                  <Button variant="outline">Go to Dashboard</Button>
-                </Link>
-              </div>
+              {employeeStatus === "ACTIVE" ? (
+                <>
+                  <div className="text-6xl mb-4">✅</div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    Onboarding Completed
+                  </h2>
+                  <p className="text-gray-600 mb-4 max-w-md mx-auto">
+                    You are already an active employee. Your onboarding was completed when you joined the organization.
+                    You have full access to all employee features.
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <Link href="/dashboard">
+                      <Button className="bg-green-600 hover:bg-green-700 text-white">
+                        Go to Dashboard
+                      </Button>
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-6xl mb-4">👋</div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                    Welcome to the Team!
+                  </h2>
+                  <p className="text-gray-600 mb-4 max-w-md mx-auto">
+                    Your onboarding checklist will appear here once HR creates your employee profile from your accepted offer. 
+                    This happens automatically after you upload your signed contract and HR finalizes the offer.
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <Link href="/dashboard/recruitment/offers">
+                      <Button variant="outline">View My Offers</Button>
+                    </Link>
+                    <Link href="/dashboard">
+                      <Button variant="outline">Go to Dashboard</Button>
+                    </Link>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (

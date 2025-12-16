@@ -30,9 +30,15 @@ export default function HROffersPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicationsForOffer, setApplicationsForOffer] = useState<Application[]>([]);
   const [applicationsWithOffers, setApplicationsWithOffers] = useState<Application[]>([]);
+  const [applicationsCompleted, setApplicationsCompleted] = useState<Application[]>([]); // Applications where employee already exists
   const [offerMap, setOfferMap] = useState<Record<string, Offer>>({}); // Map applicationId -> offer
+  const [employeeExistsMap, setEmployeeExistsMap] = useState<Record<string, {
+    employeeExists: boolean;
+    employee: any | null;
+    message: string;
+  }>>({}); // Map applicationId -> employee existence status
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"create" | "manage">("manage");
+  const [activeTab, setActiveTab] = useState<"create" | "manage" | "completed">("manage");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
@@ -55,6 +61,14 @@ export default function HROffersPage() {
     employeeNumber: "",
   });
   const [creatingEmployee, setCreatingEmployee] = useState(false);
+  const [contractStatusMap, setContractStatusMap] = useState<Record<string, {
+    hasContract: boolean;
+    hasSignedDocument: boolean;
+    contract: any | null;
+    message: string;
+  }>>({});
+  const [loadingContractStatus, setLoadingContractStatus] = useState<Record<string, boolean>>({});
+  const [viewingContract, setViewingContract] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<CreateOfferDto>({
     applicationId: "",
     candidateId: "",
@@ -92,12 +106,50 @@ export default function HROffersPage() {
       );
       
       setApplicationsForOffer(forOffer);
-      setApplicationsWithOffers(withOffers);
       
-      // Load actual offers for applications with "offer" status
+      // Check employee existence for each application with offers
+      // This determines if "Create Employee" button should be shown
+      const employeeExistsData: Record<string, {
+        employeeExists: boolean;
+        employee: any | null;
+        message: string;
+      }> = {};
+      const activeApplications: Application[] = [];
+      const completedApplications: Application[] = [];
+      
+      for (const app of withOffers) {
+        try {
+          const employeeStatus = await recruitmentApi.checkEmployeeExistsForApplication(app._id);
+          employeeExistsData[app._id] = employeeStatus;
+          
+          if (employeeStatus.employeeExists) {
+            // Employee already created - move to completed section
+            completedApplications.push(app);
+          } else {
+            // Employee not created yet - show in active section
+            activeApplications.push(app);
+          }
+        } catch (error: any) {
+          // If check fails, assume employee doesn't exist (show in active section)
+          console.warn(`Failed to check employee existence for application ${app._id}:`, error);
+          employeeExistsData[app._id] = {
+            employeeExists: false,
+            employee: null,
+            message: 'Unable to verify employee status',
+          };
+          activeApplications.push(app);
+        }
+      }
+      
+      setEmployeeExistsMap(employeeExistsData);
+      setApplicationsWithOffers(activeApplications);
+      setApplicationsCompleted(completedApplications);
+      
+      // Load actual offers for both active and completed applications
       // Note: Some applications may have status "offer" but no offer created yet (valid state)
       const offerMapData: Record<string, Offer> = {};
-      for (const app of withOffers) {
+      const allApplicationsWithOffers = [...activeApplications, ...completedApplications];
+      for (const app of allApplicationsWithOffers) {
         try {
           const offer = await recruitmentApi.getOfferByApplicationId(app._id);
           if (offer && offer._id) {
@@ -462,9 +514,67 @@ export default function HROffersPage() {
   };
 
 
+  // ONB-002: Load contract status for an offer
+  const loadContractStatus = async (offerId: string) => {
+    if (!offerId || loadingContractStatus[offerId]) return;
+    
+    try {
+      setLoadingContractStatus(prev => ({ ...prev, [offerId]: true }));
+      const status = await recruitmentApi.getContractStatus(offerId);
+      setContractStatusMap(prev => ({ ...prev, [offerId]: status }));
+    } catch (error: any) {
+      console.error("Failed to load contract status:", error);
+      showToast("Failed to load contract status", "error");
+    } finally {
+      setLoadingContractStatus(prev => ({ ...prev, [offerId]: false }));
+    }
+  };
+
+  // ONB-002: View/Download signed contract document
+  const handleViewContract = async (offerId: string) => {
+    try {
+      setViewingContract(offerId);
+      
+      // First, get contract status to get documentId
+      const status = contractStatusMap[offerId] || await recruitmentApi.getContractStatus(offerId);
+      
+      if (!status.hasSignedDocument || !status.contract?.documentId) {
+        showToast("No signed contract document available", "error");
+        return;
+      }
+      
+      const documentId = status.contract.documentId;
+      const blob = await recruitmentApi.downloadDocument(documentId);
+      
+      // Create object URL and open in new tab
+      const url = window.URL.createObjectURL(blob);
+      const newWindow = window.open(url, '_blank');
+      
+      if (!newWindow) {
+        window.URL.revokeObjectURL(url);
+        showToast("Popup blocked. Please allow popups to view the contract.", "error");
+        return;
+      }
+      
+      // Clean up object URL after a delay
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+      showToast("Opening contract document...", "success");
+    } catch (error: any) {
+      console.error("Failed to view contract:", error);
+      showToast(error.message || "Failed to view contract document", "error");
+    } finally {
+      setViewingContract(null);
+    }
+  };
+
   const handleOpenCreateEmployee = async (application: Application, offer: Offer) => {
     setSelectedApplication(application);
     setSelectedOffer(offer);
+    
+    // ONB-002: Load contract status when opening create employee modal
+    if (offer._id) {
+      await loadContractStatus(offer._id);
+    }
     
     // Set default start date to 2 weeks from now
     const defaultStartDate = new Date();
@@ -567,6 +677,16 @@ export default function HROffersPage() {
               }`}
             >
               Create New Offer ({applicationsForOffer.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("completed")}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === "completed"
+                  ? "border-green-500 text-green-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              Completed Hires ({applicationsCompleted.length})
             </button>
           </nav>
         </div>
@@ -706,19 +826,58 @@ export default function HROffersPage() {
                                   </Link>
                                 );
                               }
-                              // Show "Create Employee" button if offer is ACCEPTED + APPROVED
+                              // Show "Create Employee" button if offer is ACCEPTED + APPROVED AND employee doesn't exist
+                              const employeeStatus = employeeExistsMap[application._id];
                               if (
                                 offer?.applicantResponse === OfferResponseStatus.ACCEPTED &&
-                                offer?.finalStatus === OfferFinalStatus.APPROVED
+                                offer?.finalStatus === OfferFinalStatus.APPROVED &&
+                                !employeeStatus?.employeeExists
                               ) {
                                 return (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleOpenCreateEmployee(application, offer)}
-                                    className="bg-green-600 hover:bg-green-700"
-                                  >
-                                    Create Employee
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    {/* ONB-002: View Contract button */}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        if (offer._id) {
+                                          // Load contract status if not already loaded
+                                          if (!contractStatusMap[offer._id]) {
+                                            await loadContractStatus(offer._id);
+                                          }
+                                          await handleViewContract(offer._id);
+                                        }
+                                      }}
+                                      disabled={viewingContract === offer._id || loadingContractStatus[offer._id || ""]}
+                                      className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                    >
+                                      {viewingContract === offer._id 
+                                        ? "Opening..." 
+                                        : loadingContractStatus[offer._id || ""]
+                                        ? "Loading..."
+                                        : "📄 View Contract"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleOpenCreateEmployee(application, offer)}
+                                      className="bg-green-600 hover:bg-green-700"
+                                    >
+                                      Create Employee
+                                    </Button>
+                                  </div>
+                                );
+                              }
+                              // If employee exists, show badge instead
+                              if (employeeStatus?.employeeExists && employeeStatus.employee) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
+                                      ✅ Employee Created
+                                    </span>
+                                    <span className="text-xs text-gray-600">
+                                      {employeeStatus.employee.employeeNumber}
+                                    </span>
+                                  </div>
                                 );
                               }
                               return null;
@@ -728,6 +887,99 @@ export default function HROffersPage() {
                       </CardContent>
                     </Card>
                   ))
+                )}
+              </div>
+            )}
+
+            {/* Completed Hires Tab */}
+            {activeTab === "completed" && (
+              <div className="space-y-4">
+                {applicationsCompleted.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <p className="text-gray-500">No completed hires found.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  applicationsCompleted.map((application) => {
+                    const offer = offerMap[application._id];
+                    const employeeStatus = employeeExistsMap[application._id];
+                    return (
+                      <Card key={application._id} className="hover:shadow-md transition-shadow border-green-200 bg-green-50/30">
+                        <CardContent className="pt-6">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-3">
+                                <h3 className="text-lg font-semibold text-gray-900">
+                                  {application.requisition?.template?.title || "Job Opening"}
+                                </h3>
+                                <StatusBadge status={application.status} type="application" />
+                                <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
+                                  ✅ Employee Created
+                                </span>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Candidate</p>
+                                  <p className="text-sm text-gray-900 font-medium">{getCandidateName(application)}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {application.requisition?.template?.department || "Department"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Employee Details</p>
+                                  {employeeStatus?.employee ? (
+                                    <>
+                                      <p className="text-sm text-gray-900 font-medium">
+                                        {employeeStatus.employee.fullName}
+                                      </p>
+                                      <p className="text-xs text-gray-600">
+                                        Employee #: {employeeStatus.employee.employeeNumber}
+                                      </p>
+                                      <p className="text-xs text-gray-600">
+                                        Status: {employeeStatus.employee.status}
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <p className="text-xs text-gray-500">Employee information not available</p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {offer && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-1">Candidate Response</p>
+                                      <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                        {offer.applicantResponse?.toUpperCase() || "ACCEPTED"}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-1">Final Status</p>
+                                      <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                        {offer.finalStatus?.toUpperCase() || "APPROVED"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenViewOffer(application)}
+                              >
+                                View Details
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
                 )}
               </div>
             )}
@@ -1397,9 +1649,59 @@ export default function HROffersPage() {
                   <p><strong>Department:</strong> {selectedApplication.requisition?.template?.department || "N/A"}</p>
                   <p><strong>Salary:</strong> ${selectedOffer.grossSalary?.toLocaleString() || "N/A"}</p>
                 </div>
-                <p className="text-xs text-blue-600 mt-3">
-                  ⚠️ Make sure the candidate has uploaded a signed contract before creating the employee profile.
-                </p>
+                
+                {/* ONB-002: Contract Status Display */}
+                {selectedOffer._id && (() => {
+                  const contractStatus = contractStatusMap[selectedOffer._id];
+                  const isLoading = loadingContractStatus[selectedOffer._id];
+                  
+                  if (isLoading) {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-blue-300">
+                        <p className="text-xs text-blue-600">Loading contract status...</p>
+                      </div>
+                    );
+                  }
+                  
+                  if (contractStatus) {
+                    if (contractStatus.hasSignedDocument) {
+                      return (
+                        <div className="mt-3 pt-3 border-t border-blue-300">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-semibold text-green-700 mb-1">✅ Signed Contract Available</p>
+                              <p className="text-xs text-blue-600">{contractStatus.message}</p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewContract(selectedOffer._id)}
+                              disabled={viewingContract === selectedOffer._id}
+                              className="border-green-500 text-green-600 hover:bg-green-50 text-xs"
+                            >
+                              {viewingContract === selectedOffer._id ? "Opening..." : "📄 View Contract"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="mt-3 pt-3 border-t border-blue-300">
+                          <p className="text-xs font-semibold text-yellow-700 mb-1">⚠️ Contract Status</p>
+                          <p className="text-xs text-blue-600">{contractStatus.message}</p>
+                        </div>
+                      );
+                    }
+                  }
+                  
+                  return (
+                    <div className="mt-3 pt-3 border-t border-blue-300">
+                      <p className="text-xs text-blue-600">
+                        ⚠️ Make sure the candidate has uploaded a signed contract before creating the employee profile.
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>

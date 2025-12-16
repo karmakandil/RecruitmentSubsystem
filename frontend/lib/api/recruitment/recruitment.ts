@@ -222,6 +222,16 @@ export const recruitmentApi = {
   },
 
   // ✅ Accessible: HR_MANAGER, HR_EMPLOYEE, SYSTEM_ADMIN
+  // Check if employee already exists for an application
+  checkEmployeeExistsForApplication: async (applicationId: string): Promise<{
+    employeeExists: boolean;
+    employee: any | null;
+    message: string;
+  }> => {
+    return await api.get(`/recruitment/application/${applicationId}/employee-status`);
+  },
+
+  // ✅ Accessible: HR_MANAGER, HR_EMPLOYEE, SYSTEM_ADMIN
   // ONB-002: Get contract status to check if candidate uploaded signed contract
   getContractStatus: async (offerId: string): Promise<{
     hasContract: boolean;
@@ -311,6 +321,16 @@ export const recruitmentApi = {
   // ✅ Accessible: No role restriction
   downloadDocument: async (documentId: string): Promise<Blob> => {
     return await api.get(`/recruitment/document/${documentId}/download`, {
+      responseType: "blob",
+    });
+  },
+
+  // CHANGED BY RECRUITMENT SUBSYSTEM - Talent Pool Feature
+  // Download candidate resume/CV by candidate ID
+  // This method allows HR staff to download resumes from the Talent Pool
+  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN, RECRUITER
+  downloadCandidateResume: async (candidateId: string): Promise<Blob> => {
+    return await api.get(`/recruitment/candidate/${candidateId}/resume/download`, {
       responseType: "blob",
     });
   },

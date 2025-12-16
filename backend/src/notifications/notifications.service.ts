@@ -729,54 +729,9 @@ export class NotificationsService {
     return statusMap[status] || NotificationType.LEAVE_MODIFIED;
   }
 
-  // ===== RECRUITMENT MODULE NOTIFICATIONS =====
-
-  // =============================================================================
-  // RECRUITMENT SUBSYSTEM - INTERVIEW NOTIFICATIONS
-  // =============================================================================
-  //
-  // This section handles all notifications related to interviews in the
-  // recruitment workflow. The interview notification flow is:
-  //
-  // 1. HR schedules interview with panel members
-  // 2. ALL panel members receive in-app notification with interview details
-  // 3. Candidate receives in-app notification about scheduled interview
-  // 4. If interview is cancelled → All parties notified
-  // 5. If interview is rescheduled → All parties notified with new date
-  //
-  // Notification Types Used:
-  // - INTERVIEW_PANEL_INVITATION: Sent to panel members when assigned
-  // - INTERVIEW_SCHEDULED: Sent to candidate when interview is scheduled
-  // - INTERVIEW_CANCELLED: Sent to panel members when interview cancelled
-  // - INTERVIEW_RESCHEDULED: Sent to panel members when date changes
-  //
-  // =============================================================================
-
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Panel Members about Interview Assignment
-   * 
-   * Purpose: Inform all panel members that they have been assigned to conduct
-   * an interview. Each panel member receives full interview details.
-   * 
-   * Called by: scheduleInterview() in RecruitmentService
-   * 
-   * Flow:
-   * HR schedules interview → scheduleInterview() → notifyInterviewPanelMembers()
-   *                                                          ↓
-   *                                              Each panel member gets notification
-   *                                              with candidate name, position, date, etc.
-   * 
-   * @param panelMemberIds - Array of user IDs (ObjectId strings) for panel members
-   * @param interviewDetails - Object containing:
-   *   - interviewId: MongoDB ObjectId of the interview
-   *   - candidateName: Full name of candidate to interview
-   *   - positionTitle: Job title being interviewed for
-   *   - scheduledDate: Date and time of interview
-   *   - method: Interview method (video, onsite, phone)
-   *   - videoLink: (optional) Video call link if method is video
-   *   - stage: Interview stage (screening, department_interview, hr_interview)
-   * @returns Object with success status and count of notifications created
-   */
+  // ===== RECRUITMENT SUBSYSTEM =====
+  
+  // Notify panel members when assigned to an interview
   async notifyInterviewPanelMembers(
     panelMemberIds: string[],
     interviewDetails: {
@@ -853,28 +808,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify HR Employees about New Application
-   * 
-   * Purpose: Inform HR Employees and HR Managers when a candidate submits
-   * a new job application. Ensures timely review of applications.
-   * 
-   * Called by: apply() in recruitment.service.ts
-   * 
-   * Flow:
-   * Candidate applies → notifyHRNewApplication()
-   *                              ↓
-   *                  All HR Employees & Managers notified
-   *                  "New application received for [position]"
-   * 
-   * @param hrRecipientIds - Array of user IDs (ObjectId strings) for HR staff
-   * @param applicationDetails - Object containing:
-   *   - applicationId: The application ID
-   *   - candidateName: Full name of candidate
-   *   - positionTitle: Job title being applied for
-   *   - requisitionId: The job requisition ID
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify HR staff when a candidate submits a new application
   async notifyHRNewApplication(
     hrRecipientIds: string[],
     applicationDetails: {
@@ -892,6 +826,7 @@ export class NotificationsService {
 
     const notifications: any[] = [];
     const referralBadge = applicationDetails.isReferral ? '⭐ REFERRAL - ' : '';
+    const internalBadge = (applicationDetails as any).isInternalCandidate ? '👤 INTERNAL CANDIDATE - ' : '';
     const appliedAt = new Date().toLocaleString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -901,13 +836,20 @@ export class NotificationsService {
       minute: '2-digit',
     });
 
+    // Build screening info if available
+    const screeningInfo = (applicationDetails as any).screeningScore !== undefined
+      ? `\n📊 Electronic Screening:\n` +
+        `• Score: ${(applicationDetails as any).screeningScore}/100\n` +
+        `• Status: ${(applicationDetails as any).screeningPassed ? '✓ Passed' : '⚠ Needs Review'}\n`
+      : '';
+
     for (const recipientId of hrRecipientIds) {
       try {
-        const message = `${referralBadge}New job application received!\n\n` +
+        const message = `${internalBadge}${referralBadge}New job application received!\n\n` +
           `📋 Application Details:\n` +
           `• Candidate: ${applicationDetails.candidateName}\n` +
           `• Position: ${applicationDetails.positionTitle}\n` +
-          `• Applied: ${appliedAt}\n\n` +
+          `• Applied: ${appliedAt}${screeningInfo}\n\n` +
           `Please review the application and schedule screening.`;
 
         const notification = await this.notificationLogModel.create({
@@ -941,27 +883,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Panel Members about Interview Cancellation
-   * 
-   * Purpose: Inform all panel members when an interview they were assigned to
-   * has been cancelled. Frees up their time and keeps them informed.
-   * 
-   * Called by: cancelInterview() or updateInterviewStatus() when status = 'cancelled'
-   * 
-   * Flow:
-   * Interview cancelled → notifyInterviewCancelled()
-   *                              ↓
-   *                  All panel members notified
-   *                  "Interview cancelled for [candidate]"
-   * 
-   * @param panelMemberIds - Array of user IDs (ObjectId strings) for panel members
-   * @param interviewDetails - Object containing:
-   *   - candidateName: Full name of candidate
-   *   - positionTitle: Job title
-   *   - originalDate: Originally scheduled date/time
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify panel members when an interview is cancelled
   async notifyInterviewCancelled(
     panelMemberIds: string[],
     interviewDetails: {
@@ -1010,31 +932,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Panel Members about Interview Reschedule
-   * 
-   * Purpose: Inform all panel members when an interview has been rescheduled
-   * to a new date/time. Shows both old and new dates for clarity.
-   * 
-   * Called by: rescheduleInterview() or when interview date is updated
-   * 
-   * Flow:
-   * Interview rescheduled → notifyInterviewRescheduled()
-   *                                    ↓
-   *                        All panel members notified
-   *                        "Interview moved from [old] to [new]"
-   * 
-   * @param panelMemberIds - Array of user IDs (ObjectId strings) for panel members
-   * @param interviewDetails - Object containing:
-   *   - interviewId: MongoDB ObjectId of the interview
-   *   - candidateName: Full name of candidate
-   *   - positionTitle: Job title
-   *   - oldDate: Previous scheduled date/time
-   *   - newDate: New scheduled date/time
-   *   - method: Interview method
-   *   - videoLink: (optional) Video call link
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify panel members when an interview is rescheduled
   async notifyInterviewRescheduled(
     panelMemberIds: string[],
     interviewDetails: {
@@ -1107,15 +1005,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Get Interview Notifications for User
-   * 
-   * Purpose: Retrieve all interview-related notifications for a specific user.
-   * Used by the frontend to display interview notifications separately.
-   * 
-   * @param userId - MongoDB ObjectId string of the user
-   * @returns Object with count and array of interview notifications
-   */
+  // Get all interview notifications for a user
   async getInterviewNotifications(userId: string) {
     const notifications = await this.notificationLogModel
       .find({
@@ -1138,32 +1028,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Candidate about Scheduled Interview
-   * 
-   * Purpose: Inform the candidate that their interview has been scheduled.
-   * Provides all details they need to prepare and attend.
-   * 
-   * Called by: scheduleInterview() in RecruitmentService
-   * 
-   * Flow:
-   * HR schedules interview → scheduleInterview() → notifyCandidateInterviewScheduled()
-   *                                                            ↓
-   *                                                Candidate sees notification
-   *                                                "Your interview is scheduled!"
-   * 
-   * Note: An interview email is also sent separately via sendNotification()
-   * 
-   * @param candidateId - MongoDB ObjectId string of the candidate
-   * @param interviewDetails - Object containing:
-   *   - interviewId: MongoDB ObjectId of the interview
-   *   - positionTitle: Job title being interviewed for
-   *   - scheduledDate: Date and time of interview
-   *   - method: Interview method (video, onsite, phone)
-   *   - videoLink: (optional) Video call link
-   *   - stage: Interview stage
-   * @returns Object with success status and notification object
-   */
+  // Notify candidate when their interview is scheduled
   async notifyCandidateInterviewScheduled(
     candidateId: string,
     interviewDetails: {
@@ -1230,58 +1095,7 @@ export class NotificationsService {
     }
   }
 
-  // =============================================================================
-  // RECRUITMENT SUBSYSTEM - HIRING DECISION NOTIFICATIONS
-  // =============================================================================
-  //
-  // This section handles all notifications related to hiring decisions in the
-  // recruitment workflow. The flow is as follows:
-  //
-  // 1. HR EMPLOYEE schedules interview and submits feedback (score + comments)
-  // 2. When ALL panel members submit feedback → Interview status = 'completed'
-  // 3. Application with completed interview appears in HR MANAGER's "Job Offers" page
-  // 4. HR MANAGER reviews feedback and either:
-  //    a) ACCEPTS → Creates offer → Candidate accepts → HR Manager finalizes → HIRED
-  //    b) REJECTS → Application status = REJECTED
-  // 5. Upon hiring/rejection:
-  //    - All HR Employees receive in-app notification
-  //    - Candidate receives in-app notification + email
-  //    - HR Employee can track in "Candidate Tracking" page
-  //
-  // Notification Types Used:
-  // - CANDIDATE_HIRED: Sent to HR Employees when candidate is hired
-  // - CANDIDATE_REJECTED: Sent to HR Employees when candidate is rejected
-  // - APPLICATION_ACCEPTED: Sent to candidate when hired
-  // - APPLICATION_REJECTED: Sent to candidate when rejected
-  //
-  // =============================================================================
-
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify HR Employees about Hiring
-   * 
-   * Purpose: Inform all HR Employees when a candidate has been successfully hired
-   * so they can proceed with onboarding preparation.
-   * 
-   * Called by: 
-   * - finalizeOffer() when offer is APPROVED and candidate ACCEPTED
-   * - updateApplicationStatus() when status changes to HIRED
-   * 
-   * Flow:
-   * HR Manager approves offer → finalizeOffer() → notifyHREmployeesCandidateHired()
-   *                                                        ↓
-   *                                            All HR Employees get notification
-   *                                                        ↓
-   *                                            HR Employee sees in "Candidate Tracking"
-   * 
-   * @param hrEmployeeIds - Array of HR Employee user IDs to notify
-   * @param hiringDetails - Object containing:
-   *   - candidateName: Full name of the hired candidate
-   *   - candidateId: MongoDB ObjectId of the candidate
-   *   - positionTitle: Job title the candidate was hired for
-   *   - applicationId: MongoDB ObjectId of the application
-   *   - offerId: (optional) MongoDB ObjectId of the offer
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify HR employees when a candidate is hired
   async notifyHREmployeesCandidateHired(
     hrEmployeeIds: string[],
     hiringDetails: {
@@ -1344,33 +1158,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify HR Employees about Rejection
-   * 
-   * Purpose: Inform all HR Employees when a candidate has been rejected
-   * so they can update their tracking and send rejection communication.
-   * 
-   * Called by:
-   * - finalizeOffer() when offer is REJECTED
-   * - updateApplicationStatus() when status changes to REJECTED
-   * 
-   * Flow:
-   * HR Manager rejects application/offer → notifyHREmployeesCandidateRejected()
-   *                                                  ↓
-   *                                      All HR Employees get notification
-   *                                                  ↓
-   *                                      HR Employee sees in "Candidate Tracking"
-   *                                      with status = REJECTED
-   * 
-   * @param hrEmployeeIds - Array of HR Employee user IDs to notify
-   * @param rejectionDetails - Object containing:
-   *   - candidateName: Full name of the rejected candidate
-   *   - candidateId: MongoDB ObjectId of the candidate
-   *   - positionTitle: Job title the candidate applied for
-   *   - applicationId: MongoDB ObjectId of the application
-   *   - rejectionReason: (optional) Reason provided by HR Manager
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify HR employees when a candidate is rejected
   async notifyHREmployeesCandidateRejected(
     hrEmployeeIds: string[],
     rejectionDetails: {
@@ -1431,30 +1219,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Candidate about Acceptance (Hiring)
-   * 
-   * Purpose: Send an in-app notification to the candidate informing them
-   * they have been hired. This is in addition to the email notification.
-   * 
-   * Called by:
-   * - finalizeOffer() when offer is APPROVED and candidate ACCEPTED
-   * - updateApplicationStatus() when status changes to HIRED
-   * 
-   * Flow:
-   * HR Manager approves offer → notifyCandidateAccepted()
-   *                                      ↓
-   *                          Candidate sees notification in app
-   *                          "Congratulations! You've been HIRED!"
-   * 
-   * Note: An acceptance EMAIL is also sent separately via sendNotification()
-   * 
-   * @param candidateId - MongoDB ObjectId of the candidate
-   * @param acceptanceDetails - Object containing:
-   *   - positionTitle: Job title the candidate was hired for
-   *   - applicationId: MongoDB ObjectId of the application
-   * @returns Object with success status and notification object
-   */
+  // Notify candidate when they are hired
   async notifyCandidateAccepted(
     candidateId: string,
     acceptanceDetails: {
@@ -1500,31 +1265,7 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Candidate about Rejection
-   * 
-   * Purpose: Send an in-app notification to the candidate informing them
-   * their application has been rejected. This is in addition to the email.
-   * 
-   * Called by:
-   * - finalizeOffer() when offer is REJECTED
-   * - updateApplicationStatus() when status changes to REJECTED
-   * 
-   * Flow:
-   * HR Manager rejects application → notifyCandidateRejected()
-   *                                          ↓
-   *                              Candidate sees notification in app
-   *                              "Thank you for applying..."
-   * 
-   * Note: A rejection EMAIL is also sent separately via sendNotification()
-   * 
-   * @param candidateId - MongoDB ObjectId of the candidate
-   * @param rejectionDetails - Object containing:
-   *   - positionTitle: Job title the candidate applied for
-   *   - applicationId: MongoDB ObjectId of the application
-   *   - rejectionReason: (optional) Feedback from HR Manager
-   * @returns Object with success status and notification object
-   */
+  // Notify candidate when their application is rejected
   async notifyCandidateRejected(
     candidateId: string,
     rejectionDetails: {
@@ -1577,42 +1318,104 @@ export class NotificationsService {
     }
   }
 
-  // =============================================================================
-  // RECRUITMENT SUBSYSTEM - OFFER NOTIFICATIONS
-  // =============================================================================
-  //
-  // This section handles notifications for the offer workflow:
-  //
-  // 1. HR Manager creates offer → Candidate notified (OFFER_RECEIVED)
-  // 2. Candidate accepts offer → HR Manager/Employees notified (OFFER_RESPONSE_ACCEPTED)
-  // 3. Candidate rejects offer → HR Manager/Employees notified (OFFER_RESPONSE_REJECTED)
-  //
-  // =============================================================================
+  // Notify candidate when interview is completed (all feedback submitted)
+  async notifyCandidateInterviewCompleted(
+    candidateId: string,
+    interviewDetails: {
+      positionTitle: string;
+      applicationId: string;
+      interviewId: string;
+    },
+  ) {
+    if (!candidateId) {
+      return { success: false, message: 'No candidate ID provided' };
+    }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify Candidate about New Offer
-   * 
-   * Purpose: Send in-app notification to candidate when HR Manager creates
-   * and sends them a job offer. Candidate should review and respond.
-   * 
-   * Called by: createOffer() in RecruitmentService
-   * 
-   * Flow:
-   * HR Manager fills offer form → createOffer() → notifyCandidateOfferReceived()
-   *                                                        ↓
-   *                                            Candidate sees notification
-   *                                            "You have a new job offer!"
-   *                                                        ↓
-   *                                            Candidate goes to Offers page to respond
-   * 
-   * @param candidateId - MongoDB ObjectId string of the candidate
-   * @param offerDetails - Object containing:
-   *   - offerId: MongoDB ObjectId of the offer
-   *   - positionTitle: Job title being offered
-   *   - grossSalary: Salary amount
-   *   - deadline: Response deadline date
-   * @returns Object with success status and notification object
-   */
+    try {
+      const message = `✅ Your interview has been completed.\n\n` +
+        `We have received all feedback from the interview panel for the ${interviewDetails.positionTitle} position.\n\n` +
+        `Our team is now reviewing the feedback and will notify you of our decision soon.\n\n` +
+        `Thank you for your patience!`;
+
+      const notification = await this.notificationLogModel.create({
+        to: new Types.ObjectId(candidateId),
+        type: NotificationType.INTERVIEW_COMPLETED,
+        message: message,
+        data: {
+          positionTitle: interviewDetails.positionTitle,
+          applicationId: interviewDetails.applicationId,
+          interviewId: interviewDetails.interviewId,
+          action: 'INTERVIEW_COMPLETED',
+        },
+        isRead: false,
+      });
+
+      console.log(`[INTERVIEW_NOTIFICATION] Sent INTERVIEW_COMPLETED notification to candidate: ${candidateId}`);
+      
+      return {
+        success: true,
+        notification,
+      };
+    } catch (error) {
+      console.error(`[INTERVIEW_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
+      return { success: false, error };
+    }
+  }
+
+  // Notify HR manager when all interview feedback is submitted and ready for review
+  async notifyHRManagerFeedbackReady(
+    hrManagerIds: string[],
+    reviewDetails: {
+      candidateName: string;
+      positionTitle: string;
+      applicationId: string;
+      interviewId: string;
+    },
+  ) {
+    if (!hrManagerIds || hrManagerIds.length === 0) {
+      console.log('[FEEDBACK_NOTIFICATION] No HR Managers to notify about ready feedback');
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    const notifications: any[] = [];
+
+    for (const hrManagerId of hrManagerIds) {
+      try {
+        const message = `📋 An application is ready for review.\n\n` +
+          `All interview feedback has been submitted for:\n` +
+          `• Candidate: ${reviewDetails.candidateName}\n` +
+          `• Position: ${reviewDetails.positionTitle}\n\n` +
+          `Please review the feedback and make a decision (accept/reject).\n\n` +
+          `You can view the application and feedback in the "Job Offers & Approvals" page.`;
+
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrManagerId),
+          type: NotificationType.FEEDBACK_READY_FOR_REVIEW,
+          message: message,
+          data: {
+            candidateName: reviewDetails.candidateName,
+            positionTitle: reviewDetails.positionTitle,
+            applicationId: reviewDetails.applicationId,
+            interviewId: reviewDetails.interviewId,
+            action: 'FEEDBACK_READY',
+          },
+          isRead: false,
+        });
+
+        notifications.push(notification);
+        console.log(`[FEEDBACK_NOTIFICATION] Sent FEEDBACK_READY notification to HR Manager: ${hrManagerId}`);
+      } catch (error) {
+        console.error(`[FEEDBACK_NOTIFICATION] Failed to notify HR Manager ${hrManagerId}:`, error);
+      }
+    }
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+    };
+  }
+
+  // Notify candidate when they receive a job offer
   async notifyCandidateOfferReceived(
     candidateId: string,
     offerDetails: {
@@ -1675,32 +1478,7 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Notify HR when Candidate Responds to Offer
-   * 
-   * Purpose: Send in-app notifications to HR Manager and HR Employees when
-   * a candidate accepts or rejects their job offer.
-   * 
-   * Called by: respondToOffer() in RecruitmentService
-   * 
-   * Flow:
-   * Candidate accepts/rejects → respondToOffer() → notifyHROfferResponse()
-   *                                                        ↓
-   *                                            HR Manager sees notification
-   *                                            "Candidate has ACCEPTED/REJECTED the offer!"
-   *                                                        ↓
-   *                                            HR Manager can finalize (if accepted)
-   * 
-   * @param hrUserIds - Array of HR user IDs to notify (HR Manager + HR Employees)
-   * @param responseDetails - Object containing:
-   *   - candidateName: Full name of the candidate
-   *   - candidateId: MongoDB ObjectId of the candidate
-   *   - positionTitle: Job title
-   *   - offerId: MongoDB ObjectId of the offer
-   *   - applicationId: MongoDB ObjectId of the application
-   *   - response: 'accepted' or 'rejected'
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify HR when candidate accepts or rejects an offer
   async notifyHROfferResponse(
     hrUserIds: string[],
     responseDetails: {
@@ -1772,30 +1550,7 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * RECRUITMENT SUBSYSTEM: Get HR Employee IDs for Notifications
-   * 
-   * Purpose: Helper method to fetch all active HR Employee user IDs
-   * for sending bulk notifications about hiring decisions.
-   * 
-   * Note: This method is currently a placeholder. In the actual implementation,
-   * HR Employee IDs are fetched directly in the calling methods (finalizeOffer,
-   * updateApplicationStatus) using the EmployeeSystemRole model.
-   * 
-   * The actual query used is:
-   * ```typescript
-   * const hrEmployees = await this.employeeSystemRoleModel
-   *   .find({
-   *     roles: { $in: [SystemRole.HR_EMPLOYEE] },
-   *     isActive: true,
-   *   })
-   *   .select('employeeProfileId')
-   *   .lean()
-   *   .exec();
-   * ```
-   * 
-   * @returns Array of HR Employee user IDs (ObjectId strings)
-   */
+  // Helper to get HR employee IDs for notifications (placeholder - IDs fetched in calling methods)
   async getHREmployeeIds(): Promise<string[]> {
     try {
       const hrEmployees = await this.employeeProfileModel

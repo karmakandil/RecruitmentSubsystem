@@ -149,7 +149,14 @@ api.interceptors.response.use(
       errorMessage = `HTTP ${error.response?.status || "Unknown"} error`;
     }
 
-    return Promise.reject(new Error(errorMessage));
+    //change
+    // Create a more detailed error object
+    const detailedError = new Error(errorMessage);
+    (detailedError as any).status = error.response?.status;
+    (detailedError as any).responseData = responseData;
+    (detailedError as any).originalError = error;
+    
+    return Promise.reject(detailedError);
   }
 );
 

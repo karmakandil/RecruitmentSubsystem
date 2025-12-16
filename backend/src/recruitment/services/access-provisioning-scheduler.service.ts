@@ -7,6 +7,7 @@ import { EmployeeProfileService } from '../../employee-profile/employee-profile.
 import { EmployeeStatus, SystemRole } from '../../employee-profile/enums/employee-profile.enums';
 import { TerminationRequest } from '../models/termination-request.schema';
 import { TerminationStatus } from '../enums/termination-status.enum';
+import { EmployeeProfile, EmployeeProfileDocument } from '../../employee-profile/models/employee-profile.schema';
 
 /**
  * ONB-013: Automated Account Provisioning and Revocation Scheduler
@@ -28,6 +29,8 @@ export class AccessProvisioningSchedulerService {
     private readonly employeeProfileService: EmployeeProfileService,
     @InjectModel(TerminationRequest.name)
     private terminationModel: Model<TerminationRequest>,
+    @InjectModel(EmployeeProfile.name)
+    private employeeModel: Model<EmployeeProfileDocument>,
   ) {}
 
   /**
@@ -70,16 +73,18 @@ export class AccessProvisioningSchedulerService {
     try {
       // Find employees whose start date (dateOfHire or contractStartDate) is today
       // and they have onboarding with IT tasks not yet completed
-      const employees = await this.employeeProfileService.findAll(
-        {
-          status: EmployeeStatus.PROBATION, // New employees in probation
-        },
-        undefined,
-      );
+      // Note: New employees start as PROBATION until onboarding is completed
+      // Use employee model directly to support MongoDB $in query for multiple statuses
+      const employees = await this.employeeModel
+        .find({
+          status: { $in: [EmployeeStatus.INACTIVE, EmployeeStatus.PROBATION] }, // New employees (inactive or probation)
+        })
+        .lean()
+        .exec();
 
       const employeesToProvision: any[] = [];
 
-      for (const employee of employees.data || []) {
+      for (const employee of employees || []) {
         const startDate = employee.contractStartDate || employee.dateOfHire;
         if (!startDate) continue;
 

@@ -41,17 +41,40 @@ export default function HRInterviewsPage() {
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [panelFeedback, setPanelFeedback] = useState<any[]>([]);
 
-  // CHANGED - Recruiter can only schedule interviews, not submit feedback
-  const isRecruiterOnly = user?.roles?.some(
-    (role) => String(role).toLowerCase() === "recruiter"
-  ) && !user?.roles?.some(
-    (role) => ["hr employee", "hr manager", "system admin"].includes(String(role).toLowerCase())
-  );
+  // Helper function to check if current user is in the interview panel
+  // Users can only submit feedback if they are actually part of the interview panel
+  const isUserInPanel = (interview: any): boolean => {
+    if (!interview?.panel || !Array.isArray(interview.panel)) {
+      return false;
+    }
+    
+    const currentUserId = user?.id || user?.userId || (user as any)?._id;
+    if (!currentUserId) {
+      return false;
+    }
+    
+    // Check if current user ID matches any panel member ID
+    return interview.panel.some((panelId: any) => {
+      const panelIdStr = typeof panelId === 'object' ? panelId?.toString() : String(panelId);
+      const userIdStr = String(currentUserId);
+      return panelIdStr === userIdStr;
+    });
+  };
   
-  // CHANGED - Only HR Employee, HR Manager, System Admin can submit feedback
-  const canSubmitFeedback = user?.roles?.some(
-    (role) => ["hr employee", "hr manager", "system admin"].includes(String(role).toLowerCase())
-  );
+  // Users can submit feedback if they have the right role AND are in the panel
+  const canUserSubmitFeedback = (interview: any): boolean => {
+    // First check if user has the required role
+    const hasRequiredRole = user?.roles?.some(
+      (role) => ["hr employee", "hr manager", "system admin", "recruiter"].includes(String(role).toLowerCase())
+    );
+    
+    if (!hasRequiredRole) {
+      return false;
+    }
+    
+    // Then check if user is actually in the panel
+    return isUserInPanel(interview);
+  };
   const [scheduleForm, setScheduleForm] = useState<ScheduleInterviewDto>({
     applicationId: "",
     stage: ApplicationStage.SCREENING,
@@ -546,7 +569,7 @@ export default function HRInterviewsPage() {
                                 >
                                   View Panel
                                 </Button>
-                                {canSubmitFeedback && (
+                                {canUserSubmitFeedback(interview) && (
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -579,27 +602,26 @@ export default function HRInterviewsPage() {
                           Schedule Interview
                         </Button>
                       )}
-                      {/* CHANGED - Only HR Employee/Manager/Admin can submit feedback, not Recruiter */}
-                      {canSubmitFeedback && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Find the first scheduled interview for this application
-                            const appInterviews = interviews.filter(
-                              (int: any) => int.applicationId === application._id && int.status === 'scheduled'
-                            );
-                            if (appInterviews.length > 0) {
-                              handleOpenFeedback(application, appInterviews[0]);
-                            } else {
-                              showToast("Please schedule an interview first before submitting feedback", "error");
-                            }
-                          }}
-                          disabled={interviews.filter((int: any) => int.applicationId === application._id && int.status === 'scheduled').length === 0}
-                        >
-                          Submit Feedback
-                        </Button>
-                      )}
+                      {/* CHANGED - Users can only submit feedback if they are in the interview panel */}
+                      {/* When a recruiter schedules an interview, they are automatically added to the panel */}
+                      {/* Other users (HR employees, recruiters, etc.) can only submit if they were selected as panel members */}
+                      {(() => {
+                        const appInterviews = interviews.filter(
+                          (int: any) => int.applicationId === application._id && int.status === 'scheduled'
+                        );
+                        const interviewInPanel = appInterviews.find((int: any) => canUserSubmitFeedback(int));
+                        return interviewInPanel ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              handleOpenFeedback(application, interviewInPanel);
+                            }}
+                          >
+                            Submit Feedback
+                          </Button>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </CardContent>
