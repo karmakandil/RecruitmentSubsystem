@@ -730,7 +730,6 @@ export class NotificationsService {
   }
 
   // ===== RECRUITMENT SUBSYSTEM =====
-  
   // Notify panel members when assigned to an interview
   async notifyInterviewPanelMembers(
     panelMemberIds: string[],
@@ -836,7 +835,6 @@ export class NotificationsService {
       minute: '2-digit',
     });
 
-    // Build screening info if available
     const screeningInfo = (applicationDetails as any).screeningScore !== undefined
       ? `\n📊 Electronic Screening:\n` +
         `• Score: ${(applicationDetails as any).screeningScore}/100\n` +
@@ -870,7 +868,6 @@ export class NotificationsService {
         console.log(`[APPLICATION_NOTIFICATION] Sent notification to HR: ${recipientId}`);
       } catch (error) {
         console.error(`[APPLICATION_NOTIFICATION] Failed to notify HR ${recipientId}:`, error);
-        // Continue with other notifications even if one fails
       }
     }
 
@@ -1106,7 +1103,6 @@ export class NotificationsService {
       offerId?: string;
     },
   ) {
-    // Early return if no HR Employees to notify
     if (!hrEmployeeIds || hrEmployeeIds.length === 0) {
       console.log('[HIRING_NOTIFICATION] No HR Employees to notify about hiring');
       return { success: true, notificationsCreated: 0 };
@@ -1114,10 +1110,8 @@ export class NotificationsService {
 
     const notifications: any[] = [];
 
-    // Create notification for each HR Employee
     for (const hrEmployeeId of hrEmployeeIds) {
       try {
-        // Build notification message with hiring details and next steps
         const message = `🎉 A candidate has been HIRED!\n\n` +
           `📋 Hiring Details:\n` +
           `• Candidate: ${hiringDetails.candidateName}\n` +
@@ -1127,12 +1121,10 @@ export class NotificationsService {
           `• Prepare onboarding documents\n` +
           `• Track the candidate in "Candidate Tracking"`;
 
-        // Create notification in database
         const notification = await this.notificationLogModel.create({
           to: new Types.ObjectId(hrEmployeeId),
           type: NotificationType.CANDIDATE_HIRED,
           message: message,
-          // Store structured data for frontend use (e.g., linking to application)
           data: {
             candidateName: hiringDetails.candidateName,
             candidateId: hiringDetails.candidateId,
@@ -1147,7 +1139,6 @@ export class NotificationsService {
         notifications.push(notification);
         console.log(`[HIRING_NOTIFICATION] Sent HIRED notification to HR Employee: ${hrEmployeeId}`);
       } catch (error) {
-        // Log error but continue with other notifications
         console.error(`[HIRING_NOTIFICATION] Failed to notify HR Employee ${hrEmployeeId}:`, error);
       }
     }
@@ -1169,7 +1160,6 @@ export class NotificationsService {
       rejectionReason?: string;
     },
   ) {
-    // Early return if no HR Employees to notify
     if (!hrEmployeeIds || hrEmployeeIds.length === 0) {
       console.log('[HIRING_NOTIFICATION] No HR Employees to notify about rejection');
       return { success: true, notificationsCreated: 0 };
@@ -1177,10 +1167,8 @@ export class NotificationsService {
 
     const notifications: any[] = [];
 
-    // Create notification for each HR Employee
     for (const hrEmployeeId of hrEmployeeIds) {
       try {
-        // Build notification message with rejection details
         const message = `❌ A candidate has been REJECTED.\n\n` +
           `📋 Details:\n` +
           `• Candidate: ${rejectionDetails.candidateName}\n` +
@@ -1188,12 +1176,10 @@ export class NotificationsService {
           (rejectionDetails.rejectionReason ? `• Reason: ${rejectionDetails.rejectionReason}\n` : '') +
           `\nThe rejection notification has been sent to the candidate.`;
 
-        // Create notification in database
         const notification = await this.notificationLogModel.create({
           to: new Types.ObjectId(hrEmployeeId),
           type: NotificationType.CANDIDATE_REJECTED,
           message: message,
-          // Store structured data for frontend use
           data: {
             candidateName: rejectionDetails.candidateName,
             candidateId: rejectionDetails.candidateId,
@@ -1208,7 +1194,6 @@ export class NotificationsService {
         notifications.push(notification);
         console.log(`[HIRING_NOTIFICATION] Sent REJECTED notification to HR Employee: ${hrEmployeeId}`);
       } catch (error) {
-        // Log error but continue with other notifications
         console.error(`[HIRING_NOTIFICATION] Failed to notify HR Employee ${hrEmployeeId}:`, error);
       }
     }
@@ -1227,24 +1212,20 @@ export class NotificationsService {
       applicationId: string;
     },
   ) {
-    // Validate candidate ID
     if (!candidateId) {
       return { success: false, message: 'No candidate ID provided' };
     }
 
     try {
-      // Build congratulatory message
       const message = `🎉 Congratulations! You have been HIRED!\n\n` +
         `We are delighted to inform you that your application for ${acceptanceDetails.positionTitle} has been successful.\n\n` +
         `You will receive your official acceptance letter and onboarding details shortly.\n\n` +
         `Welcome to the team!`;
 
-      // Create notification in database
       const notification = await this.notificationLogModel.create({
         to: new Types.ObjectId(candidateId),
         type: NotificationType.APPLICATION_ACCEPTED,
         message: message,
-        // Store structured data for frontend use
         data: {
           positionTitle: acceptanceDetails.positionTitle,
           applicationId: acceptanceDetails.applicationId,
@@ -1274,29 +1255,24 @@ export class NotificationsService {
       rejectionReason?: string;
     },
   ) {
-    // Validate candidate ID
     if (!candidateId) {
       return { success: false, message: 'No candidate ID provided' };
     }
 
     try {
-      // Build professional rejection message
       let message = `Thank you for your interest in the ${rejectionDetails.positionTitle} position.\n\n` +
         `After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n`;
       
-      // Include rejection reason/feedback if provided
       if (rejectionDetails.rejectionReason) {
         message += `Feedback: ${rejectionDetails.rejectionReason}\n\n`;
       }
       
       message += `We appreciate the time you invested in the application process and wish you the best in your job search.`;
 
-      // Create notification in database
       const notification = await this.notificationLogModel.create({
         to: new Types.ObjectId(candidateId),
         type: NotificationType.APPLICATION_REJECTED,
         message: message,
-        // Store structured data for frontend use
         data: {
           positionTitle: rejectionDetails.positionTitle,
           applicationId: rejectionDetails.applicationId,
