@@ -138,7 +138,7 @@ export class LeaveController {
 
   @Post('request')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.DEPARTMENT_HEAD)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE)
   async createLeaveRequest(
     @Body() createLeaveRequestDto: CreateLeaveRequestDto,
   ) {
@@ -149,6 +149,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
@@ -161,6 +162,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
   )
@@ -176,7 +178,7 @@ export class LeaveController {
 
   @Delete('request/:id')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async deleteLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.deleteLeaveRequest(id);
   }
@@ -391,6 +393,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -407,7 +410,7 @@ export class LeaveController {
 
   @Post('request/:id/cancel')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async cancelLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.cancelLeaveRequest(id);
   }
@@ -417,6 +420,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -436,6 +440,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -469,6 +474,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -683,6 +689,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -730,6 +737,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,

@@ -4088,6 +4088,41 @@ export class LeavesService {
       const previousBalance = Math.round(entitlement.remaining * 100) / 100;
       entitlement.remaining = previousBalance;
 
+      // Get policy for rounding rule (needed for all adjustment types)
+      // Try multiple ways to find the policy in case of ID format issues
+      let leavePolicy = await this.leavePolicyModel
+        .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
+        .exec();
+      
+      // If not found, try as string
+      if (!leavePolicy) {
+        leavePolicy = await this.leavePolicyModel
+          .findOne({ leaveTypeId: leaveTypeId })
+          .exec();
+      }
+      
+      // If still not found, try using the entitlement's leaveTypeId
+      if (!leavePolicy && entitlement.leaveTypeId) {
+        const entLeaveTypeId = entitlement.leaveTypeId as any;
+        const entitlementLeaveTypeId = entLeaveTypeId instanceof Types.ObjectId 
+          ? entLeaveTypeId 
+          : new Types.ObjectId(String(entLeaveTypeId));
+        leavePolicy = await this.leavePolicyModel
+          .findOne({ leaveTypeId: entitlementLeaveTypeId })
+          .exec();
+      }
+      
+      const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+      
+      console.log(`[adjustAccrual] Policy lookup:`, {
+        leaveTypeId,
+        entitlementLeaveTypeId: entitlement.leaveTypeId ? String(entitlement.leaveTypeId) : 'N/A',
+        policyFound: !!leavePolicy,
+        roundingRule: roundingRule,
+        policyRoundingRule: leavePolicy?.roundingRule,
+        adjustmentType: adjustmentType
+      });
+
       switch (adjustmentType) {
         case 'suspension':
           entitlement.accruedActual -= adjustmentAmount;
@@ -4096,13 +4131,24 @@ export class LeavesService {
           break;
         case 'reduction':
           entitlement.remaining -= adjustmentAmount;
-          // Round to 2 decimal places to avoid floating point precision issues
-          entitlement.remaining = Math.round(entitlement.remaining * 100) / 100;
+          console.log(`[adjustAccrual] Reduction - Before rounding: ${entitlement.remaining}`);
+          // Apply policy rounding rule to remaining
+          entitlement.remaining = this.applyRoundingRule(
+            entitlement.remaining,
+            roundingRule,
+          );
+          console.log(`[adjustAccrual] Reduction - After rounding (${roundingRule}): ${entitlement.remaining}`);
           break;
         case 'adjustment':
           entitlement.remaining += adjustmentAmount;
-          // Round to 2 decimal places to avoid floating point precision issues
-          entitlement.remaining = Math.round(entitlement.remaining * 100) / 100;
+          console.log(`[adjustAccrual] Adjustment - Before rounding: ${entitlement.remaining}, Adjustment amount: ${adjustmentAmount}`);
+          // Apply policy rounding rule to remaining
+          const beforeRounding = entitlement.remaining;
+          entitlement.remaining = this.applyRoundingRule(
+            entitlement.remaining,
+            roundingRule,
+          );
+          console.log(`[adjustAccrual] Adjustment - After rounding (${roundingRule}): ${beforeRounding} -> ${entitlement.remaining}`);
           break;
         case 'restoration':
           entitlement.accruedActual += adjustmentAmount;
@@ -4115,11 +4161,6 @@ export class LeavesService {
 
       // Update accruedRounded if we changed accruedActual
       if (adjustmentType === 'suspension' || adjustmentType === 'restoration') {
-        // Get policy for rounding rule
-        const leavePolicy = await this.leavePolicyModel
-          .findOne({ leaveTypeId: new Types.ObjectId(leaveTypeId) })
-          .exec();
-        const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
         entitlement.accruedRounded = this.applyRoundingRule(
           entitlement.accruedActual,
           roundingRule,
@@ -4134,10 +4175,14 @@ export class LeavesService {
       if (adjustmentType === 'reduction' || adjustmentType === 'adjustment') {
         // Direct remaining change - update directly without going through updateLeaveEntitlement
         // to avoid any recalculation logic that might interfere
+        // Ensure the rounded value is what we save
+        const roundedRemaining = entitlement.remaining;
+        console.log(`[adjustAccrual] Saving remaining value: ${roundedRemaining} (rounded with rule: ${roundingRule})`);
+        
         updated = await this.leaveEntitlementModel
           .findByIdAndUpdate(
             entitlement._id.toString(),
-            { $set: { remaining: entitlement.remaining } },
+            { $set: { remaining: roundedRemaining } },
             { new: true }
           )
           .exec();
@@ -4145,6 +4190,12 @@ export class LeavesService {
         if (!updated) {
           throw new Error('Failed to update entitlement');
         }
+        
+        // Verify the value was saved correctly
+        console.log(`[adjustAccrual] Saved remaining value: ${updated.remaining}, Expected: ${roundedRemaining}`);
+        
+        // Ensure the returned document has the correct rounded value
+        updated.remaining = roundedRemaining;
       } else {
         // Suspension/restoration affect accrued, so update accrued fields
         const updateData: any = {
