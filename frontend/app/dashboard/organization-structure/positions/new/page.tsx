@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -21,7 +21,7 @@ import {
   PositionResponseDto,
 } from "@/types/organization-structure";
 
-export default function NewPositionPage() {
+function NewPositionForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const clonePositionId = searchParams.get("clone");
@@ -471,5 +471,26 @@ export default function NewPositionPage() {
         </form>
       </div>
     </ProtectedRoute>
+  );
+}
+
+export default function NewPositionPage() {
+  return (
+    <Suspense
+      fallback={
+        <ProtectedRoute
+          allowedRoles={[SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN]}
+        >
+          <div className="container mx-auto px-6 py-8">
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-gray-600">Loading...</p>
+            </div>
+          </div>
+        </ProtectedRoute>
+      }
+    >
+      <NewPositionForm />
+    </Suspense>
   );
 }
