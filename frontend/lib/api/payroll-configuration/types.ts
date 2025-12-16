@@ -38,18 +38,13 @@ export interface RejectionDto {
   comment?: string;
 }
 
-export interface InsuranceBracket {
-  _id: string;
-  minSalary: number;
-  maxSalary: number;
-  employeeContribution: number;
-  employerContribution: number;
-  status: ConfigStatus;
-  createdBy?: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
+export interface InsuranceBracket extends BaseConfiguration {
+  name: string; // Insurance bracket name (e.g., social, health insurance)
+  minSalary: number; // Minimum salary for bracket
+  maxSalary: number; // Maximum salary for bracket
+  employeeRate: number; // Employee contribution rate (%)
+  employerRate: number; // Employer contribution rate (%)
+  amount?: number; // Fixed insurance amount (optional)
 }
 
 export interface ConfigurationStats {
@@ -166,4 +161,25 @@ export interface Allowance extends BaseConfiguration {
   taxable: boolean;
   effectiveDate?: string;
   expirationDate?: string;
+}
+
+export interface TaxRule extends BaseConfiguration {
+  rate: number; // Tax rate in percentage
+  effectiveDate?: string;
+  exemptions?: string[]; // List of exemptions
+  thresholds?: {
+    minAmount?: number;
+    maxAmount?: number;
+  };
+  isProgressive?: boolean; // Whether this is a progressive tax rate
+}
+
+export interface SigningBonus extends BaseConfiguration {
+  positionName: string; // Position name eligible for signing bonus (e.g., Junior TA, Mid TA, Senior TA)
+  amount: number; // Signing bonus amount
+}
+
+export interface TerminationBenefit extends BaseConfiguration {
+  amount: number; // Termination/resignation benefit amount
+  terms?: string; // Terms and conditions for the benefit
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
@@ -96,8 +97,16 @@ export default function ProcessInitiationPage() {
 
       setPayrollManagers(managers);
     } catch (err: any) {
-      console.error("Error fetching payroll managers:", err);
-      // Don't set error - payroll manager is optional
+      // Handle 403 Forbidden errors silently - user may not have permission to view all employees
+      // This is fine since payroll manager selection is optional
+      if (err.response?.status === 403 || err.response?.status === 401) {
+        // Silently fail - payroll manager field is optional
+        setPayrollManagers([]);
+      } else {
+        // Only log non-permission errors
+        console.error("Error fetching payroll managers:", err);
+      }
+      // Don't set error state - payroll manager is optional
     } finally {
       setLoadingManagers(false);
     }
@@ -120,8 +129,11 @@ export default function ProcessInitiationPage() {
       return;
     }
 
-    if (!user?.userId) {
-      setError("User information not available");
+    // Get user ID - check both id and userId fields
+    const userId = user?.id || user?.userId || user?._id;
+    
+    if (!userId) {
+      setError("User information not available. Please refresh the page or log in again.");
       return;
     }
 
@@ -136,7 +148,7 @@ export default function ProcessInitiationPage() {
       const result = await payrollExecutionApi.processPayrollInitiation({
         payrollPeriod: new Date(periodToUse).toISOString(),
         entity: entity.trim(),
-        payrollSpecialistId: user.userId,
+        payrollSpecialistId: userId,
         currency: currency || undefined,
         payrollManagerId: payrollManagerId || undefined,
       });
@@ -177,7 +189,7 @@ export default function ProcessInitiationPage() {
           Process Payroll Initiation
         </h1>
         <p className="text-gray-600 mt-1">
-          Automatically process payroll initiation to create a new payroll run
+          As a Payroll Specialist, automatically process payroll initiation. The system will create a new payroll run in DRAFT status that requires review.
         </p>
       </div>
 
@@ -199,9 +211,7 @@ export default function ProcessInitiationPage() {
         <CardHeader>
           <CardTitle>Payroll Initiation Details</CardTitle>
           <CardDescription>
-            Enter the details for the payroll initiation. The system will
-            automatically create a payroll run in DRAFT status that requires
-            review before draft generation.
+            Enter the details for the payroll initiation. The system will automatically process the initiation and create a payroll run in DRAFT status that requires review before draft generation.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -92,16 +92,19 @@ export default function ReviewInitiationPage() {
   };
 
   const filterRuns = () => {
-    // Show only DRAFT status payroll runs (pending review)
-    const draftRuns = payrollRuns.filter(
-      (run) => run.status?.toLowerCase() === "draft"
+    // Show DRAFT status payroll runs (pending review) and REJECTED runs (can be edited)
+    const reviewableRuns = payrollRuns.filter(
+      (run) => {
+        const status = run.status?.toLowerCase();
+        return status === "draft" || status === "rejected";
+      }
     );
 
     // Filter by search term
-    let filtered = draftRuns;
+    let filtered = reviewableRuns;
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = draftRuns.filter(
+      filtered = reviewableRuns.filter(
         (run) =>
           run.runId.toLowerCase().includes(searchLower) ||
           run.entity.toLowerCase().includes(searchLower) ||
@@ -130,8 +133,11 @@ export default function ReviewInitiationPage() {
       return;
     }
 
-    if (!user?.userId) {
-      setError("User information not available");
+    // Get user ID - check both id and userId fields
+    const userId = user?.id || user?.userId || user?._id;
+    
+    if (!userId) {
+      setError("User information not available. Please refresh the page or log in again.");
       return;
     }
 
@@ -143,7 +149,7 @@ export default function ReviewInitiationPage() {
       await payrollExecutionApi.reviewPayrollInitiation({
         runId: selectedPayrollRun.runId,
         approved: decision === "approve",
-        reviewerId: user.userId,
+        reviewerId: userId,
         rejectionReason: decision === "reject" ? rejectionReason.trim() : undefined,
       });
 
@@ -224,7 +230,7 @@ export default function ReviewInitiationPage() {
           Review Payroll Initiation
         </h1>
         <p className="text-gray-600 mt-1">
-          Review and approve processed payroll initiations. Approving will automatically start draft generation.
+          As a Payroll Specialist, review and approve processed payroll initiations. Approving will automatically start draft generation.
         </p>
       </div>
 
@@ -270,10 +276,10 @@ export default function ReviewInitiationPage() {
           <CardContent className="py-12 text-center">
             <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
             <p className="text-gray-600 text-lg mb-2">
-              No payroll initiations pending review
+              No payroll initiations pending review or available for editing
             </p>
             <p className="text-gray-500 text-sm">
-              Process a new payroll initiation to see it here for review
+              Process a new payroll initiation to see it here for review, or check if there are rejected runs that need editing.
             </p>
             <Button
               onClick={() => router.push("/dashboard/payroll-execution/process-initiation")}
@@ -358,23 +364,27 @@ export default function ReviewInitiationPage() {
                       Edit
                     </Button>
                   )}
-                  <Button
-                    onClick={() => handleDecision(run, "approve")}
-                    className="bg-green-600 hover:bg-green-700 text-white flex-1"
-                    disabled={processing}
-                  >
-                    <CheckCircle className="h-5 w-5 mr-2" />
-                    Approve
-                  </Button>
-                  <Button
-                    onClick={() => handleDecision(run, "reject")}
-                    variant="destructive"
-                    className="flex-1"
-                    disabled={processing}
-                  >
-                    <XCircle className="h-5 w-5 mr-2" />
-                    Reject
-                  </Button>
+                  {run.status?.toLowerCase() === "draft" && (
+                    <>
+                      <Button
+                        onClick={() => handleDecision(run, "approve")}
+                        className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                        disabled={processing}
+                      >
+                        <CheckCircle className="h-5 w-5 mr-2" />
+                        Approve
+                      </Button>
+                      <Button
+                        onClick={() => handleDecision(run, "reject")}
+                        variant="destructive"
+                        className="flex-1"
+                        disabled={processing}
+                      >
+                        <XCircle className="h-5 w-5 mr-2" />
+                        Reject
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

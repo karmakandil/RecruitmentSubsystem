@@ -29,9 +29,19 @@ export default function SigningBonusReviewForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only allow reviewing pending signing bonuses
+  const canReview = signingBonus.status === BonusStatus.PENDING;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    
+    // Validate that the signing bonus is still pending
+    if (signingBonus.status !== BonusStatus.PENDING) {
+      setError(`This signing bonus cannot be reviewed. Current status: ${signingBonus.status}. Only pending signing bonuses can be reviewed.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -50,9 +60,35 @@ export default function SigningBonusReviewForm({
     }
   };
 
+  // If signing bonus is not pending, show message
+  if (!canReview) {
+    return (
+      <Card className="p-6">
+        <h2 className="text-2xl font-bold mb-4">Review Signing Bonus</h2>
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-4">
+          <p className="font-medium">This signing bonus cannot be reviewed.</p>
+          <p className="text-sm mt-1">
+            Only pending signing bonuses can be reviewed and approved/rejected. 
+            Current status: <strong>{signingBonus.status}</strong>
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={onCancel}
+          className="bg-gray-500 hover:bg-gray-600"
+        >
+          Back to List
+        </Button>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-6">
       <h2 className="text-2xl font-bold mb-4">Review Signing Bonus</h2>
+      <p className="text-gray-600 mb-4">
+        Review and approve or reject this processed signing bonus. Only pending signing bonuses can be reviewed.
+      </p>
 
       <div className="mb-6">
         <div className="grid grid-cols-2 gap-4 mb-4">

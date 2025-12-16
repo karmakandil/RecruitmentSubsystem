@@ -76,6 +76,12 @@ export default function ProcessSigningBonusesPage() {
         <p className="text-gray-600 mt-1">
           Automatically process signing bonuses for eligible employees (new hires within the last 30 days with matching position configurations)
         </p>
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-sm text-yellow-800">
+            <strong>Note:</strong> Before processing, ensure signing bonus configurations are created and <strong>approved</strong> by a Payroll Manager. 
+            Processed bonuses will appear in the <strong>Review Signing Bonuses</strong> page.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -99,14 +105,17 @@ export default function ProcessSigningBonusesPage() {
             Automatic Signing Bonus Processing
           </CardTitle>
           <CardDescription>
-            The system will automatically:
-            <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+            The system will automatically process signing bonuses for eligible employees.
+          </CardDescription>
+          <div className="mt-3">
+            <p className="text-sm text-gray-600 mb-2">Process steps:</p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
               <li>Find all employees hired within the last 30 days</li>
               <li>Match them with approved signing bonus configurations by position</li>
               <li>Check if they are eligible according to their employment contract</li>
               <li>Create employee signing bonus records with PENDING status</li>
             </ul>
-          </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
@@ -178,19 +187,34 @@ export default function ProcessSigningBonusesPage() {
           )}
 
           {result && result.length === 0 && (
-            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-md text-center">
-              <p className="text-gray-600">
-                No signing bonuses were processed. This could mean:
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-blue-900 font-semibold mb-2">
+                No signing bonuses were processed. To process signing bonuses, ensure:
               </p>
-              <ul className="list-disc list-inside mt-2 text-sm text-gray-600 space-y-1">
-                <li>No employees were hired within the last 30 days</li>
-                <li>No matching signing bonus configurations exist for their positions</li>
-                <li>Employees are not eligible according to their contracts</li>
+              <ul className="list-disc list-inside mt-2 text-sm text-blue-800 space-y-1">
+                <li><strong>Employees hired within last 30 days:</strong> Employees must have a dateOfHire within the last 30 days</li>
+                <li><strong>Approved signing bonus configurations:</strong> Signing bonus policies must be created and approved by a Payroll Manager</li>
+                <li><strong>Position matching:</strong> Employee's position title must exactly match a signing bonus configuration's position name</li>
+                <li><strong>Contract eligibility:</strong> Employee's contract must have a signingBonus amount set (BR 24: eligibility based on contract)</li>
+                <li><strong>Onboarding record:</strong> Employee must have a completed onboarding record with a contract linked</li>
+                <li><strong>No existing bonus:</strong> Employee must not already have a signing bonus record</li>
               </ul>
+              <div className="mt-4 pt-4 border-t border-blue-200">
+                <p className="text-xs text-blue-700 mb-3">
+                  <strong>Tip:</strong> Check that signing bonus configurations are approved (not just draft), and that employee contracts include signing bonus amounts.
+                </p>
+                <Button
+                  onClick={() => router.push("/dashboard/payroll-execution/pre-initiation/signing-bonuses")}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  View All Signing Bonuses (Including Previously Processed)
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
             </div>
           )}
 
-          {result && (
+          {result && result.length > 0 && (
             <div className="pt-4 border-t">
               <Button
                 onClick={() => router.push("/dashboard/payroll-execution/pre-initiation/signing-bonuses")}
@@ -201,15 +225,41 @@ export default function ProcessSigningBonusesPage() {
               </Button>
             </div>
           )}
+
+          {/* Always show link to review page, even if no results */}
+          {!result && (
+            <div className="pt-4 border-t">
+              <Button
+                onClick={() => router.push("/dashboard/payroll-execution/pre-initiation/signing-bonuses")}
+                variant="outline"
+                className="w-full"
+              >
+                View All Signing Bonuses
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <div className="mt-8">
+      <div className="mt-8 flex gap-4">
         <Button
           onClick={() => router.push("/dashboard/payroll-execution/pre-initiation")}
           variant="outline"
         >
           ← Back to Pre-Initiation
+        </Button>
+        <Button
+          onClick={() => router.push("/dashboard/payroll-configuration/signing-bonuses")}
+          variant="outline"
+        >
+          Check Signing Bonus Configurations
+        </Button>
+        <Button
+          onClick={() => router.push("/dashboard/payroll-execution/pre-initiation/signing-bonuses")}
+          variant="outline"
+        >
+          View All Processed Signing Bonuses
         </Button>
       </div>
     </div>

@@ -217,7 +217,7 @@ export default function EditInitiationPage() {
           Edit Payroll Initiation
         </h1>
         <p className="text-gray-600 mt-1">
-          Edit payroll initiation details. Rejected payroll runs will be changed back to DRAFT status after editing.
+          As a Payroll Specialist, manually edit payroll initiation when needed. Rejected payroll runs will be changed back to DRAFT status after editing.
         </p>
       </div>
 

@@ -49,21 +49,19 @@ export default function PayrollSpecialistDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Payroll Specialist Dashboard</h1>
-        {mounted && (
-          <p className="text-gray-600 mt-1">
-            Welcome, {user?.fullName || "Specialist"}. Manage payroll configurations, processing, and execution workflows.
-          </p>
-        )}
+        <h1 className="text-3xl font-bold text-white">Payroll Specialist Dashboard</h1>
+        <p className="text-white mt-1">
+          {mounted ? `Welcome, ${user?.fullName || "Specialist"}. Manage payroll configurations, processing, and execution workflows.` : 'Welcome. Manage payroll configurations, processing, and execution workflows.'}
+        </p>
       </div>
 
       {/* ========== PAYROLL CONFIGURATION SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <Settings className="h-6 w-6 text-blue-600" />
           Payroll Configuration
         </h2>
-        <p className="text-gray-600 mb-4">
+        <p className="text-white mb-4">
           Configure company-level payroll policies, pay grades, allowances, tax rules, and benefits 
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -239,17 +237,17 @@ export default function PayrollSpecialistDashboardPage() {
 
       {/* ========== PAYROLL PROCESSING & EXECUTION SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Calculator className="h-6 w-6 text-green-600" />
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
+          <Calculator className="h-6 w-6 text-white" />
           Payroll Processing & Execution
         </h2>
-        <p className="text-gray-600 mb-4">
+        <p className="text-white mb-4">
           Process payroll, calculate salaries, generate drafts, review, and send for approval 
         </p>
 
         {/* Pre-Initiation Phase */}
         <div className="mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3"> Pre-Initiation</h3>
+          <h3 className="text-xl font-semibold text-white mb-3"> Pre-Initiation</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
               <CardHeader>
@@ -360,7 +358,7 @@ export default function PayrollSpecialistDashboardPage() {
 
         {/* Initiation Phase */}
         <div className="mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3">Payroll Initiation</h3>
+          <h3 className="text-xl font-semibold text-white mb-3">Payroll Initiation</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
               <CardHeader>
@@ -411,7 +409,7 @@ export default function PayrollSpecialistDashboardPage() {
 
         {/* Calculation & Draft Generation */}
         <div className="mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3"> Calculation & Draft Generation</h3>
+          <h3 className="text-xl font-semibold text-white mb-3"> Calculation & Draft Generation</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
               <CardHeader>
@@ -477,7 +475,7 @@ export default function PayrollSpecialistDashboardPage() {
 
         {/* Review & Approval */}
         <div className="mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3"> Review & Approval</h3>
+          <h3 className="text-xl font-semibold text-white mb-3"> Review & Approval</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200">
               <CardHeader>
@@ -528,7 +526,7 @@ export default function PayrollSpecialistDashboardPage() {
 
         {/* Payslip Generation */}
         <div className="mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3"> Payslip Generation</h3>
+          <h3 className="text-xl font-semibold text-white mb-3"> Payslip Generation</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200">
               <CardHeader>
@@ -565,11 +563,11 @@ export default function PayrollSpecialistDashboardPage() {
 
       {/* ========== PAYROLL TRACKING SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <BarChart3 className="h-6 w-6 text-purple-600" />
           Payroll Tracking
         </h2>
-        <p className="text-gray-600 mb-4">
+        <p className="text-white mb-4">
           Review and approve employee disputes and claims, generate reports, and track payroll status 
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

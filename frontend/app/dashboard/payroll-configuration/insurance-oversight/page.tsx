@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
@@ -14,6 +15,7 @@ import { insuranceBracketsApi, configDetailsApi, InsuranceBracket, ConfigStatus 
 
 export default function InsuranceOversightPage() {
   const { user } = useAuth();
+  const router = useRouter();
   useRequireAuth(SystemRole.HR_MANAGER);
 
   const [insuranceBrackets, setInsuranceBrackets] = useState<InsuranceBracket[]>([]);
@@ -84,8 +86,9 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
+      const id = approvalModal.item._id || approvalModal.item.id;
       await insuranceBracketsApi.approve(
-        approvalModal.item._id,
+        id,
         comment ? { comment } : undefined
       );
       setSuccess('Insurance bracket approved successfully');
@@ -104,7 +107,8 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
-      await insuranceBracketsApi.reject(rejectionModal.item._id, { comment: reason });
+      const id = rejectionModal.item._id || rejectionModal.item.id;
+      await insuranceBracketsApi.reject(id, { comment: reason });
       setSuccess('Insurance bracket rejected successfully');
       setRejectionModal({ isOpen: false, item: null });
       await loadInsuranceBrackets();
@@ -123,7 +127,8 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
-      await insuranceBracketsApi.delete(item._id);
+      const id = item._id || item.id;
+      await insuranceBracketsApi.delete(id);
       setSuccess('Insurance bracket deleted successfully');
       await loadInsuranceBrackets();
     } catch (err: any) {
@@ -136,7 +141,8 @@ export default function InsuranceOversightPage() {
   const handleView = async (item: InsuranceBracket) => {
     try {
       setIsLoadingDetails(true);
-      const details = await insuranceBracketsApi.getById(item._id);
+      const id = item._id || item.id;
+      const details = await insuranceBracketsApi.getById(id);
       setViewModal({
         isOpen: true,
         item,
@@ -152,6 +158,13 @@ export default function InsuranceOversightPage() {
     } finally {
       setIsLoadingDetails(false);
     }
+  };
+
+  const handleEdit = (item: InsuranceBracket) => {
+    // Navigate to edit page - HR Managers can edit insurance brackets
+    // Pattern: /dashboard/payroll-configuration/insurance-brackets/{id}/edit
+    const editUrl = `/dashboard/payroll-configuration/insurance-brackets/${item._id || item.id}/edit`;
+    router.push(editUrl);
   };
 
   // Filter brackets by status
@@ -170,6 +183,13 @@ export default function InsuranceOversightPage() {
 
   const columns = [
     {
+      key: 'name',
+      label: 'Name',
+      render: (item: ConfigurationItem) => (
+        <span className="font-medium">{item.name || 'N/A'}</span>
+      ),
+    },
+    {
       key: 'minSalary',
       label: 'Salary Range',
       render: (item: ConfigurationItem) => (
@@ -179,17 +199,17 @@ export default function InsuranceOversightPage() {
       ),
     },
     {
-      key: 'employeeContribution',
-      label: 'Employee Contribution',
+      key: 'employeeRate',
+      label: 'Employee Rate',
       render: (item: ConfigurationItem) => (
-        <span>{item.employeeContribution}%</span>
+        <span>{item.employeeRate?.toFixed(2) || '0.00'}%</span>
       ),
     },
     {
-      key: 'employerContribution',
-      label: 'Employer Contribution',
+      key: 'employerRate',
+      label: 'Employer Rate',
       render: (item: ConfigurationItem) => (
-        <span>{item.employerContribution}%</span>
+        <span>{item.employerRate?.toFixed(2) || '0.00'}%</span>
       ),
     },
     {
@@ -207,7 +227,7 @@ export default function InsuranceOversightPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Insurance Oversight</h1>
         <p className="text-gray-600 mt-1">
-          Review and approve insurance bracket configurations (HR Manager only)
+          Review and update insurance bracket configurations when policies or regulations change, so that payroll calculations remain accurate, compliant, and reflect the most current insurance requirements. (Approve/reject, Edit, View, Delete)
         </p>
       </div>
 
@@ -263,6 +283,10 @@ export default function InsuranceOversightPage() {
               const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
               if (found) handleView(found);
             }}
+            onEdit={(item) => {
+              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
+              if (found) handleEdit(found);
+            }}
             onApprove={(item) =>
               setApprovalModal({
                 isOpen: true,
@@ -281,6 +305,10 @@ export default function InsuranceOversightPage() {
             }}
             canApprove={(item) => item.status === 'draft'}
             canReject={(item) => item.status === 'draft'}
+            canEdit={(item) => {
+              // HR Managers can edit draft or approved items (approved items will revert to draft when edited)
+              return item.status === 'draft' || item.status === 'approved';
+            }}
             canDelete={(item) => item.status === 'draft'}
           />
         </CardContent>

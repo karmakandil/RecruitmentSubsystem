@@ -114,14 +114,17 @@ export default function ProcessTerminationBenefitsPage() {
             Automatic Termination/Resignation Benefit Processing
           </CardTitle>
           <CardDescription>
-            The system will automatically:
-            <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
+            The system will automatically process termination/resignation benefits for eligible employees.
+          </CardDescription>
+          <div className="mt-3">
+            <p className="text-sm text-gray-600 mb-2">Process steps:</p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
               <li>Find all employees with approved termination or resignation requests</li>
               <li>Match them with approved termination/resignation benefit configurations</li>
               <li>Check business rules and signed contracts for eligibility</li>
               <li>Create employee termination benefit records with PENDING status</li>
             </ul>
-          </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">

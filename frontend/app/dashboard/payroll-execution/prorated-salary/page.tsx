@@ -50,13 +50,20 @@ export default function ProratedSalaryPage() {
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
+        // Fetch all employees (not just ACTIVE) to include terminated/resigned employees
+        // who may need prorated salary calculations
         const employeesResponse = await employeeProfileApi.getAllEmployees({
           limit: 1000,
-          status: "ACTIVE",
+          // Don't filter by status - we need all employees for prorated calculations
         });
         setEmployees(employeesResponse?.data || []);
       } catch (err: any) {
-        setError(err.message || "Failed to load employees");
+        // Handle 403 Forbidden errors gracefully
+        if (err.response?.status === 403 || err.response?.status === 401) {
+          setEmployees([]);
+        } else {
+          setError(err.message || "Failed to load employees");
+        }
       } finally {
         setLoadingEmployees(false);
       }
@@ -202,7 +209,7 @@ export default function ProratedSalaryPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Calculate Prorated Salary</h1>
         <p className="text-gray-600 mt-1">
-          Calculate prorated salaries for mid-month hires, terminations, or partial work periods
+          As a Payroll Specialist, calculate prorated salaries for mid-month hires, terminations, and resignations. The system automatically checks HR events (new hire, termination, resigned) during payroll processing to ensure payments are accurate for partial periods.
         </p>
       </div>
 
@@ -211,7 +218,7 @@ export default function ProratedSalaryPage() {
         <CardHeader>
           <CardTitle>Prorated Salary Calculation</CardTitle>
           <CardDescription>
-            Enter employee details and work period to calculate the prorated salary amount
+            Enter employee details and work period to calculate the prorated salary amount. The system automatically checks HR events (new hire, termination, resigned) during payroll processing and calculates prorated salaries for mid-month hires and terminations to ensure accurate payments for partial periods.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -308,6 +315,12 @@ export default function ProratedSalaryPage() {
             />
             <p className="text-xs text-gray-500 mt-1">
               Last day of the payroll period month (used to calculate days in month)
+            </p>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800">
+              <strong>ℹ️ Automatic HR Event Checking:</strong> During payroll draft generation, the system automatically checks HR events (new hire, termination, resigned) for each employee and calculates prorated salaries when needed. This manual calculation tool is for verification or special cases.
             </p>
           </div>
 
@@ -424,15 +437,25 @@ export default function ProratedSalaryPage() {
                 <div>
                   <p className="font-semibold text-blue-900 mb-1">Prorated Salary Calculation</p>
                   <p className="text-sm text-blue-800 mb-2">
-                    This calculation is used for employees who work partial periods:
+                    The system automatically checks HR events and calculates prorated salaries for employees who work partial periods:
                   </p>
                   <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                    <li><strong>Mid-month hires:</strong> Employees hired after the start of the payroll period</li>
-                    <li><strong>Mid-month terminations:</strong> Employees terminated before the end of the payroll period</li>
+                    <li><strong>New Hires:</strong> System checks hire date and calculates prorated salary for mid-month hires</li>
+                    <li><strong>Terminations:</strong> System checks termination date and calculates prorated salary for mid-month terminations</li>
+                    <li><strong>Resignations:</strong> System checks resignation date and calculates prorated salary for mid-month resignations</li>
                     <li><strong>Partial contracts:</strong> Employees with contracts that don't cover the full period</li>
                   </ul>
                   <p className="text-sm text-blue-800 mt-3">
-                    <strong>Formula:</strong> The prorated salary is calculated by dividing the base salary by the number of days in the month, then multiplying by the number of days actually worked (inclusive of both start and end dates).
+                    <strong>Automatic Processing:</strong> During payroll draft generation, the system automatically:
+                  </p>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside mt-1">
+                    <li>Checks HR events (new hire, termination, resigned) for each employee</li>
+                    <li>Determines if proration is needed based on hire/termination/resignation dates</li>
+                    <li>Calculates prorated salary: (Base Salary ÷ Days in Month) × Days Worked</li>
+                    <li>Ensures payments are accurate for partial periods</li>
+                  </ul>
+                  <p className="text-sm text-blue-800 mt-3">
+                    <strong>Formula:</strong> Prorated Salary = (Base Salary ÷ Days in Month) × Days Worked (inclusive of both start and end dates)
                   </p>
                 </div>
               </div>

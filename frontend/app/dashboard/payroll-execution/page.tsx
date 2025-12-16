@@ -157,7 +157,7 @@ export default function PayrollExecutionPage() {
                 <CardTitle>Prorated Salary</CardTitle>
               </div>
               <CardDescription>
-                Calculate prorated salaries for mid-month hires/terminations
+                Calculate prorated salaries for mid-month hires, terminations, and resignations. System automatically checks HR events to ensure accurate payments for partial periods.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -197,7 +197,7 @@ export default function PayrollExecutionPage() {
                 <CardTitle>Generate Draft</CardTitle>
               </div>
               <CardDescription>
-                Automatically generate draft payroll run with all employee calculations
+                Automatically calculate salaries, allowances, deductions, and contributions based on configured rules - no manual calculations needed
               </CardDescription>
             </CardHeader>
             <CardContent>

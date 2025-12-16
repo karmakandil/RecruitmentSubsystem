@@ -89,8 +89,11 @@ export default function GenerateDraftPage() {
       setError("Please enter an entity name");
       return;
     }
-    if (!user?.id && !user?.userId) {
-      setError("User ID not found");
+    // Get user ID - check both id and userId fields
+    const userId = user?.id || user?.userId || user?._id;
+    
+    if (!userId) {
+      setError("User information not available. Please refresh the page or log in again.");
       return;
     }
 
@@ -111,7 +114,7 @@ export default function GenerateDraftPage() {
 
       setProgress("Validating payroll period and checking for existing runs...");
 
-      const payrollSpecialistId = user.id || user.userId;
+      const payrollSpecialistId = userId;
 
       setProgress("Processing signing bonuses and termination benefits...");
 
@@ -161,7 +164,7 @@ export default function GenerateDraftPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Generate Draft Payroll Run</h1>
         <p className="text-gray-600 mt-1">
-          Automatically generate draft payroll runs at the end of each cycle - the system will calculate all employee payrolls
+          As a Payroll Specialist, automatically calculate salaries, allowances, deductions, and contributions based on configured rules. The system handles all calculations automatically - no manual calculations needed.
         </p>
       </div>
 
@@ -170,7 +173,7 @@ export default function GenerateDraftPage() {
         <CardHeader>
           <CardTitle>Draft Payroll Generation</CardTitle>
           <CardDescription>
-            Configure the payroll period and entity to automatically generate a draft payroll run with all employee calculations
+            Configure the payroll period and entity. The system will automatically calculate salaries, allowances, deductions, and contributions for all employees based on configured rules - no manual calculations required.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -349,16 +352,18 @@ export default function GenerateDraftPage() {
                 <div>
                   <p className="font-semibold text-blue-900 mb-1">Automatic Draft Generation</p>
                   <p className="text-sm text-blue-800 mb-2">
-                    The system has automatically performed the following steps:
+                    The system has automatically calculated all payroll components based on configured rules. No manual calculations were needed:
                   </p>
                   <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                    <li>Validated payroll period against employee contracts</li>
+                    <li><strong>Salaries:</strong> Calculated base salaries for all active employees</li>
+                    <li><strong>Allowances:</strong> Applied configured allowances automatically</li>
+                    <li><strong>Deductions:</strong> Calculated deductions based on configured rules</li>
+                    <li><strong>Contributions:</strong> Applied tax, insurance, and other contributions automatically</li>
                     <li>Processed signing bonuses for new hires</li>
                     <li>Processed termination/resignation benefits</li>
-                    <li>Calculated payroll for all active employees</li>
                     <li>Applied prorated salaries for mid-month hires/terminations</li>
-                    <li>Applied statutory rules (taxes, insurance) automatically</li>
-                    <li>Calculated allowances, deductions, and net pay</li>
+                    <li>Applied statutory rules (taxes, insurance) based on configured policies</li>
+                    <li>Calculated net pay for all employees</li>
                     <li>Flagged any exceptions or irregularities</li>
                   </ul>
                   <p className="text-sm text-blue-800 mt-3">

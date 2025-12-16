@@ -27,20 +27,20 @@ export default function FinanceDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Finance Dashboard</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-3xl font-bold text-white">Finance Dashboard</h1>
+        <p className="text-white mt-1">
           Welcome, {user?.fullName || "Finance Staff"}. Manage payroll approvals, refunds, approved claims, and disputes.
         </p>
       </div>
 
       {/* ========== PAYROLL APPROVAL SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <CheckCircle2 className="h-6 w-6 text-indigo-600" />
           Payroll Approval
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-15: Approve payroll disbursements before execution, so that no incorrect payments are made
+        <p className="text-white mb-4">
+           Approve payroll disbursements before execution, so that no incorrect payments are made
         </p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200">
@@ -50,7 +50,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Payroll Approval</CardTitle>
               </div>
               <CardDescription className="text-base text-gray-700 font-medium">
-                REQ-PY-15: Review and approve payroll runs to ensure no incorrect payments are made. Only payroll runs approved by the Payroll Manager will appear here.
+                 Review and approve payroll runs to ensure no incorrect payments are made. Only payroll runs approved by the Payroll Manager will appear here.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -67,12 +67,12 @@ export default function FinanceDashboardPage() {
 
       {/* ========== REFUNDS & REIMBURSEMENTS SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <RefreshCw className="h-6 w-6 text-green-600" />
           Refunds & Reimbursements
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-41, PY-44, PY-45, PY-46: View approved disputes and claims, generate refunds for next payroll cycle
+        <p className="text-white mb-4">
+           View approved disputes and claims, generate refunds for next payroll cycle
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
@@ -82,7 +82,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Approved Claims</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-44: View and get notified with approved expense claims, so that adjustments can be done
+                 View and get notified with approved expense claims, so that adjustments can be done
               </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -106,7 +106,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Approved Disputes</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-41: View and get notified with approved disputes, so that adjustments can be done
+                 View and get notified with approved disputes, so that adjustments can be done
               </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -130,7 +130,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Generate Refund (Disputes)</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-45: Generate refund for disputes on approval so that it will be included in next payroll cycle
+                 Generate refund for disputes on approval so that it will be included in next payroll cycle
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -154,7 +154,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Generate Refund (Claims)</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-46: Generate refund for expense claims on approval so that it will be included in next payroll cycle
+                 Generate refund for expense claims on approval so that it will be included in next payroll cycle
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -199,12 +199,12 @@ export default function FinanceDashboardPage() {
 
       {/* ========== REPORTS SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <BarChart3 className="h-6 w-6 text-blue-600" />
           Reports & Analytics
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-25, PY-29: Generate reports about taxes, insurance contributions, benefits, and payroll summaries
+        <p className="text-white mb-4">
+           Generate reports about taxes, insurance contributions, benefits, and payroll summaries
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
@@ -214,7 +214,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Tax & Insurance Reports</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-25: Generate reports about taxes, insurance contributions, and benefits, so that accounting books are compliant
+               Generate reports about taxes, insurance contributions, and benefits, so that accounting books are compliant
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -238,7 +238,7 @@ export default function FinanceDashboardPage() {
                 <CardTitle className="text-xl font-bold">Payroll Summaries</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-29: Generate month-end and year-end payroll summaries, so that audits and reporting are simplified
+                 Generate month-end and year-end payroll summaries, so that audits and reporting are simplified
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -283,7 +283,7 @@ export default function FinanceDashboardPage() {
 
       {/* ========== QUICK ACCESS SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-white mb-4">
           Quick Access
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

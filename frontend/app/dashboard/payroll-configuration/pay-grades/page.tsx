@@ -206,6 +206,8 @@ export default function PayGradesPage() {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            canEdit={(item: any) => String(item.status || '').toLowerCase() === 'draft'}
+            canDelete={(item: any) => String(item.status || '').toLowerCase() === 'draft'}
             isLoading={isLoading}
             emptyMessage="No pay grades found. Create your first pay grade to get started."
           />

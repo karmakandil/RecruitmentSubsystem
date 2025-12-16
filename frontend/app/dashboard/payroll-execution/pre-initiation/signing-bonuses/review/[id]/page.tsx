@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { SystemRole } from "@/types";
 import { Button } from "../../../../../../../components/shared/ui/Button";
 import SigningBonusReviewForm from "../../../../../../../components/payroll-execution/SigningBonusReviewForm";
 import { payrollExecutionApi } from "../../../../../../../lib/api/payroll-execution/payroll-execution";
@@ -11,6 +13,8 @@ import { EmployeeSigningBonus } from "../../../../../../../types/payroll-executi
 export default function SigningBonusReviewPage() {
   const router = useRouter();
   const params = useParams();
+  // Only Payroll Specialist can review and approve signing bonuses
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST);
   const id = params.id as string;
   const [signingBonus, setSigningBonus] = useState<EmployeeSigningBonus | null>(null);
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
@@ -14,6 +15,7 @@ import { approvalsApi, configDetailsApi, PendingApproval } from '@/lib/api/payro
 
 export default function ApprovalsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
 
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
@@ -59,15 +61,18 @@ export default function ApprovalsPage() {
       setError(null);
       const data = await approvalsApi.getPendingApprovals();
       // Ensure data is always an array
+      let approvals: PendingApproval[] = [];
       if (Array.isArray(data)) {
-        setPendingApprovals(data);
+        approvals = data;
       } else if (data && typeof data === 'object') {
         // Handle case where API returns { data: [...] } or { pendingApprovals: [...] }
         const arrayData = (data as any).data || (data as any).pendingApprovals || [];
-        setPendingApprovals(Array.isArray(arrayData) ? arrayData : []);
-      } else {
-        setPendingApprovals([]);
+        approvals = Array.isArray(arrayData) ? arrayData : [];
       }
+      
+      // Filter out insurance-brackets and company-settings (cannot be deleted)
+      // They can still be approved/rejected, but not deleted
+      setPendingApprovals(approvals);
     } catch (err: any) {
       setError(err.message || 'Failed to load pending approvals');
       // Use empty array for UI structure when backend is not ready
@@ -120,6 +125,12 @@ export default function ApprovalsPage() {
   };
 
   const handleDelete = async (item: PendingApproval) => {
+    // Cannot delete insurance-brackets or company-settings
+    if (item.type === 'insurance-brackets' || item.type === 'company-settings') {
+      setError('Insurance brackets and company settings cannot be deleted.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this configuration?')) {
       return;
     }
@@ -135,6 +146,13 @@ export default function ApprovalsPage() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleEdit = (item: PendingApproval) => {
+    // Navigate to edit page based on configuration type
+    // Pattern: /dashboard/payroll-configuration/{type}/{id}/edit
+    const editUrl = `/dashboard/payroll-configuration/${item.type}/${item._id}/edit`;
+    router.push(editUrl);
   };
 
   const handleView = async (item: PendingApproval) => {
@@ -252,7 +270,7 @@ export default function ApprovalsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Approval Dashboard</h1>
         <p className="text-gray-600 mt-1">
-          Review and approve pending payroll configurations (Payroll Manager only)
+          Review and approve pending payroll configurations. Edit and approve any configuration, delete except insurance and company settings (Payroll Manager only)
         </p>
       </div>
 
@@ -275,6 +293,9 @@ export default function ApprovalsPage() {
               <CardTitle>Pending Approvals</CardTitle>
               <CardDescription>
                 {Array.isArray(pendingApprovals) ? pendingApprovals.length : 0} configuration(s) awaiting approval
+                <span className="block mt-1 text-xs text-gray-500">
+                  Note: Insurance brackets and company settings cannot be deleted, but can be approved/rejected and edited.
+                </span>
               </CardDescription>
             </div>
             <div className="flex items-center gap-3">
@@ -310,6 +331,10 @@ export default function ApprovalsPage() {
               const found = Array.isArray(pendingApprovals) ? pendingApprovals.find((p) => p._id === item._id) : null;
               if (found) handleView(found);
             }}
+            onEdit={(item) => {
+              const found = Array.isArray(pendingApprovals) ? pendingApprovals.find((p) => p._id === item._id) : null;
+              if (found) handleEdit(found);
+            }}
             onApprove={(item) =>
               setApprovalModal({
                 isOpen: true,
@@ -328,7 +353,17 @@ export default function ApprovalsPage() {
             }}
             canApprove={() => true}
             canReject={() => true}
-            canDelete={(item) => item.status === 'draft'}
+            canEdit={(item) => {
+              // Can edit draft or approved items (approved items will revert to draft when edited)
+              return item.status === 'draft' || item.status === 'approved';
+            }}
+            canDelete={(item) => {
+              // Can only delete draft items, and NOT insurance-brackets or company-settings
+              const type = item.type || '';
+              return item.status === 'draft' && 
+                     type !== 'insurance-brackets' && 
+                     type !== 'company-settings';
+            }}
           />
         </CardContent>
       </Card>

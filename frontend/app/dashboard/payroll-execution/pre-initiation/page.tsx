@@ -38,7 +38,7 @@ export default function PreInitiationDashboard() {
   };
 
   const handleStartPayrollInitiation = () => {
-    router.push("/dashboard/payroll-execution/initiation/create");
+    router.push("/dashboard/payroll-execution/process-initiation");
   };
 
   if (loading) {

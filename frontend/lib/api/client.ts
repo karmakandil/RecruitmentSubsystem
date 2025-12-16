@@ -60,18 +60,38 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    console.error(
-      `❌ API Error [${error.config?.method?.toUpperCase()} ${
-        error.config?.url
-      }]:`,
-      {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message,
-        responseData: error.response?.data,
-        headers: error.response?.headers,
-      }
-    );
+    const status = error.response?.status || error.status;
+    const url = error.config?.url || error.request?.responseURL || '';
+    
+    // Suppress 404 errors for backup endpoints (not yet implemented)
+    // Browser network layer will still show these, but we won't log them as application errors
+    const isBackup404 = status === 404 && (url.includes('/backups') || url.includes('backup'));
+    
+    // Suppress 403 errors for optional endpoints (employee-profile and payroll/runs with query params)
+    const isOptionalEmployeeProfile = status === 403 && url.includes('/employee-profile') && 
+      (url.includes('limit') || url.includes('?'));
+    const isOptionalPayrollRuns = status === 403 && url.includes('/payroll/runs') && 
+      (url.includes('limit') || url.includes('?'));
+    
+    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns) {
+      // Silently handle these errors - they're expected for optional features or unimplemented endpoints
+      // Browser console will show the network error, but we don't treat it as an app error
+      // Return a clean error that can be caught and handled gracefully
+    } else {
+      // Log other errors normally
+      console.error(
+        `❌ API Error [${error.config?.method?.toUpperCase()} ${
+          error.config?.url
+        }]:`,
+        {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          message: error.message,
+          responseData: error.response?.data,
+          headers: error.response?.headers,
+        }
+      );
+    }
 
     // Handle errors
     if (error.response?.status === 401) {
@@ -85,12 +105,19 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 403) {
-      console.log("🚫 403 Forbidden - Insufficient permissions");
-      console.log("Endpoint:", error.config?.url);
-      console.log("User role may not have access to this endpoint");
+      // Check if this is an optional endpoint (already checked above, but check again for redirect logic)
+      const isOptionalEndpoint = isOptionalEmployeeProfile || isOptionalPayrollRuns;
+      
+      if (!isOptionalEndpoint) {
+        console.log("🚫 403 Forbidden - Insufficient permissions");
+        console.log("Endpoint:", url);
+        console.log("User role may not have access to this endpoint");
+      }
+      
       // Redirect to forbidden page instead of login
       // But only if we're not on a dashboard page (to avoid breaking dashboard functionality)
-      if (typeof window !== "undefined") {
+      // Don't redirect for optional endpoints - let the page handle it gracefully
+      if (typeof window !== "undefined" && !isOptionalEndpoint) {
         const currentPath = window.location.pathname;
         // Only redirect if we're not already on the forbidden page or a dashboard page
         // Dashboard pages should handle 403 errors gracefully without redirecting

@@ -27,6 +27,9 @@ export default function Header() {
   const isHR = isHRAdminOrManager(user);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
+  const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) ?? false;
+  const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER) ?? false;
+  const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF) ?? false;
 
   const navItemClass = (href: string) =>
     `text-sm font-medium transition-colors ${
@@ -132,6 +135,32 @@ export default function Header() {
             >
               Dashboard
             </Link>
+
+            {/* Payroll Link - Available for payroll specialists, payroll managers, and finance staff */}
+            {isPayrollSpecialist && (
+              <Link
+                href="/dashboard/payroll-specialist"
+                className={navItemClass("/dashboard/payroll-specialist")}
+              >
+                Payroll
+              </Link>
+            )}
+            {isPayrollManager && (
+              <Link
+                href="/dashboard/payroll-manager"
+                className={navItemClass("/dashboard/payroll-manager")}
+              >
+                Payroll
+              </Link>
+            )}
+            {isFinanceStaff && (
+              <Link
+                href="/dashboard/finance"
+                className={navItemClass("/dashboard/finance")}
+              >
+                Payroll
+              </Link>
+            )}
 
             {/* Regular Employee Navigation */}
             {!isHR && (

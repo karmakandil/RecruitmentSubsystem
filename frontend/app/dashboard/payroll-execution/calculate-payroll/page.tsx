@@ -73,11 +73,24 @@ export default function CalculatePayrollPage() {
     const fetchData = async () => {
       try {
         // Fetch employees
-        const employeesResponse = await employeeProfileApi.getAllEmployees({
-          limit: 1000,
-          status: "ACTIVE",
-        });
-        setEmployees(employeesResponse?.data || []);
+        try {
+          const employeesResponse = await employeeProfileApi.getAllEmployees({
+            limit: 1000,
+            status: "ACTIVE",
+          });
+          setEmployees(employeesResponse?.data || []);
+        } catch (empErr: any) {
+          // Handle 403 Forbidden errors gracefully - user may not have permission to view all employees
+          if (empErr.response?.status === 403 || empErr.response?.status === 401) {
+            // Silently fail - user doesn't have permission
+            // Don't log these errors as they're expected for users without full permissions
+            setEmployees([]);
+          } else {
+            // Only log non-permission errors
+            console.error("Error fetching employees:", empErr);
+            setEmployees([]);
+          }
+        }
 
         // Fetch payroll runs
         try {
@@ -98,12 +111,22 @@ export default function CalculatePayrollPage() {
           }
           setPayrollRuns(runsData);
         } catch (runsErr: any) {
-          console.error("Error fetching payroll runs:", runsErr);
-          // Don't set error here - just log it and continue with empty array
-          setPayrollRuns([]);
+          // Handle 403 Forbidden errors gracefully - user may not have permission to view payroll runs
+          if (runsErr.response?.status === 403 || runsErr.response?.status === 401) {
+            // Silently fail - user doesn't have permission
+            // Don't log these errors as they're expected for users without full permissions
+            setPayrollRuns([]);
+          } else {
+            // Only log non-permission errors
+            console.error("Error fetching payroll runs:", runsErr);
+            setPayrollRuns([]);
+          }
         }
       } catch (err: any) {
-        setError(err.message || "Failed to load data");
+        // Only set error for unexpected errors, not permission errors
+        if (err.response?.status !== 403 && err.response?.status !== 401) {
+          setError(err.message || "Failed to load data");
+        }
       } finally {
         setLoadingEmployees(false);
         setLoadingPayrollRuns(false);
@@ -119,6 +142,12 @@ export default function CalculatePayrollPage() {
       return;
     }
 
+    // Validate that selections are valid IDs
+    if (!selectedEmployeeId.trim() || !selectedPayrollRunId.trim()) {
+      setError("Please select valid employee and payroll run");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
@@ -126,8 +155,8 @@ export default function CalculatePayrollPage() {
 
     try {
       const calculationData: any = {
-        employeeId: selectedEmployeeId,
-        payrollRunId: selectedPayrollRunId,
+        employeeId: selectedEmployeeId.trim(),
+        payrollRunId: selectedPayrollRunId.trim(),
       };
 
       // Add base salary override if provided
@@ -139,6 +168,11 @@ export default function CalculatePayrollPage() {
           return;
         }
         calculationData.baseSalary = salary;
+      }
+
+      // Log the request data for debugging (in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Calculating payroll with data:", calculationData);
       }
 
       const response = await payrollExecutionApi.calculatePayroll(calculationData);
@@ -168,7 +202,86 @@ export default function CalculatePayrollPage() {
         }
       }
     } catch (err: any) {
-      setError(err.message || "Failed to calculate payroll");
+      // Extract detailed error message from response
+      let errorMessage = "Failed to calculate payroll";
+      
+      // Log full error for debugging
+      console.error("Full error object:", err);
+      console.error("Error response:", err.response);
+      console.error("Error response data:", err.response?.data);
+      
+      // Try multiple ways to extract error message
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        
+        // Check for nested error structures
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.error) {
+          errorMessage = typeof errorData.error === 'string' 
+            ? errorData.error 
+            : errorData.error?.message || JSON.stringify(errorData.error);
+        } else if (errorData.errors && Array.isArray(errorData.errors)) {
+          // Handle validation errors array
+          errorMessage = errorData.errors.map((e: any) => e.message || e).join(', ');
+        } else if (errorData.details) {
+          errorMessage = typeof errorData.details === 'string' 
+            ? errorData.details 
+            : errorData.details?.message || JSON.stringify(errorData.details);
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData.stack) {
+          // If it's an error object, try to get message
+          errorMessage = errorData.message || errorData.toString();
+        } else {
+          // Try to stringify the whole object to see what's in it
+          try {
+            const errorStr = JSON.stringify(errorData);
+            if (errorStr !== '{}') {
+              errorMessage = `Server error: ${errorStr}`;
+            }
+          } catch (e) {
+            // If stringify fails, use the error message from axios
+          }
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      // Provide more helpful error messages for common issues
+      if (err.response?.status === 500) {
+        // Only append guidance if we don't already have a detailed message
+        if (errorMessage === "Failed to calculate payroll" || errorMessage === "Internal server error") {
+          errorMessage = `Internal server error. Please check that:
+          - The employee has a valid PayGrade configuration
+          - Required payroll configurations (tax rules, insurance brackets) are approved
+          - The payroll run is in a valid status
+          - All required employee data is complete (contract, bank account, etc.)`;
+        } else {
+          // We have a detailed message, just add context
+          errorMessage = `Internal server error: ${errorMessage}`;
+        }
+      } else if (err.response?.status === 404) {
+        errorMessage = "Employee or payroll run not found. Please verify the selections.";
+      } else if (err.response?.status === 400) {
+        errorMessage = `Invalid request: ${errorMessage}`;
+      }
+
+      setError(errorMessage);
+      
+      // Enhanced logging for debugging
+      console.error("Error calculating payroll - Summary:", {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        extractedMessage: errorMessage,
+        responseData: err.response?.data,
+        requestData: {
+          employeeId: selectedEmployeeId,
+          payrollRunId: selectedPayrollRunId,
+          baseSalary: baseSalaryOverride || 'not provided'
+        },
+        fullError: err
+      });
     } finally {
       setLoading(false);
     }
@@ -209,19 +322,26 @@ export default function CalculatePayrollPage() {
             {loadingEmployees ? (
               <div className="text-sm text-gray-500 mt-1">Loading employees...</div>
             ) : (
-              <select
-                id="employee"
-                value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
-              >
-                <option value="">Select an employee</option>
-                {employees.map((employee) => (
-                  <option key={employee._id} value={employee._id}>
-                    {employee.firstName} {employee.lastName} ({employee.employeeNumber})
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  id="employee"
+                  value={selectedEmployeeId}
+                  onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                >
+                  <option value="">Select an employee</option>
+                  {employees.map((employee) => (
+                    <option key={employee._id} value={employee._id}>
+                      {employee.firstName} {employee.lastName} ({employee.employeeNumber})
+                    </option>
+                  ))}
+                </select>
+                {employees.length === 0 && !loadingEmployees && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    No employees available. You may not have permission to view employees, or no employees are currently active.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
@@ -232,22 +352,29 @@ export default function CalculatePayrollPage() {
             {loadingPayrollRuns ? (
               <div className="text-sm text-gray-500 mt-1">Loading payroll runs...</div>
             ) : (
-              <select
-                id="payrollRun"
-                value={selectedPayrollRunId}
-                onChange={(e) => setSelectedPayrollRunId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
-              >
-                <option value="">Select a payroll run</option>
-                {payrollRuns.map((run) => (
-                  <option key={run._id} value={run._id}>
-                    {run.runId} - {new Date(run.payrollPeriod).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                    })}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  id="payrollRun"
+                  value={selectedPayrollRunId}
+                  onChange={(e) => setSelectedPayrollRunId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                >
+                  <option value="">Select a payroll run</option>
+                  {payrollRuns.map((run) => (
+                    <option key={run._id} value={run._id}>
+                      {run.runId} - {new Date(run.payrollPeriod).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "long",
+                      })}
+                    </option>
+                  ))}
+                </select>
+                {payrollRuns.length === 0 && !loadingPayrollRuns && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    No payroll runs available. You may not have permission to view payroll runs, or no payroll runs have been created yet.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
@@ -271,8 +398,14 @@ export default function CalculatePayrollPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-red-500 font-bold">⚠️</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-900 mb-1">Error Calculating Payroll</p>
+                  <p className="text-sm text-red-800 whitespace-pre-wrap">{error}</p>
+                </div>
+              </div>
             </div>
           )}
 

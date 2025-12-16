@@ -45,10 +45,20 @@ export default function TerminationBenefitReviewForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Only allow reviewing pending termination benefits
+  const canReview = terminationBenefit.status === BenefitStatus.PENDING;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    
+    // Validate that the termination benefit is still pending
+    if (terminationBenefit.status !== BenefitStatus.PENDING) {
+      setError(`This termination benefit cannot be reviewed. Current status: ${terminationBenefit.status}. Only pending termination benefits can be reviewed.`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -118,6 +128,36 @@ export default function TerminationBenefitReviewForm({
       ? terminationBenefit.employeeId
       : "N/A";
 
+  // If termination benefit is not pending, show message
+  if (!canReview) {
+    return (
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-6 w-6 text-blue-600" />
+            Review Termination/Resignation Benefit
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-4">
+            <p className="font-medium">This termination benefit cannot be reviewed.</p>
+            <p className="text-sm mt-1">
+              Only pending termination benefits can be reviewed and approved/rejected. 
+              Current status: <strong>{terminationBenefit.status}</strong>
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={onCancel}
+            className="bg-gray-500 hover:bg-gray-600"
+          >
+            Back to List
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="max-w-3xl">
       <CardHeader>
@@ -126,7 +166,7 @@ export default function TerminationBenefitReviewForm({
           Review Termination/Resignation Benefit
         </CardTitle>
         <CardDescription>
-          Review and approve or reject the processed termination/resignation benefit
+          Review and approve or reject the processed termination/resignation benefit. Only pending termination benefits can be reviewed.
         </CardDescription>
       </CardHeader>
       <CardContent>

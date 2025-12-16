@@ -27,18 +27,21 @@ import {
   Edit,
   Trash2,
 } from "lucide-react";
-import { statsApi, ConfigurationStats } from "@/lib/api/payroll-configuration/stats";
+import { statsApi } from "@/lib/api/payroll-configuration/stats";
+import { ConfigurationStats } from "@/lib/api/payroll-configuration/types";
 import { approvalsApi } from "@/lib/api/payroll-configuration/approvals";
 
 export default function PayrollManagerDashboardPage() {
   const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
 
+  const [mounted, setMounted] = useState(false);
   const [stats, setStats] = useState<ConfigurationStats | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setMounted(true);
     loadDashboardData();
   }, []);
 
@@ -90,20 +93,20 @@ export default function PayrollManagerDashboardPage() {
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Payroll Manager Dashboard</h1>
-        <p className="text-gray-600 mt-1">
-          Welcome, {user?.fullName || "Manager"}. Manage payroll configurations, approvals, and oversight.
+        <h1 className="text-3xl font-bold text-white">Payroll Manager Dashboard</h1>
+        <p className="text-white mt-1">
+          {mounted ? `Welcome, ${user?.fullName || "Manager"}. Manage payroll configurations, approvals, and oversight.` : 'Welcome. Manage payroll configurations, approvals, and oversight.'}
         </p>
       </div>
 
       {/* ========== PAYROLL CONFIGURATION MANAGEMENT SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Settings className="h-6 w-6 text-blue-600" />
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
+          <Settings className="h-6 w-6 text-white" />
           Payroll Configuration Management
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-18: Approve payroll module configuration changes (edit and approve any configuration, delete except insurance)
+        <p className="text-white mb-4">
+           Approve payroll module configuration changes (edit and approve any configuration, delete except insurance)
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Approval Dashboard - Primary Action */}
@@ -114,7 +117,7 @@ export default function PayrollManagerDashboardPage() {
                 <CardTitle className="text-2xl font-bold">Approval Dashboard</CardTitle>
               </div>
               <CardDescription className="text-base text-gray-700 font-medium">
-                REQ-PY-18: Review and approve pending payroll configurations
+                 Review and approve pending payroll configurations
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -158,7 +161,7 @@ export default function PayrollManagerDashboardPage() {
 
       {/* Quick Stats Section */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-white mb-4">
           Quick Access
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -246,19 +249,19 @@ export default function PayrollManagerDashboardPage() {
 
       {/* ========== PAYROLL EXECUTION APPROVAL SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <CheckCircle2 className="h-6 w-6 text-green-600" />
           Payroll Execution Approval
         </h2>
         <p className="text-gray-600 mb-4">
-          REQ-PY-22: Approve payroll runs so that validation is ensured at the managerial level prior to distribution
+           Approve payroll runs so that validation is ensured at the managerial level prior to distribution
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
             <CardHeader>
               <CardTitle>Pending Approvals</CardTitle>
               <CardDescription>
-                REQ-PY-22: Review payroll runs awaiting manager approval
+                 Review payroll runs awaiting manager approval
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -309,19 +312,19 @@ export default function PayrollManagerDashboardPage() {
 
       {/* ========== EXCEPTION RESOLUTION SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <AlertCircle className="h-6 w-6 text-red-600" />
           Exception Resolution
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-20: Resolve escalated irregularities reported by Payroll Specialists so that payroll exceptions are addressed at a higher decision level
+        <p className="text-white mb-4">
+           Resolve escalated irregularities reported by Payroll Specialists so that payroll exceptions are addressed at a higher decision level
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
             <CardHeader>
               <CardTitle>Resolve Irregularities</CardTitle>
               <CardDescription>
-                REQ-PY-20: Resolve escalated irregularities flagged by specialists
+                 Resolve escalated irregularities flagged by specialists
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -372,12 +375,12 @@ export default function PayrollManagerDashboardPage() {
 
       {/* ========== PAYROLL LOCK MANAGEMENT SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <Lock className="h-6 w-6 text-red-600" />
           Payroll Lock Management
         </h2>
-        <p className="text-gray-600 mb-4">
-          REQ-PY-7: Lock or freeze finalized payroll runs to prevent unauthorized retroactive changes. REQ-PY-19: Unfreeze payrolls under exceptional circumstances with reason.
+        <p className="text-white mb-4">
+           Lock or freeze finalized payroll runs to prevent unauthorized retroactive changes. Unfreeze payrolls under exceptional circumstances with reason.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
@@ -387,7 +390,7 @@ export default function PayrollManagerDashboardPage() {
                 <CardTitle>Lock Management</CardTitle>
               </div>
               <CardDescription>
-                REQ-PY-7 & PY-19: Lock, freeze, unlock, or unfreeze payroll runs (unfreeze requires detailed reason for exceptional circumstances)
+                Lock, freeze, unlock, or unfreeze payroll runs (unfreeze requires detailed reason for exceptional circumstances)
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -404,11 +407,11 @@ export default function PayrollManagerDashboardPage() {
 
       {/* ========== REVIEW & PREVIEW SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <Eye className="h-6 w-6 text-purple-600" />
           Review & Preview
         </h2>
-        <p className="text-gray-600 mb-4">
+        <p className="text-white mb-4">
           Review payroll runs and preview calculations
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -467,12 +470,12 @@ export default function PayrollManagerDashboardPage() {
 
       {/* ========== PAYROLL TRACKING SECTION ========== */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h2 className="text-2xl font-semibold text-white mb-4 flex items-center gap-2">
           <BarChart3 className="h-6 w-6 text-blue-600" />
           Payroll Tracking
         </h2>
-        <p className="text-gray-600 mb-4">
-          Review and approve employee disputes and claims (REQ-PY-40, PY-43)
+        <p className="text-white mb-4">
+          Review and approve employee disputes and claims
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
@@ -481,7 +484,7 @@ export default function PayrollManagerDashboardPage() {
                 <AlertCircle className="h-7 w-7 text-red-600" />
                 <CardTitle className="text-xl font-bold">Pending Disputes</CardTitle>
               </div>
-              <CardDescription>REQ-PY-40: Confirm approval of disputes so that finance staff can be notified (multi-step approval)</CardDescription>
+              <CardDescription> Confirm approval of disputes so that finance staff can be notified (multi-step approval)</CardDescription>
             </CardHeader>
             <CardContent>
               <Link
@@ -499,7 +502,7 @@ export default function PayrollManagerDashboardPage() {
                 <FileCheck className="h-7 w-7 text-orange-600" />
                 <CardTitle className="text-xl font-bold">Pending Claims</CardTitle>
               </div>
-              <CardDescription>REQ-PY-43: Confirm approval of expense claims so that finance staff can be notified (multi-step approval)</CardDescription>
+              <CardDescription> Confirm approval of expense claims so that finance staff can be notified (multi-step approval)</CardDescription>
             </CardHeader>
             <CardContent>
               <Link
@@ -551,7 +554,7 @@ export default function PayrollManagerDashboardPage() {
 
       {/* Quick Actions */}
       <div className="mb-10">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-2xl font-semibold text-white mb-4">
           Quick Actions
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

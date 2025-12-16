@@ -57,15 +57,13 @@ export default function PayrollConfigurationPage() {
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Payroll Configuration</h1>
-        {mounted && (
-          <p className="text-gray-600 mt-1">
-            Welcome, {user?.fullName || "User"}. Manage payroll policies, pay grades, allowances, and system settings
-          </p>
-        )}
+        <p className="text-gray-600 mt-1">
+          {mounted ? `Welcome, ${user?.fullName || "User"}. Manage payroll policies, pay grades, allowances, and system settings` : 'Welcome. Manage payroll policies, pay grades, allowances, and system settings'}
+        </p>
       </div>
 
       {/* Payroll Specialist Configuration Section */}
-      {user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) && (
+      {mounted && user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) && (
         <div className="mb-10">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
             Configuration Management
@@ -204,7 +202,7 @@ export default function PayrollConfigurationPage() {
       )}
 
       {/* Legal Admin - Tax Rules */}
-      {user?.roles?.includes(SystemRole.LEGAL_POLICY_ADMIN) && (
+      {mounted && user?.roles?.includes(SystemRole.LEGAL_POLICY_ADMIN) && (
         <div className="mb-10">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
             Legal & Policy Administration
@@ -235,7 +233,7 @@ export default function PayrollConfigurationPage() {
       )}
 
       {/* Payroll Manager - Approvals */}
-      {user?.roles?.includes(SystemRole.PAYROLL_MANAGER) && (
+      {mounted && user?.roles?.includes(SystemRole.PAYROLL_MANAGER) && (
         <div className="mb-10">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
             Configuration Approval
@@ -284,7 +282,7 @@ export default function PayrollConfigurationPage() {
       )}
 
       {/* HR Manager - Insurance Oversight */}
-      {user?.roles?.includes(SystemRole.HR_MANAGER) && (
+      {mounted && user?.roles?.includes(SystemRole.HR_MANAGER) && (
         <div className="mb-10">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
             Insurance Oversight
@@ -315,7 +313,7 @@ export default function PayrollConfigurationPage() {
       )}
 
       {/* System Admin - Settings & Backup */}
-      {user?.roles?.includes(SystemRole.SYSTEM_ADMIN) && (
+      {mounted && user?.roles?.includes(SystemRole.SYSTEM_ADMIN) && (
         <div className="mb-10">
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">
             System Administration

@@ -6,14 +6,8 @@ import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/shared/ui/Card';
 import { Button } from '@/components/shared/ui/Button';
-
-interface BackupRecord {
-  id: string;
-  createdAt: string;
-  size: string;
-  status: 'completed' | 'failed' | 'in-progress';
-  type: 'manual' | 'scheduled';
-}
+import { backupApi, BackupRecord, BackupSchedule } from '@/lib/api/payroll-configuration/backup';
+import { Download, Database, Clock, CheckCircle, XCircle } from 'lucide-react';
 
 export default function BackupPage() {
   const { user } = useAuth();
@@ -25,25 +19,90 @@ export default function BackupPage() {
 
   const [backupHistory, setBackupHistory] = useState<BackupRecord[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [backupSchedule, setBackupSchedule] = useState<BackupSchedule | null>(null);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    frequency: 'daily' as 'daily' | 'weekly' | 'monthly',
+    time: '02:00',
+    enabled: false,
+  });
 
   useEffect(() => {
-    // Note: Backend API for backup management needs to be implemented
-    // For now, this will show empty state
     loadBackupHistory();
+    loadBackupSchedule();
   }, []);
+
+  // Auto-dismiss success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadBackupHistory = async () => {
     try {
       setIsLoadingHistory(true);
-      // TODO: Replace with actual API call when backend is ready
-      // const data = await backupApi.getHistory();
-      // setBackupHistory(data);
-      setBackupHistory([]);
+      setError(null);
+      // API will return empty array for 404s, so this should never throw for missing endpoints
+      const data = await backupApi.getHistory();
+      setBackupHistory(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load backup history');
+      // This catch should only trigger for non-404 errors
+      // Check multiple error formats
+      const status = err?.response?.status || err?.status;
+      const message = String(err?.message || '');
+      const is404 = status === 404 || 
+                    message.includes('404') || 
+                    message.includes('Cannot GET') || 
+                    message.includes('Not Found') ||
+                    message.includes('not found') ||
+                    message.includes('not yet implemented');
+      
+      if (!is404) {
+        // Only show real errors (not 404s)
+        setError(err.message || 'Failed to load backup history');
+      }
+      // Always set empty array on error (404s are handled silently by API)
       setBackupHistory([]);
     } finally {
       setIsLoadingHistory(false);
+    }
+  };
+
+  const loadBackupSchedule = async () => {
+    try {
+      setIsLoadingSchedule(true);
+      // API will return null for 404s, so this should never throw for missing endpoints
+      const schedule = await backupApi.getSchedule();
+      if (schedule) {
+        setBackupSchedule(schedule);
+        setScheduleForm({
+          frequency: schedule.frequency,
+          time: schedule.time || '02:00',
+          enabled: schedule.enabled,
+        });
+      }
+    } catch (err: any) {
+      // This catch should only trigger for non-404 errors
+      // Check multiple error formats
+      const status = err?.response?.status || err?.status;
+      const message = String(err?.message || '');
+      const is404 = status === 404 || 
+                    message.includes('404') || 
+                    message.includes('Cannot GET') || 
+                    message.includes('Not Found') ||
+                    message.includes('not found') ||
+                    message.includes('not yet implemented');
+      
+      if (!is404) {
+        // Only log actual errors, not 404s
+        console.error('Error loading backup schedule:', err);
+      }
+    } finally {
+      setIsLoadingSchedule(false);
     }
   };
 
@@ -53,13 +112,12 @@ export default function BackupPage() {
     setIsCreatingBackup(true);
 
     try {
-      // TODO: Replace with actual API call when backend is ready
-      // await backupApi.createManualBackup();
-      
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      
-      setSuccess('Backup created successfully');
+      const result = await backupApi.createManualBackup();
+      setSuccess(result.message || 'Backup created successfully. The backup is being processed.');
+      // Refresh backup history after a short delay
+      setTimeout(() => {
+        loadBackupHistory();
+      }, 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to create backup');
     } finally {
@@ -67,9 +125,42 @@ export default function BackupPage() {
     }
   };
 
-  const handleDownloadBackup = (backupId: string) => {
-    // TODO: Implement download functionality when backend is ready
-    alert(`Download backup ${backupId} - Backend API not yet implemented`);
+  const handleDownloadBackup = async (backupId: string) => {
+    try {
+      setError(null);
+      const blob = await backupApi.downloadBackup(backupId);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-${backupId}.zip` || `backup-${new Date().toISOString()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setSuccess('Backup download started');
+    } catch (err: any) {
+      setError(err.message || 'Failed to download backup');
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    try {
+      setError(null);
+      setSuccess(null);
+      const schedule: BackupSchedule = {
+        frequency: scheduleForm.frequency,
+        time: scheduleForm.time,
+        enabled: scheduleForm.enabled,
+      };
+      await backupApi.updateSchedule(schedule);
+      setBackupSchedule(schedule);
+      setSuccess('Backup schedule updated successfully');
+    } catch (err: any) {
+      setError(err.message || 'Failed to update backup schedule');
+    }
   };
 
   return (
@@ -77,7 +168,7 @@ export default function BackupPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Backup Management</h1>
         <p className="text-gray-600 mt-1">
-          Manage system backups and restore points (System Admin only)
+          Back up data regularly so nothing is lost. Create manual backups or configure automatic scheduled backups.
         </p>
       </div>
 
@@ -97,9 +188,12 @@ export default function BackupPage() {
         {/* Manual Backup */}
         <Card>
           <CardHeader>
-            <CardTitle>Create Manual Backup</CardTitle>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-gray-600" />
+              <CardTitle>Create Manual Backup</CardTitle>
+            </div>
             <CardDescription>
-              Create a backup of all payroll configuration data
+              Create a backup of all payroll configuration data immediately
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -109,11 +203,10 @@ export default function BackupPage() {
               isLoading={isCreatingBackup}
               className="w-full"
             >
-              Create Backup Now
+              {isCreatingBackup ? 'Creating Backup...' : 'Create Backup Now'}
             </Button>
             <p className="mt-4 text-xs text-gray-500">
-              Note: Backend API for backup management needs to be implemented.
-              The backup functionality will be available once the backend API is ready.
+              This will create a complete backup of all payroll configuration data including policies, pay grades, allowances, tax rules, and settings.
             </p>
           </CardContent>
         </Card>
@@ -121,32 +214,80 @@ export default function BackupPage() {
         {/* Backup Schedule */}
         <Card>
           <CardHeader>
-            <CardTitle>Backup Schedule</CardTitle>
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-gray-600" />
+              <CardTitle>Backup Schedule</CardTitle>
+            </div>
             <CardDescription>
-              Configure automatic backup schedule
+              Configure automatic backup schedule for regular data protection
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Schedule Frequency
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="enableSchedule"
+                  checked={scheduleForm.enabled}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, enabled: e.target.checked })}
+                  className="h-4 w-4 text-gray-600 focus:ring-gray-500 border-gray-300 rounded"
+                />
+                <label htmlFor="enableSchedule" className="ml-2 block text-sm text-gray-700">
+                  Enable automatic backups
                 </label>
-                <select
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  disabled
-                >
-                  <option>Daily</option>
-                  <option>Weekly</option>
-                  <option>Monthly</option>
-                </select>
               </div>
-              <Button variant="outline" disabled className="w-full">
+
+              {scheduleForm.enabled && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Schedule Frequency
+                    </label>
+                    <select
+                      value={scheduleForm.frequency}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, frequency: e.target.value as 'daily' | 'weekly' | 'monthly' })}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500/20"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Backup Time
+                    </label>
+                    <input
+                      type="time"
+                      value={scheduleForm.time}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Time when automatic backups should run (24-hour format)
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <Button 
+                variant="outline" 
+                onClick={handleSaveSchedule}
+                className="w-full"
+                disabled={!scheduleForm.enabled}
+              >
                 Save Schedule
               </Button>
-              <p className="text-xs text-gray-500">
-                Backup schedule configuration will be available once the backend API is implemented.
-              </p>
+              {backupSchedule && (
+                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-xs text-green-800">
+                    <strong>Current Schedule:</strong> {backupSchedule.enabled 
+                      ? `${backupSchedule.frequency} at ${backupSchedule.time || '02:00'}`
+                      : 'Automatic backups are disabled'}
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -167,9 +308,10 @@ export default function BackupPage() {
             </div>
           ) : backupHistory.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500 mb-2">No backups found</p>
+              <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 mb-2 font-medium">No backups found</p>
               <p className="text-xs text-gray-400">
-                Backup history will appear here once backups are created.
+                Backup history will appear here once backups are created. Click "Create Backup Now" to create your first backup.
               </p>
             </div>
           ) : (
@@ -218,17 +360,26 @@ export default function BackupPage() {
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
+                          {backup.status === 'completed' && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {backup.status === 'failed' && <XCircle className="w-3 h-3 mr-1" />}
+                          {backup.status === 'in-progress' && <Clock className="w-3 h-3 mr-1" />}
                           {backup.status}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadBackup(backup.id)}
-                        >
-                          Download
-                        </Button>
+                        {backup.status === 'completed' ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadBackup(backup.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download
+                          </Button>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Not available</span>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -133,7 +133,7 @@ export default function CompanySettingsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Company Settings</h1>
         <p className="text-gray-600 mt-1">
-          Configure company-wide payroll settings (System Admin only)
+          Set company-wide settings (like pay dates, time zone, and currency) so payroll runs correctly
         </p>
       </div>
 
@@ -155,7 +155,7 @@ export default function CompanySettingsPage() {
             <div>
               <CardTitle>Company-Wide Payroll Settings</CardTitle>
               <CardDescription>
-                Configure pay dates, timezone, and currency for the entire company
+                Configure pay dates, timezone, and currency for the entire company. These settings apply to all payroll runs.
               </CardDescription>
             </div>
             {!isEditing && (

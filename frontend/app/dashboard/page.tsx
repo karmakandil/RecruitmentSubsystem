@@ -77,21 +77,6 @@ export default function DashboardPage() {
             <Link href="/dashboard/payroll" className="text-blue-600 hover:underline block">
               Open Payroll
             </Link>
-            {hasPayrollManagerAccess && (
-              <Link href="/dashboard/payroll-manager" className="text-blue-600 hover:underline block">
-                Payroll Manager Dashboard
-              </Link>
-            )}
-            {hasPayrollSpecialistAccess && (
-              <Link href="/dashboard/payroll-specialist" className="text-blue-600 hover:underline block">
-                Payroll Specialist Dashboard
-              </Link>
-            )}
-            {hasFinanceAccess && (
-              <Link href="/dashboard/finance" className="text-blue-600 hover:underline block">
-                Finance Dashboard
-              </Link>
-            )}
           </CardContent>
         </Card>
 

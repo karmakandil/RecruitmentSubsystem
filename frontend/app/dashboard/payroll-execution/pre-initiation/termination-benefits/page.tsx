@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { SystemRole } from "@/types";
 import { Card } from "../../../../../components/shared/ui/Card";
 import { Button } from "../../../../../components/shared/ui/Button";
 import { Input } from "../../../../../components/shared/ui/Input";
@@ -11,6 +13,8 @@ import Link from "next/link";
 
 export default function TerminationBenefitsPage() {
   const router = useRouter();
+  // Only Payroll Specialist can review and approve termination benefits
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST);
   const [benefits, setBenefits] = useState<EmployeeTerminationBenefit[]>([]);
   const [filteredBenefits, setFilteredBenefits] = useState<EmployeeTerminationBenefit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,7 +135,7 @@ export default function TerminationBenefitsPage() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Termination Benefits Review</h1>
             <p className="text-gray-600">
-              Review and approve pending termination/resignation benefits
+              As a Payroll Specialist, review and approve processed benefits upon resignation. Approve or reject termination/resignation benefits based on eligibility and compliance.
             </p>
           </div>
           <Link href="/dashboard/payroll-execution/pre-initiation">
@@ -202,6 +206,12 @@ export default function TerminationBenefitsPage() {
 
       {/* Table */}
       <Card className="p-6">
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-800">
+            <strong>Note:</strong> Only termination/resignation benefits with <span className="font-semibold">PENDING</span> status can be reviewed and approved/rejected. 
+            Approved, rejected, or paid benefits are read-only.
+          </p>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -267,20 +277,31 @@ export default function TerminationBenefitsPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex gap-2">
-                        <Link
-                          href={`/dashboard/payroll-execution/pre-initiation/termination-benefits/review/${benefit._id}`}
-                        >
-                          <Button className="bg-blue-600 hover:bg-blue-700 text-sm">
-                            Review
-                          </Button>
-                        </Link>
-                        <Link
-                          href={`/dashboard/payroll-execution/pre-initiation/termination-benefits/edit/${benefit._id}`}
-                        >
-                          <Button className="bg-yellow-600 hover:bg-yellow-700 text-sm">
-                            Edit
-                          </Button>
-                        </Link>
+                        {benefit.status === BenefitStatus.PENDING && (
+                          <Link
+                            href={`/dashboard/payroll-execution/pre-initiation/termination-benefits/review/${benefit._id}`}
+                          >
+                            <Button className="bg-blue-600 hover:bg-blue-700 text-sm">
+                              Review & Approve/Reject
+                            </Button>
+                          </Link>
+                        )}
+                        {benefit.status === BenefitStatus.PENDING && (
+                          <Link
+                            href={`/dashboard/payroll-execution/pre-initiation/termination-benefits/edit/${benefit._id}`}
+                          >
+                            <Button className="bg-yellow-600 hover:bg-yellow-700 text-sm">
+                              Edit
+                            </Button>
+                          </Link>
+                        )}
+                        {benefit.status !== BenefitStatus.PENDING && (
+                          <span className="text-gray-500 text-xs">
+                            {benefit.status === BenefitStatus.APPROVED ? 'Approved' : 
+                             benefit.status === BenefitStatus.REJECTED ? 'Rejected' : 
+                             benefit.status === BenefitStatus.PAID ? 'Paid' : 'N/A'}
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
