@@ -69,22 +69,23 @@ export default function Header() {
 
               {/* Admin Link - Only for HR Admins */}
               {isHRAdmin && (
-                <Link
-                  href="/dashboard/admin"
-                  className={navItemClass("/dashboard/admin")}
-                >
-                  Admin
-                </Link>
+                <>
+                  <Link
+                    href="/dashboard/admin"
+                    className={navItemClass("/dashboard/admin")}
+                  >
+                    Admin
+                  </Link>
 
-                {/* Optional: Additional Admin Links */}
-                <Link
-                  href="/dashboard/leaves"
-                  className={navItemClass("/dashboard/leaves")}
-                >
-                  Leaves
-                </Link>
-              </>
-            )}
+                  {/* Optional: Additional Admin Links */}
+                  <Link
+                    href="/dashboard/leaves"
+                    className={navItemClass("/dashboard/leaves")}
+                  >
+                    Leaves
+                  </Link>
+                </>
+              )}
 
             {/* HR Manager Navigation */}
             {isHRManager && (
@@ -131,23 +132,23 @@ export default function Header() {
               </Link>
             )}
 
-                  {/* Divider */}
-                  <div className="border-t border-gray-100 my-2"></div>
+            {/* Notification Bell */}
+            <NotificationBell />
 
-                  {/* Logout */}
-                  <button
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      handleLogout();
-                    }}
-                    className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* User Welcome */}
+            <span className="text-sm text-gray-600">
+              Welcome, {user?.fullName || user?.firstName}
+            </span>
+
+            {/* Logout */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
+            </nav>
           </div>
         )}
 
