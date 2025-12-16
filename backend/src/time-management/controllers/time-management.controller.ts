@@ -28,6 +28,7 @@ import {
   EscalateTimeExceptionDto,
   ApproveCorrectionRequestDto,
   RejectCorrectionRequestDto,
+  ImportAttendanceCsvDto,
 } from '../DTOs/attendance.dtos';
 import {
   ApplyAttendanceRoundingDto,
@@ -448,6 +449,35 @@ export class TimeManagementController {
   ) {
     return this.timeManagementService.getCorrectionRequestById(
       requestId,
+      user.userId,
+    );
+  }
+
+  // ===== ATTENDANCE IMPORT (CSV) =====
+  // BR-TM-06, BR-TM-13, BR-TM-14, BR-TM-22
+  /**
+   * Import attendance punches from a CSV file.
+   * The CSV should include at least: employeeId, clockInTime, clockOutTime (optional).
+   * This endpoint is intended for HR Manager / System Admin to ingest data
+   * from biometric devices or external systems.
+   *
+   * The service will:
+   * - Create attendance records with punches for each row
+   * - Calculate total work minutes when IN/OUT are present
+   * - Flag records with missing clock-out as hasMissedPunch = true
+   */
+  @Post('attendance/import-csv')
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
+  async importAttendanceFromCsv(
+    @Body() body: ImportAttendanceCsvDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.timeManagementService.importAttendanceFromCsv(
+      body.csv,
       user.userId,
     );
   }

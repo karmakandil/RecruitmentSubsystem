@@ -29,7 +29,7 @@ import {
 } from '../DTOs/reporting.dtos';
 import { LeavesService } from '../../leaves/leaves.service';
 import { NotificationService } from './notification.service';
-import { Inject, forwardRef } from '@nestjs/common';
+import { Inject, forwardRef, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class TimeManagementService {
@@ -5665,6 +5665,167 @@ export class TimeManagementService {
       holidays,
       restDays: restDayDates,
       totalNonWorkingDays: holidays.length + restDayDates.length,
+    };
+  }
+
+  // ===== ATTENDANCE IMPORT (CSV) =====
+
+  /**
+   * Import attendance punches from a CSV string.
+   * The CSV is expected to have a header row with at least:
+   * employeeId, clockInTime, clockOutTime (optional), deviceId, source
+   *
+   * We intentionally keep this logic self-contained and only use existing
+   * models/enums. No new schemas or enums are introduced.
+   */
+  async importAttendanceFromCsv(
+    csv: string,
+    currentUserId: string,
+  ) {
+    if (!csv || typeof csv !== 'string') {
+      throw new BadRequestException('CSV content is required');
+    }
+
+    const lines = csv
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV must include a header and at least one data row');
+    }
+
+    const header = lines[0].split(',').map((h) => h.trim());
+    const getIndex = (name: string) =>
+      header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+
+    const idxEmployeeId = getIndex('employeeId');
+    const idxClockIn = getIndex('clockInTime');
+    const idxClockOut = getIndex('clockOutTime');
+    const idxDeviceId = getIndex('deviceId');
+    const idxSource = getIndex('source');
+
+    if (idxEmployeeId === -1 || idxClockIn === -1) {
+      throw new BadRequestException(
+        'CSV header must include at least employeeId and clockInTime columns',
+      );
+    }
+
+    const { Types } = require('mongoose');
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let missedPunches = 0;
+    const errors: Array<{ line: number; error: string }> = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const raw = lines[i];
+      if (!raw) continue;
+      processed++;
+
+      const cols = raw.split(',').map((c) => c.trim());
+      const employeeId = cols[idxEmployeeId];
+      const clockInRaw = cols[idxClockIn];
+      const clockOutRaw = idxClockOut !== -1 ? cols[idxClockOut] || '' : '';
+      const deviceId = idxDeviceId !== -1 ? cols[idxDeviceId] || undefined : undefined;
+      const source = idxSource !== -1 ? cols[idxSource] || 'BIOMETRIC' : 'BIOMETRIC';
+
+      try {
+        if (!employeeId || !clockInRaw) {
+          throw new Error('Missing employeeId or clockInTime');
+        }
+
+        if (!Types.ObjectId.isValid(employeeId)) {
+          throw new Error('Invalid employeeId format (expected MongoDB ObjectId)');
+        }
+
+        const clockIn = new Date(clockInRaw);
+        if (isNaN(clockIn.getTime())) {
+          throw new Error(`Invalid clockInTime: ${clockInRaw}`);
+        }
+
+        let clockOut: Date | null = null;
+        if (clockOutRaw) {
+          const parsed = new Date(clockOutRaw);
+          if (isNaN(parsed.getTime())) {
+            throw new Error(`Invalid clockOutTime: ${clockOutRaw}`);
+          }
+          clockOut = parsed;
+        }
+
+        const punches: Array<{ type: PunchType; time: Date; source?: string; deviceId?: string }> = [];
+        punches.push({
+          type: PunchType.IN,
+          time: clockIn,
+          source,
+          deviceId,
+        } as any);
+
+        if (clockOut) {
+          punches.push({
+            type: PunchType.OUT,
+            time: clockOut,
+            source,
+            deviceId,
+          } as any);
+        }
+
+        let totalWorkMinutes = 0;
+        if (clockIn && clockOut) {
+          totalWorkMinutes = Math.max(
+            0,
+            Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)),
+          );
+        }
+
+        const hasMissedPunch = !clockOut;
+        if (hasMissedPunch) {
+          missedPunches++;
+        }
+
+        // For now, create a new attendance record per CSV row.
+        // This avoids changing existing models or adding complex merging rules.
+        const record = new this.attendanceRecordModel({
+          employeeId: new Types.ObjectId(employeeId),
+          punches: punches.map((p) => ({ type: p.type, time: p.time })),
+          totalWorkMinutes,
+          hasMissedPunch,
+          exceptionIds: [],
+          finalisedForPayroll: false,
+        });
+
+        await record.save();
+        created++;
+      } catch (error: any) {
+        errors.push({
+          line: i + 1,
+          error: error.message || 'Unknown error',
+        });
+      }
+    }
+
+    await this.logTimeManagementChange(
+      'ATTENDANCE_CSV_IMPORTED',
+      {
+        processed,
+        created,
+        updated,
+        missedPunches,
+        errorCount: errors.length,
+      },
+      currentUserId,
+    );
+
+    return {
+      summary: {
+        processed,
+        created,
+        updated,
+        missedPunches,
+        errorCount: errors.length,
+      },
+      errors,
     };
   }
 
