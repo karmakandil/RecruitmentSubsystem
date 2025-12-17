@@ -1,3 +1,12 @@
+// Shift name suggestions for quick selection
+const SHIFT_NAME_SUGGESTIONS = [
+  "Fixed Core Hours",
+  "Flex-Time",
+  "Rotational",
+  "Split",
+  "Custom Weekly Patterns",
+  "Overtime",
+];
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -360,20 +369,45 @@ export const ShiftAssignmentForm: React.FC<ShiftAssignmentFormProps> = ({
 
       {/* Common - Shift Selection */}
       {!isEditMode && (
-        <Select
-          label="Shift *"
-          value={createData.shiftId}
-          onChange={(e) => setCreateData({ ...createData, shiftId: e.target.value })}
-          options={[
-            { value: "", label: "Select a shift..." },
-            ...shifts.map((shift) => ({
-              value: shift._id,
-              label: shift.name || shift._id,
-            })),
-          ]}
-          error={errors.shiftId}
-          disabled={loadingOptions || shifts.length === 0}
-        />
+        <>
+          <Select
+            label="Shift *"
+            value={createData.shiftId}
+            onChange={(e) => setCreateData({ ...createData, shiftId: e.target.value })}
+            options={[
+              { value: "", label: "Select a shift..." },
+              ...shifts.map((shift) => ({
+                value: shift._id,
+                label: shift.name || shift._id,
+              })),
+            ]}
+            error={errors.shiftId}
+            disabled={loadingOptions || shifts.length === 0}
+          />
+          {/* Shift Name Suggestions */}
+          <div className="mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quick Shift Name Suggestions</label>
+            <div className="flex flex-wrap gap-2">
+              {SHIFT_NAME_SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className="px-3 py-1.5 text-sm rounded-full border bg-gray-50 border-gray-300 text-gray-700 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-700 transition-colors"
+                  onClick={() => {
+                    // Find a shift with this name and select it if exists
+                    const found = shifts.find((s) => s.name === suggestion);
+                    if (found) {
+                      setCreateData({ ...createData, shiftId: found._id });
+                    }
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Click a suggestion to quickly select a shift by name (if available).</p>
+          </div>
+        </>
       )}
 
       {/* Employee-specific fields */}
