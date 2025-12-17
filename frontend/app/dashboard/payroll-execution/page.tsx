@@ -16,7 +16,12 @@ import { Calculator, Calendar, FileText, DollarSign, Shield, TrendingUp, Flag, E
 
 export default function PayrollExecutionPage() {
   const { user } = useAuth();
-  useRequireAuth(SystemRole.PAYROLL_SPECIALIST);
+  // Allow multiple roles to access payroll execution
+  useRequireAuth([
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+  ]);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {

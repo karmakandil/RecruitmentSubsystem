@@ -38,6 +38,12 @@ export default function Header() {
 
   const isHR = isHRAdminOrManager(user);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
+  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN) ?? false;
+  const canConfigureShifts = isHRAdmin || isHRManager || isSystemAdmin;
+  const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) ?? false;
+  const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER) ?? false;
+  const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF) ?? false;
 
   const navItemClass = (href: string) =>
     `text-sm font-medium transition-colors ${
@@ -61,37 +67,160 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white">
+    <>
+      {/* Alternative header styling with backdrop blur - commented out */}
+      {/* <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur"> */}
+      <header className="sticky top-0 z-50 w-full border-b bg-white">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center space-x-2">
+          {/* Current logo with Briefcase icon */}
           <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center">
             <Briefcase className="h-5 w-5 text-white" />
           </div>
+          {/* Alternative simple logo - commented out */}
+          {/* <div className="h-8 w-8 rounded-lg bg-blue-600" /> */}
           <span className="text-xl font-bold text-gray-900">HR System</span>
         </Link>
 
-        {isAuthenticated ? (
+        {/* Only render navigation after mount to prevent hydration mismatch */}
+        {mounted && !loading && isAuthenticated ? (
           <div className="flex items-center space-x-6">
-            {/* Main Navigation */}
+            {/* Main Navigation - Role-based links */}
             <nav className="hidden md:flex items-center space-x-6">
-              {/* Dashboard for all users */}
-              <Link href="/dashboard" className={navItemClass("/dashboard")}>
+              {/* HR Admin Navigation */}
+              {isHRAdmin && (
+                <>
+                  <Link
+                    href="/dashboard/employee-profile/admin/search"
+                    className={navItemClass("/dashboard/employee-profile/admin")}
+                  >
+                    Employees
+                  </Link>
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className={navItemClass(
+                      "/dashboard/employee-profile/admin/approvals"
+                    )}
+                  >
+                    Approvals
+                  </Link>
+                  <Link
+                    href="/dashboard/employee-profile/team"
+                    className={navItemClass("/dashboard/employee-profile/team")}
+                  >
+                    Team
+                  </Link>
+                  <Link
+                    href="/dashboard/admin"
+                    className={navItemClass("/dashboard/admin")}
+                  >
+                    Admin
+                  </Link>
+                  {/* Optional: Additional Admin Links */}
+                  <Link
+                    href="/dashboard/leaves"
+                    className={navItemClass("/dashboard/leaves")}
+                  >
+                    Leaves
+                  </Link>
+                </>
+              )}
+
+              {/* HR Manager Navigation */}
+              {isHRManager && (
+                <>
+                  <Link
+                    href="/dashboard/employee-profile/admin/search"
+                    className={navItemClass("/dashboard/employee-profile/admin")}
+                  >
+                    Employees
+                  </Link>
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className={navItemClass(
+                      "/dashboard/employee-profile/admin/approvals"
+                    )}
+                  >
+                    Approvals
+                  </Link>
+                  <Link
+                    href="/dashboard/employee-profile/team"
+                    className={navItemClass("/dashboard/employee-profile/team")}
+                  >
+                    Team
+                  </Link>
+                  <Link
+                    href="/dashboard/employee-profile/my-profile"
+                    className={navItemClass("/dashboard/employee-profile/my-profile")}
+                  >
+                    My Profile
+                  </Link>
+                </>
+              )}
+
+              {/* Dashboard Link - Available for all authenticated users */}
+              <Link
+                href="/dashboard"
+                className={navItemClass("/dashboard")}
+              >
                 Dashboard
               </Link>
 
-              {/* Admin Panel for HR Admins */}
-              {isHRAdmin && (
+              {/* Payroll Link - Available for payroll specialists, payroll managers, and finance staff */}
+              {isPayrollSpecialist && (
                 <Link
-                  href="/dashboard/admin"
-                  className={navItemClass("/dashboard/admin")}
+                  href="/dashboard/payroll-specialist"
+                  className={navItemClass("/dashboard/payroll-specialist")}
                 >
-                  Admin
+                  Payroll
+                </Link>
+              )}
+
+              {isPayrollManager && (
+                <Link
+                  href="/dashboard/payroll-manager"
+                  className={navItemClass("/dashboard/payroll-manager")}
+                >
+                  Payroll
+                </Link>
+              )}
+
+              {isFinanceStaff && (
+                <Link
+                  href="/dashboard/finance"
+                  className={navItemClass("/dashboard/finance")}
+                >
+                  Payroll
+                </Link>
+              )}
+
+              {/* Regular Employee Navigation */}
+              {!isHR && (
+                <Link
+                  href="/dashboard/employee-profile/my-profile"
+                  className={navItemClass("/dashboard/employee-profile/my-profile")}
+                >
+                  My Profile
                 </Link>
               )}
 
               {/* Notification Bell */}
               <NotificationBell />
+
+              {/* User Welcome - Commented out to avoid duplication with profile dropdown */}
+              {/* <span className="text-sm text-gray-600">
+                Welcome, {user?.fullName || user?.firstName}
+              </span> */}
+
+              {/* Inline Logout Button - Commented out, using dropdown logout instead */}
+              {/* <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </button> */}
             </nav>
 
             {/* Profile Dropdown */}
@@ -199,7 +328,7 @@ export default function Header() {
               )}
             </div>
           </div>
-        ) : (
+        ) : mounted && !loading && !isAuthenticated ? (
           // Unauthenticated State
           <nav className="flex items-center space-x-4">
             <Link
@@ -216,8 +345,15 @@ export default function Header() {
               Register
             </Link>
           </nav>
+        ) : (
+          // Loading state during SSR to prevent hydration mismatch
+          <div className="flex items-center space-x-4">
+            <div className="h-4 w-16 bg-gray-200 animate-pulse rounded"></div>
+            <div className="h-8 w-20 bg-gray-200 animate-pulse rounded"></div>
+          </div>
         )}
       </div>
     </header>
+    </>
   );
 }
