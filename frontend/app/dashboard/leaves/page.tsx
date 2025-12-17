@@ -162,6 +162,12 @@ export default function LeavesPage() {
             <CardContent>
               <div className="space-y-2">
                 <Link 
+                  href="/dashboard/leaves/requests" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  View & Create Leave Requests →
+                </Link>
+                <Link 
                   href="/dashboard/leaves/requests/review" 
                   className="block text-blue-600 hover:underline font-medium"
                 >
@@ -198,6 +204,12 @@ export default function LeavesPage() {
             <CardContent>
               <div className="space-y-3">
                 <Link 
+                  href="/dashboard/leaves/requests" 
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  View & Create Leave Requests →
+                </Link>
+                <Link 
                   href="/dashboard/leaves/hr-manager" 
                   className="block text-blue-600 hover:underline font-medium"
                 >
@@ -230,6 +242,23 @@ export default function LeavesPage() {
       {/* HR Admin Section */}
       {isHRAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="border-purple-200 bg-purple-50">
+            <CardHeader>
+              <CardTitle className="text-purple-900">Create Leave Request</CardTitle>
+              <CardDescription className="text-purple-700">
+                Submit a new leave request for approval
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link 
+                href="/dashboard/leaves/requests" 
+                className="text-purple-600 hover:underline font-medium"
+              >
+                View & Create Requests →
+              </Link>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Leave Types</CardTitle>
@@ -394,6 +423,12 @@ export default function LeavesPage() {
           <CardContent>
             <div className="space-y-2">
               <Link 
+                href="/dashboard/leaves/requests/new" 
+                className="block text-green-600 hover:underline font-medium"
+              >
+                Create Leave Request →
+              </Link>
+              <Link 
                 href="/dashboard/leaves/balance" 
                 className="block text-green-600 hover:underline font-medium"
               >
@@ -409,6 +444,46 @@ export default function LeavesPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Create Leave Request - Show for all roles that can create requests (including HR Admin, Payroll, Finance, Legal, etc.) */}
+      {(() => {
+        const roles = user?.roles || [];
+        const canCreateRequest = [
+          SystemRole.DEPARTMENT_EMPLOYEE,
+          SystemRole.DEPARTMENT_HEAD,
+          SystemRole.HR_MANAGER,
+          SystemRole.HR_EMPLOYEE,
+          SystemRole.PAYROLL_SPECIALIST,
+          SystemRole.PAYROLL_MANAGER,
+          SystemRole.SYSTEM_ADMIN,
+          SystemRole.LEGAL_POLICY_ADMIN,
+          SystemRole.FINANCE_STAFF,
+          SystemRole.HR_ADMIN,
+        ].some(role => roles.includes(role));
+
+        // Only show if user can create requests and hasn't seen it in another section
+        if (canCreateRequest && !isDepartmentHead && !isHRManager && !isHRAdmin) {
+          return (
+            <Card className="mb-6 border-purple-200 bg-purple-50">
+              <CardHeader>
+                <CardTitle className="text-purple-900">Create Leave Request</CardTitle>
+                <CardDescription className="text-purple-700">
+                  Submit a new leave request for approval
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link 
+                  href="/dashboard/leaves/requests/new" 
+                  className="block text-purple-600 hover:underline font-medium text-lg"
+                >
+                  Create New Leave Request →
+                </Link>
+              </CardContent>
+            </Card>
+          );
+        }
+        return null;
+      })()}
     </div>
   );
 }

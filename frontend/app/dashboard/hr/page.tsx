@@ -139,6 +139,23 @@ export default function HRManagerDashboardPage() {
           Leave Management
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+            <CardHeader>
+              <CardTitle>View & Create Leave Requests</CardTitle>
+              <CardDescription>
+                View your leave balance, filter your requests, and create new leave requests
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/requests"
+                className="block w-full text-center bg-orange-600 text-white py-3 px-4 rounded-md hover:bg-orange-700 transition font-medium"
+              >
+                My Leave Requests
+              </Link>
+            </CardContent>
+          </Card>
+
           <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
             <CardHeader>
               <CardTitle>Manage Leave Requests</CardTitle>
@@ -152,6 +169,40 @@ export default function HRManagerDashboardPage() {
                 className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
               >
                 Manage Leave Requests
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-teal-200">
+            <CardHeader>
+              <CardTitle>View Team Leave Balances</CardTitle>
+              <CardDescription>
+                View leave balances and upcoming leaves for your team members (HR employees)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/team-balances"
+                className="block w-full text-center bg-teal-600 text-white py-3 px-4 rounded-md hover:bg-teal-700 transition font-medium"
+              >
+                View Team Balances
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-lg transition-shadow border-2 border-cyan-200">
+            <CardHeader>
+              <CardTitle>Manage Team Leave Data</CardTitle>
+              <CardDescription>
+                Filter and manage leave data for your team members with advanced filtering options
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/leaves/team-management"
+                className="block w-full text-center bg-cyan-600 text-white py-3 px-4 rounded-md hover:bg-cyan-700 transition font-medium"
+              >
+                Manage Team Data
               </Link>
             </CardContent>
           </Card>
