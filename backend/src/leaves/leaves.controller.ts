@@ -138,7 +138,18 @@ export class LeaveController {
 
   @Post('request')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.DEPARTMENT_HEAD)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.HR_ADMIN,
+  )
   async createLeaveRequest(
     @Body() createLeaveRequestDto: CreateLeaveRequestDto,
   ) {
@@ -149,6 +160,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
@@ -161,6 +173,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
   )
@@ -176,7 +189,7 @@ export class LeaveController {
 
   @Delete('request/:id')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async deleteLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.deleteLeaveRequest(id);
   }
@@ -270,7 +283,12 @@ export class LeaveController {
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_EMPLOYEE,
-    SystemRole.DEPARTMENT_HEAD
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
   )
   async getLeaveTypes() {
     return await this.leavesService.getLeaveTypes();
@@ -309,7 +327,12 @@ export class LeaveController {
 
   // Phase 2: Leave Request Approval Endpoints
   @UseGuards(RolesGuard) // Apply authentication guard (delegation and role validation checked in service)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   @Post('request/:id/approve')
   async approveLeaveRequest(
     @Param('id') id: string,
@@ -325,7 +348,12 @@ export class LeaveController {
 
   @Post('request/:id/reject')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   async rejectLeaveRequest(
     @Param('id') id: string,
     @Body() rejectLeaveRequestDto: RejectLeaveRequestDto,
@@ -391,9 +419,15 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
   )
   async getEmployeeLeaveBalance(
     @Param('employeeId') employeeId: string,
@@ -407,7 +441,7 @@ export class LeaveController {
 
   @Post('request/:id/cancel')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async cancelLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.cancelLeaveRequest(id);
   }
@@ -417,6 +451,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -436,9 +471,15 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
   )
   async getPastLeaveRequests(
     @Param('employeeId') employeeId: string,
@@ -469,9 +510,15 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
   )
   async filterLeaveHistory(@Body() filterDto: FilterLeaveHistoryDto) {
     // Normalize status to lowercase if provided
@@ -492,7 +539,12 @@ export class LeaveController {
   // REQ-034: View team leave balances and upcoming leaves
   @Get('team-balances/:managerId')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   async getTeamLeaveBalances(
     @Param('managerId') managerId: string,
     @Query('upcomingFromDate') upcomingFromDate?: string,
@@ -510,7 +562,12 @@ export class LeaveController {
   // REQ-035: Filter team leave data
   @Post('filter-team-data')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   async filterTeamLeaveData(@Body() filterDto: FilterTeamLeaveDataDto) {
     return await this.leavesService.filterTeamLeaveData(
       filterDto.managerId,
@@ -521,7 +578,12 @@ export class LeaveController {
   // REQ-039: Flag irregular pattern
   @Post('flag-irregular-pattern')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   async flagIrregularPattern(@Body() flagDto: FlagIrregularPatternDto) {
     return await this.leavesService.flagIrregularPattern(
       flagDto.leaveRequestId,
@@ -665,7 +727,12 @@ export class LeaveController {
   // Phase 2: REQ-023 - Delegate approval authority
   @Post('delegate')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
   async delegateApprovalAuthority(
     @Body() delegateDto: DelegateApprovalDto,
     @Req() req: any,
@@ -683,6 +750,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -730,6 +798,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,

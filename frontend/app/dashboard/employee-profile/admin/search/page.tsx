@@ -37,7 +37,6 @@ import {
   Building,
   Briefcase,
   DollarSign,
-  Users,
 } from "lucide-react";
 
 export default function EmployeeManagementPage() {
@@ -71,6 +70,8 @@ export default function EmployeeManagementPage() {
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
 
   // Add this useEffect to fetch real data:
+  // In your useEffect for fetching dropdown data:
+  // Update the fetchDropdownData function to remove the isActive parameter:
   useEffect(() => {
     const fetchDropdownData = async () => {
       if (!isAuthorized) return;
@@ -78,60 +79,30 @@ export default function EmployeeManagementPage() {
       try {
         setLoadingDropdowns(true);
 
-        console.log(
-          "🔍 Fetching departments from:",
-          "/organization-structure/departments?isActive=true"
-        );
-        console.log(
-          "🔍 Auth token available:",
-          !!localStorage.getItem("token")
-        );
-
-        // 1. Fetch departments with debugging
+        // 1. Fetch departments
         const deptResponse = await api.get(
           "/organization-structure/departments?isActive=true"
         );
 
-        console.log("📥 Departments API response:", deptResponse);
-        console.log("📥 Response type:", typeof deptResponse);
-        console.log("📥 Response keys:", Object.keys(deptResponse));
-
-        // Try different extraction patterns
         let departmentsData = [];
-
         if (Array.isArray(deptResponse)) {
           departmentsData = deptResponse;
         } else if (deptResponse && typeof deptResponse === "object") {
           if (Array.isArray(deptResponse.data)) {
             departmentsData = deptResponse.data;
-            console.log("✅ Found data in response.data");
           } else if (
             deptResponse.data &&
             Array.isArray(deptResponse.data.data)
           ) {
             departmentsData = deptResponse.data.data;
-            console.log("✅ Found data in response.data.data");
-          } else if (Array.isArray((deptResponse as any).items)) {
-            departmentsData = (deptResponse as any).items;
-            console.log("✅ Found data in response.items");
-          } else if (Array.isArray((deptResponse as any).content)) {
-            departmentsData = (deptResponse as any).content;
-            console.log("✅ Found data in response.content");
           }
         }
-
-        console.log("📊 Extracted departments data:", departmentsData);
-        console.log("📊 Departments count:", departmentsData.length);
-
         setDepartments(departmentsData);
 
         // 2. Fetch positions
-        console.log("🔍 Fetching positions...");
         const posResponse = await api.get(
           "/organization-structure/positions?isActive=true"
         );
-
-        console.log("📥 Positions API response:", posResponse);
 
         let positionsData = [];
         if (Array.isArray(posResponse)) {
@@ -143,24 +114,112 @@ export default function EmployeeManagementPage() {
             positionsData = posResponse.data.data;
           }
         }
-
-        console.log("📊 Extracted positions data:", positionsData);
         setPositions(positionsData);
 
-        // 3. Mock pay grades for now
-        const mockPayGrades = [
-          { id: "pg1", name: "Grade A", level: 1 },
-          { id: "pg2", name: "Grade B", level: 2 },
-          { id: "pg3", name: "Grade C", level: 3 },
-        ];
-        setPayGrades(mockPayGrades);
+        // 3. Fetch pay grades - IMPROVED VERSION
+        console.log(
+          "📊 Fetching pay grades from /payroll-configuration/pay-grades"
+        );
+
+        try {
+          const payGradesResponse = await api.get(
+            "/payroll-configuration/pay-grades"
+          );
+
+          console.log("📊 Raw pay grades response:", payGradesResponse);
+
+          let payGradesData = [];
+
+          // Handle various response structures
+          if (Array.isArray(payGradesResponse)) {
+            payGradesData = payGradesResponse;
+          } else if (
+            payGradesResponse &&
+            typeof payGradesResponse === "object"
+          ) {
+            // Check for data property first (Axios wraps response in .data)
+            const responseData = payGradesResponse.data || payGradesResponse;
+
+            if (Array.isArray(responseData)) {
+              payGradesData = responseData;
+            } else if (responseData && typeof responseData === "object") {
+              // Check nested data structures
+              if (Array.isArray(responseData.data)) {
+                payGradesData = responseData.data;
+              } else if (Array.isArray(responseData.items)) {
+                payGradesData = responseData.items;
+              } else if (Array.isArray(responseData.payGrades)) {
+                payGradesData = responseData.payGrades;
+              }
+            }
+          }
+
+          // Normalize the data structure
+          payGradesData = payGradesData.map((grade: any) => ({
+            id: grade.id || grade._id,
+            name:
+              grade.name ||
+              grade.grade ||
+              grade.gradeName ||
+              `Grade ${grade.level || ""}`,
+            level: grade.level,
+            code: grade.code,
+            // Include any other fields you might need
+            minSalary: grade.minSalary,
+            maxSalary: grade.maxSalary,
+          }));
+
+          console.log("📊 Processed pay grades data:", payGradesData);
+
+          // If no data or empty array, use fallback
+          if (!payGradesData || payGradesData.length === 0) {
+            console.warn(
+              "⚠️ No pay grades returned from API, using fallback data"
+            );
+            payGradesData = [
+              { id: "fallback-1", name: "Grade A", level: 1 },
+              { id: "fallback-2", name: "Grade B", level: 2 },
+              { id: "fallback-3", name: "Grade C", level: 3 },
+              { id: "fallback-4", name: "Grade D", level: 4 },
+              { id: "fallback-5", name: "Grade E", level: 5 },
+            ];
+            showToast(
+              "Pay grades not available from server. Using default grades.",
+              "warning"
+            );
+          }
+
+          setPayGrades(payGradesData);
+          console.log(
+            "✅ Pay grades set successfully:",
+            payGradesData.length,
+            "grades"
+          );
+        } catch (payGradeError: any) {
+          console.error("❌ Error fetching pay grades:", payGradeError);
+          console.error("Error details:", {
+            message: payGradeError.message,
+            response: payGradeError.response?.data,
+            status: payGradeError.response?.status,
+          });
+
+          // Use fallback data if API fails
+          const fallbackPayGrades = [
+            { id: "fallback-1", name: "Grade A", level: 1 },
+            { id: "fallback-2", name: "Grade B", level: 2 },
+            { id: "fallback-3", name: "Grade C", level: 3 },
+            { id: "fallback-4", name: "Grade D", level: 4 },
+            { id: "fallback-5", name: "Grade E", level: 5 },
+          ];
+          setPayGrades(fallbackPayGrades);
+
+          showToast(
+            "Could not load pay grades from server. Using default grades.",
+            "warning"
+          );
+        }
       } catch (error: any) {
         console.error("❌ Error fetching dropdown data:", error);
-        console.error("❌ Error message:", error.message);
-        console.error("❌ Error response:", error.response);
-        console.error("❌ Error status:", error.response?.status);
-        console.error("❌ Error data:", error.response?.data);
-
         showToast(
           error.response?.data?.message ||
             error.message ||
@@ -175,6 +234,7 @@ export default function EmployeeManagementPage() {
     fetchDropdownData();
   }, [isAuthorized, showToast]);
   // Load employees function - useCallback with stable dependencies
+  // In the loadEmployees function
   const loadEmployees = useCallback(async () => {
     try {
       setLoading(true);
@@ -184,6 +244,15 @@ export default function EmployeeManagementPage() {
         status: statusFilter || undefined,
         departmentId: departmentFilter || undefined,
         limit: 100,
+      });
+
+      console.log("📋 Employees response:", response);
+      console.log("📋 First employee data:", response.data?.[0]);
+      console.log("📋 Department info in first employee:", {
+        hasPrimaryDepartment: !!response.data?.[0]?.primaryDepartment,
+        primaryDepartment: response.data?.[0]?.primaryDepartment,
+        hasDepartmentId: !!response.data?.[0]?.primaryDepartmentId,
+        departmentId: response.data?.[0]?.primaryDepartmentId,
       });
 
       setEmployees(response.data || []);
@@ -199,7 +268,6 @@ export default function EmployeeManagementPage() {
       setLoading(false);
     }
   }, [searchTerm, statusFilter, departmentFilter, showToast]);
-
   // Initial load - runs once when component mounts
   useEffect(() => {
     if (isAuthorized) {
@@ -620,49 +688,21 @@ export default function EmployeeManagementPage() {
                     Status
                   </label>
                   <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
+                    value={statusFilter} // ✅ CORRECT - using statusFilter state
+                    onChange={(e) => setStatusFilter(e.target.value)} // ✅ CORRECT - using setStatusFilter
                     className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="" className="text-gray-600">
-                      All Statuses
+                    <option key="all-status" value="">
+                      All Status
                     </option>
-                    <option
-                      value={EmployeeStatus.ACTIVE}
-                      className="text-gray-900"
-                    >
-                      Active
-                    </option>
-                    <option
-                      value={EmployeeStatus.ON_LEAVE}
-                      className="text-gray-900"
-                    >
-                      On Leave
-                    </option>
-                    <option
-                      value={EmployeeStatus.TERMINATED}
-                      className="text-gray-900"
-                    >
-                      Terminated
-                    </option>
-                    <option
-                      value={EmployeeStatus.SUSPENDED}
-                      className="text-gray-900"
-                    >
-                      Suspended
-                    </option>
-                    <option
-                      value={EmployeeStatus.PROBATION}
-                      className="text-gray-900"
-                    >
-                      Probation
-                    </option>
-                    <option
-                      value={EmployeeStatus.RETIRED}
-                      className="text-gray-900"
-                    >
-                      Retired
-                    </option>
+                    {Object.values(EmployeeStatus).map((status) => (
+                      <option key={status} value={status}>
+                        {status
+                          .replace(/_/g, " ")
+                          .toLowerCase()
+                          .replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -675,13 +715,17 @@ export default function EmployeeManagementPage() {
                     onChange={(e) => setDepartmentFilter(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="" className="text-gray-600">
+                    <option
+                      key="all-departments"
+                      value=""
+                      className="text-gray-600"
+                    >
                       All Departments
                     </option>
                     {departments.map((dept) => (
                       <option
-                        key={dept.id}
-                        value={dept.id}
+                        key={dept.id || dept._id}
+                        value={dept.id || dept._id}
                         className="text-gray-900"
                       >
                         {dept.name}
@@ -705,11 +749,12 @@ export default function EmployeeManagementPage() {
         </Card>
 
         {/* Edit Form Modal (when editing) */}
+        {/* Edit Form Modal (when editing) */}
         {editingId && (
-          <Card className="mb-6 border-2 border-blue-300 shadow-lg">
-            <CardHeader className="bg-blue-50">
+          <Card className="mb-6 border border-gray-200 shadow-lg">
+            <CardHeader className="bg-gray-50">
               <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-gray-900">
                   <Edit className="h-5 w-5" />
                   Edit Employee Profile
                 </CardTitle>
@@ -722,15 +767,16 @@ export default function EmployeeManagementPage() {
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <CardDescription>
-                Edit employee profile data - All changes are logged for audit
+              <CardDescription className="text-gray-600">
+                HR Administrator Access - Full profile modification with audit
+                logging
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Personal Info */}
-                <div className="border-r border-gray-100 pr-4">
-                  <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wider">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* SECTION 1: PERSONAL INFORMATION */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
                     Personal Information
                   </h3>
                   <div className="space-y-3">
@@ -743,7 +789,7 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("firstName", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         required
                       />
                     </div>
@@ -757,23 +803,39 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("lastName", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         required
                       />
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        National ID (14 digits)
+                        National ID (14 digits) *
                       </label>
                       <Input
                         value={editForm.nationalId || ""}
                         onChange={(e) =>
                           handleEditChange("nationalId", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         pattern="[0-9]{14}"
                         maxLength={14}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Date of Birth *
+                      </label>
+                      <Input
+                        type="date"
+                        value={editForm.dateOfBirth || ""}
+                        onChange={(e) =>
+                          handleEditChange("dateOfBirth", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                        required
                       />
                     </div>
 
@@ -786,10 +848,14 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("gender", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value={Gender.MALE}>Male</option>
-                        <option value={Gender.FEMALE}>Female</option>
+                        <option key={Gender.MALE} value={Gender.MALE}>
+                          Male
+                        </option>
+                        <option key={Gender.FEMALE} value={Gender.FEMALE}>
+                          Female
+                        </option>
                       </select>
                     </div>
 
@@ -802,79 +868,27 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("maritalStatus", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value={MaritalStatus.SINGLE}>Single</option>
-                        <option value={MaritalStatus.MARRIED}>Married</option>
-                        <option value={MaritalStatus.DIVORCED}>Divorced</option>
-                        <option value={MaritalStatus.WIDOWED}>Widowed</option>
+                        {Object.values(MaritalStatus).map((status) => (
+                          <option key={status} value={status}>
+                            {status
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </option>
+                        ))}
                       </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date of Birth
-                      </label>
-                      <Input
-                        type="date"
-                        value={editForm.dateOfBirth || ""}
-                        onChange={(e) =>
-                          handleEditChange("dateOfBirth", e.target.value)
-                        }
-                        className="w-full"
-                      />
                     </div>
                   </div>
                 </div>
 
-                {/* Contact & Employment */}
-                <div className="border-r border-gray-100 pr-4">
-                  <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wider">
-                    Contact & Employment
+                {/* SECTION 2: EMPLOYMENT DETAILS */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
+                    Employment Details
                   </h3>
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Work Email *
-                      </label>
-                      <Input
-                        type="email"
-                        value={editForm.workEmail || ""}
-                        onChange={(e) =>
-                          handleEditChange("workEmail", e.target.value)
-                        }
-                        className="w-full"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Personal Email
-                      </label>
-                      <Input
-                        type="email"
-                        value={editForm.personalEmail || ""}
-                        onChange={(e) =>
-                          handleEditChange("personalEmail", e.target.value)
-                        }
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Mobile Phone
-                      </label>
-                      <Input
-                        value={editForm.mobilePhone || ""}
-                        onChange={(e) =>
-                          handleEditChange("mobilePhone", e.target.value)
-                        }
-                        className="w-full"
-                      />
-                    </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Employee Number *
@@ -884,14 +898,14 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("employeeNumber", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         required
                       />
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date of Hire *
+                        Hire Date *
                       </label>
                       <Input
                         type="date"
@@ -899,7 +913,7 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("dateOfHire", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         required
                       />
                     </div>
@@ -913,118 +927,14 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("status", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value={EmployeeStatus.ACTIVE}>Active</option>
-                        <option value={EmployeeStatus.ON_LEAVE}>
-                          On Leave
-                        </option>
-                        <option value={EmployeeStatus.TERMINATED}>
-                          Terminated
-                        </option>
-                        <option value={EmployeeStatus.SUSPENDED}>
-                          Suspended
-                        </option>
-                        <option value={EmployeeStatus.PROBATION}>
-                          Probation
-                        </option>
-                        <option value={EmployeeStatus.RETIRED}>Retired</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Organization & Banking */}
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wider">
-                    Organization & Banking
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <Building className="inline h-4 w-4 mr-1" />
-                        Department
-                      </label>
-                      <select
-                        value={editForm.primaryDepartmentId || ""}
-                        onChange={(e) =>
-                          handleEditChange(
-                            "primaryDepartmentId",
-                            e.target.value
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Department</option>
-                        {departments.map((dept) => (
-                          <option key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <Briefcase className="inline h-4 w-4 mr-1" />
-                        Position
-                      </label>
-                      <select
-                        value={editForm.primaryPositionId || ""}
-                        onChange={(e) =>
-                          handleEditChange("primaryPositionId", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Position</option>
-                        {positions.map((pos) => (
-                          <option key={pos.id} value={pos.id}>
-                            {pos.title}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <Users className="inline h-4 w-4 mr-1" />
-                        Supervisor Position (Manager)
-                      </label>
-                      <select
-                        value={editForm.supervisorPositionId || ""}
-                        onChange={(e) =>
-                          handleEditChange("supervisorPositionId", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">No Supervisor (Top Level)</option>
-                        {positions.map((pos) => (
-                          <option key={pos.id} value={pos.id}>
-                            {pos.title}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Select the manager's position. Employees with this position as their supervisor will appear in team views.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        <DollarSign className="inline h-4 w-4 mr-1" />
-                        Pay Grade
-                      </label>
-                      <select
-                        value={editForm.payGradeId || ""}
-                        onChange={(e) =>
-                          handleEditChange("payGradeId", e.target.value)
-                        }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Pay Grade</option>
-                        {payGrades.map((grade) => (
-                          <option key={grade.id} value={grade.id}>
-                            {grade.name} (Level {grade.level})
+                        {Object.values(EmployeeStatus).map((status) => (
+                          <option key={status} value={status}>
+                            {status
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
                           </option>
                         ))}
                       </select>
@@ -1042,14 +952,16 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("contractType", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value={ContractType.FULL_TIME_CONTRACT}>
-                          Full Time
-                        </option>
-                        <option value={ContractType.PART_TIME_CONTRACT}>
-                          Part Time
-                        </option>
+                        {Object.entries(ContractType).map(([key, value]) => (
+                          <option key={value} value={value}>
+                            {key
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -1062,148 +974,415 @@ export default function EmployeeManagementPage() {
                         onChange={(e) =>
                           handleEditChange("workType", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
                       >
-                        <option value={WorkType.FULL_TIME}>Full Time</option>
-                        <option value={WorkType.PART_TIME}>Part Time</option>
+                        {Object.entries(WorkType).map(([key, value]) => (
+                          <option key={value} value={value}>
+                            {key
+                              .replace(/_/g, " ")
+                              .toLowerCase()
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 3: ORGANIZATION & COMPENSATION */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
+                    Organization & Compensation
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Department *
+                      </label>
+                      <select
+                        value={editForm.primaryDepartmentId || ""}
+                        onChange={(e) =>
+                          handleEditChange(
+                            "primaryDepartmentId",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                        required
+                      >
+                        <option key="select-dept" value="">
+                          Select Department
+                        </option>
+                        {departments.map((dept) => (
+                          <option
+                            key={dept.id || dept._id}
+                            value={dept.id || dept._id}
+                          >
+                            {dept.name || dept.departmentName}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Bank Name
+                        Position *
+                      </label>
+                      <select
+                        value={editForm.primaryPositionId || ""}
+                        onChange={(e) =>
+                          handleEditChange("primaryPositionId", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                        required
+                      >
+                        <option key="select-pos" value="">
+                          Select Position
+                        </option>
+                        {positions.map((pos) => (
+                          <option
+                            key={pos.id || pos._id}
+                            value={pos.id || pos._id}
+                          >
+                            {pos.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Pay Grade *
+                      </label>
+                      <select
+                        value={editForm.payGradeId || ""}
+                        onChange={(e) =>
+                          handleEditChange("payGradeId", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                        required
+                        disabled={loadingDropdowns}
+                      >
+                        <option key="select-grade" value="">
+                          {loadingDropdowns
+                            ? "Loading pay grades..."
+                            : "Select Pay Grade"}
+                        </option>
+                        {payGrades.map((grade) => (
+                          <option key={grade.id} value={grade.id}>
+                            {grade.name}
+                            {grade.level ? ` (Level ${grade.level})` : ""}
+                            {grade.code ? ` - ${grade.code}` : ""}
+                            {grade.minSalary && grade.maxSalary
+                              ? ` [${grade.minSalary} - ${grade.maxSalary}]`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {loadingDropdowns && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Loading pay grades from database...
+                        </p>
+                      )}
+                      {!loadingDropdowns && payGrades.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          No pay grades available. Please contact system
+                          administrator.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Supervisor Position
+                      </label>
+                      <select
+                        value={editForm.supervisorPositionId || ""}
+                        onChange={(e) =>
+                          handleEditChange(
+                            "supervisorPositionId",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                      >
+                        <option key="no-supervisor" value="">
+                          No Supervisor
+                        </option>
+                        {positions.map((pos) => (
+                          <option
+                            key={pos.id || pos._id}
+                            value={pos.id || pos._id}
+                          >
+                            {pos.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 4: CONTACT INFORMATION */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
+                    Contact Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Work Email *
+                      </label>
+                      <Input
+                        type="email"
+                        value={editForm.workEmail || ""}
+                        onChange={(e) =>
+                          handleEditChange("workEmail", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Personal Email
+                      </label>
+                      <Input
+                        type="email"
+                        value={editForm.personalEmail || ""}
+                        onChange={(e) =>
+                          handleEditChange("personalEmail", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Mobile Phone *
+                      </label>
+                      <Input
+                        value={editForm.mobilePhone || ""}
+                        onChange={(e) =>
+                          handleEditChange("mobilePhone", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Home Phone
+                      </label>
+                      <Input
+                        value={editForm.homePhone || ""}
+                        onChange={(e) =>
+                          handleEditChange("homePhone", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 5: BANKING INFORMATION */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
+                    Banking Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bank Name *
                       </label>
                       <Input
                         value={editForm.bankName || ""}
                         onChange={(e) =>
                           handleEditChange("bankName", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
+                        required
                       />
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Account Number
+                        Account Number *
                       </label>
                       <Input
                         value={editForm.bankAccountNumber || ""}
                         onChange={(e) =>
                           handleEditChange("bankAccountNumber", e.target.value)
                         }
-                        className="w-full"
+                        className="w-full text-gray-900"
                         pattern="[0-9]{10,20}"
+                        required
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Base Salary
+                      </label>
+                      <Input
+                        type="number"
+                        value={editForm.baseSalary || ""}
+                        onChange={(e) =>
+                          handleEditChange("baseSalary", e.target.value)
+                        }
+                        className="w-full text-gray-900"
+                        placeholder="Monthly salary"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Currency
+                      </label>
+                      <select
+                        value={editForm.currency || "USD"}
+                        onChange={(e) =>
+                          handleEditChange("currency", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                      >
+                        <option key="USD" value="USD">
+                          USD
+                        </option>
+                        <option key="EUR" value="EUR">
+                          EUR
+                        </option>
+                        <option key="GBP" value="GBP">
+                          GBP
+                        </option>
+                        <option key="EGP" value="EGP">
+                          EGP
+                        </option>
+                      </select>
                     </div>
                   </div>
                 </div>
 
-                {/* Address & Biography */}
-                <div className="md:col-span-3">
-                  <h3 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wider">
+                {/* SECTION 6: ADDRESS & BIOGRAPHY */}
+                <div className="space-y-4 md:col-span-3">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm uppercase tracking-wider">
                     Address & Biography
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-gray-700">
+                        Address Details
+                      </h4>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Street Address *
+                        </label>
+                        <Input
+                          placeholder="Street Address"
+                          value={editForm.address?.streetAddress || ""}
+                          onChange={(e) =>
+                            handleEditChange(
+                              "address.streetAddress",
+                              e.target.value
+                            )
+                          }
+                          className="w-full text-gray-900"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Street Address
+                            City *
                           </label>
                           <Input
-                            placeholder="Street Address"
-                            value={editForm.address?.streetAddress || ""}
+                            placeholder="City"
+                            value={editForm.address?.city || ""}
+                            onChange={(e) =>
+                              handleEditChange("address.city", e.target.value)
+                            }
+                            className="w-full text-gray-900"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Country *
+                          </label>
+                          <Input
+                            placeholder="Country"
+                            value={editForm.address?.country || ""}
                             onChange={(e) =>
                               handleEditChange(
-                                "address.streetAddress",
+                                "address.country",
                                 e.target.value
                               )
                             }
-                            className="w-full"
+                            className="w-full text-gray-900"
+                            required
                           />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              City
-                            </label>
-                            <Input
-                              placeholder="City"
-                              value={editForm.address?.city || ""}
-                              onChange={(e) =>
-                                handleEditChange("address.city", e.target.value)
-                              }
-                              className="w-full"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Country
-                            </label>
-                            <Input
-                              placeholder="Country"
-                              value={editForm.address?.country || ""}
-                              onChange={(e) =>
-                                handleEditChange(
-                                  "address.country",
-                                  e.target.value
-                                )
-                              }
-                              className="w-full"
-                            />
-                          </div>
                         </div>
                       </div>
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Biography
-                      </label>
+                      <h4 className="font-medium text-gray-700 mb-3">
+                        Professional Biography
+                      </h4>
                       <textarea
                         value={editForm.biography || ""}
                         onChange={(e) =>
                           handleEditChange("biography", e.target.value)
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        rows={4}
-                        placeholder="Professional biography..."
+                        className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter professional biography, skills, certifications..."
                       />
+                      <p className="text-xs text-gray-500 mt-2">
+                        This information will be visible to authorized personnel
+                        only.
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
-                <Button
-                  variant="outline"
-                  onClick={cancelEdit}
-                  disabled={saving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={saveEdit}
-                  disabled={saving}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-                >
-                  {saving ? (
-                    <>
-                      <RotateCcw className="h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
+              {/* ACTION BUTTONS */}
+              <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-200">
+                <div className="text-sm text-gray-600">
+                  All changes are logged and audited
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="text-gray-700"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={saveEdit}
+                    disabled={saving}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {saving ? (
+                      <>
+                        <RotateCcw className="h-4 w-4 animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
-
         {/* Employee Results */}
         <Card>
           <CardHeader>
@@ -1302,12 +1481,17 @@ export default function EmployeeManagementPage() {
                         </td>
                         <td className="py-4 px-4">
                           <div>
-                            <p className="text-sm">
-                              {employee.primaryDepartment?.name ||
-                                "No department"}
+                            <p className="text-sm text-black">
+                              {/* Simple fix: Check if primaryDepartmentId is an object with name */}
+                              {employee.primaryDepartmentId &&
+                              typeof employee.primaryDepartmentId === "object"
+                                ? (employee.primaryDepartmentId as any).name ||
+                                  "No department"
+                                : employee.primaryDepartment?.name ||
+                                  "No department"}
                             </p>
                             {employee.payGrade?.name && (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-black-500">
                                 Grade: {employee.payGrade.name}
                               </p>
                             )}
@@ -1336,6 +1520,7 @@ export default function EmployeeManagementPage() {
                             <div className="flex gap-2 mt-1 flex-wrap">
                               {employee.status !== EmployeeStatus.ACTIVE && (
                                 <button
+                                  key="active-btn"
                                   onClick={() =>
                                     updateStatus(
                                       employee.id || employee._id || "",
