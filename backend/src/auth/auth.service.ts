@@ -20,12 +20,10 @@ import {
   CandidateDocument,
 } from '../employee-profile/models/candidate.schema';
 import { RegisterCandidateDto } from '../employee-profile/dto/register-candidate.dto';
-// removed CreateEmployeeDto import
 import {
   SystemRole,
   CandidateStatus,
 } from '../employee-profile/enums/employee-profile.enums';
-// removed duplicate import and unused EmployeeStatus
 
 @Injectable()
 export class AuthService {
@@ -117,6 +115,7 @@ export class AuthService {
       identifier: employee.employeeNumber,
       roles: systemRole?.roles || [],
       permissions: systemRole?.permissions || [],
+      profilePictureUrl: employee.profilePictureUrl, // ADDED
     };
   }
 
@@ -142,6 +141,7 @@ export class AuthService {
       identifier: candidate.candidateNumber,
       roles: systemRole?.roles || [],
       permissions: systemRole?.permissions || [],
+      profilePictureUrl: candidate.profilePictureUrl, // ADDED
     };
   }
 
@@ -174,6 +174,7 @@ export class AuthService {
         roles: user.roles,
         userType:
           user.userType || (user.employeeNumber ? 'employee' : 'candidate'),
+        profilePictureUrl: user.profilePictureUrl, // ADDED
       },
     };
   }
@@ -287,15 +288,10 @@ export class AuthService {
         personalEmail: candidateWithoutPassword.personalEmail,
         roles: [SystemRole.JOB_CANDIDATE],
         userType: 'candidate',
+        profilePictureUrl: candidateWithoutPassword.profilePictureUrl, // ADDED
       },
     };
   }
-
-  // removed registerEmployee
-
-  // removed duplicate registerEmployee implementation
-
-  // removed generateEmployeeNumber
 
   private async generateCandidateNumber(): Promise<string> {
     const year = new Date().getFullYear();

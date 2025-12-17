@@ -35,12 +35,14 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SystemRole, CandidateStatus } from './enums/employee-profile.enums';
 import { RegisterCandidateDto } from './dto/register-candidate.dto';
 import { GetChangeRequestsDto } from './dto/get-change-requests.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Controller('employee-profile')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeeProfileController {
   constructor(
     private readonly employeeProfileService: EmployeeProfileService,
+    private readonly notificationsService: NotificationsService, // Add this
   ) {}
 
   // ==================== EMPLOYEE ROUTES ====================
@@ -530,6 +532,12 @@ export class EmployeeProfileController {
         user.userId,
         createRequestDto,
       );
+    // N-040: Notify HR Manager/Admin
+    await this.notificationsService.notifyProfileChangeRequestSubmitted(
+      user.userId,
+      changeRequest.requestId, // Using _id since requestId is the unique field
+      createRequestDto.requestDescription,
+    );
     return {
       message: 'Profile change request submitted successfully',
       data: changeRequest,
@@ -776,12 +784,23 @@ export class EmployeeProfileController {
   async approveChangeRequest(
     @Param('id') id: string,
     @Body() approveDto: { reason?: string },
+    @CurrentUser() currentUser: any,
   ) {
     const updatedRequest =
       await this.employeeProfileService.processProfileChangeRequest(id, {
         status: 'APPROVED',
         reason: approveDto.reason,
       });
+
+    // N-037: Notify employee
+    // Use requestId and employeeProfileId
+    await this.notificationsService.notifyProfileChangeRequestProcessed(
+      updatedRequest.employeeProfileId.toString(),
+      updatedRequest.requestId, // Changed from _id to requestId
+      'APPROVED',
+      approveDto.reason,
+    );
+
     return {
       message: 'Change request approved successfully',
       data: updatedRequest,
@@ -793,12 +812,23 @@ export class EmployeeProfileController {
   async rejectChangeRequest(
     @Param('id') id: string,
     @Body() rejectDto: { reason?: string },
+    @CurrentUser() currentUser: any,
   ) {
     const updatedRequest =
       await this.employeeProfileService.processProfileChangeRequest(id, {
         status: 'REJECTED',
         reason: rejectDto.reason,
       });
+
+    // N-037: Notify employee
+    // Use requestId and employeeProfileId
+    await this.notificationsService.notifyProfileChangeRequestProcessed(
+      updatedRequest.employeeProfileId.toString(),
+      updatedRequest.requestId, // Changed from _id to requestId
+      'REJECTED',
+      rejectDto.reason,
+    );
+
     return {
       message: 'Change request rejected successfully',
       data: updatedRequest,
@@ -818,11 +848,16 @@ export class EmployeeProfileController {
       data: updatedRequest,
     };
   }
-
   // ==================== QUALIFICATION ROUTES ====================
 
   @Post('qualification')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async addQualification(
     @CurrentUser() user: any,
     @Body()
@@ -842,7 +877,12 @@ export class EmployeeProfileController {
   }
 
   @Post(':employeeId/qualifications')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async addQualificationForEmployee(
     @Param('employeeId') employeeId: string,
     @Body()
@@ -862,7 +902,13 @@ export class EmployeeProfileController {
   }
 
   @Get('qualification/my-qualifications')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async getMyQualifications(@CurrentUser() user: any) {
     const qualifications =
       await this.employeeProfileService.getQualificationsByEmployee(
@@ -875,7 +921,12 @@ export class EmployeeProfileController {
   }
 
   @Get(':employeeId/qualifications')
-  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
+  @Roles(
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async getEmployeeQualifications(@Param('employeeId') employeeId: string) {
     const qualifications =
       await this.employeeProfileService.getQualificationsByEmployee(employeeId);
@@ -886,7 +937,13 @@ export class EmployeeProfileController {
   }
 
   @Patch('qualifications/:qualId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   async updateQualification(
     @Param('qualId') qualificationId: string,
     @CurrentUser() user: any,
@@ -908,7 +965,13 @@ export class EmployeeProfileController {
   }
 
   @Delete('qualifications/:qualId')
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_ADMIN,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeQualification(
     @Param('qualId') qualificationId: string,
@@ -922,7 +985,6 @@ export class EmployeeProfileController {
       message: 'Qualification removed successfully',
     };
   }
-
   // ==================== SEARCH ROUTES ====================
 
   @Post('search')

@@ -1,4 +1,3 @@
-// lib/api/client.ts - UPDATED WITH BETTER LOGGING
 import axios, {
   AxiosInstance,
   AxiosResponse,
@@ -17,39 +16,34 @@ export const api: AxiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000, // Increased timeout
+  timeout: 15000,
 });
 
-// Request interceptor
+// 🔐 Request interceptor – attach JWT if present
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Only run on client side
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("auth_token");
+      // Try multiple common keys so we don't depend on one name
+      const token =
+        localStorage.getItem("auth_token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("jwt");
+
       if (token) {
+        config.headers = config.headers ?? {};
         config.headers.Authorization = `Bearer ${token}`;
-        console.log(
-          `🔑 API Request [${config.method?.toUpperCase()} ${
-            config.url
-          }]: Token attached`
-        );
-      } else {
-        console.warn(
-          `⚠️ API Request [${config.method?.toUpperCase()} ${
-            config.url
-          }]: No auth token`
-        );
       }
     }
     return config;
   },
   (error) => {
-    console.error("❌ Request interceptor error:", error);
+    console.error("Request interceptor error:", error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor - returns data directly
+// ✅ Response interceptor – return data directly
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     console.log(
@@ -63,18 +57,24 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    // CHANGED - Suppress console errors for expected 404s (e.g., offer not found)
-    // 404 errors are often expected in this app (e.g., checking if offer exists)
-    const is404 = error.response?.status === 404;
-    const isExpected404 = error.config?.url?.includes('/offer/application/') || 
-                          error.config?.url?.includes('/onboarding/employee/');
-    
-    // Only log errors that aren't expected 404s
-    if (!is404 || !isExpected404) {
-      // CHANGED - Enhanced error logging for debugging
-      const errorDetails = {
+    // ============================================================
+    // CHANGED: Fixed syntax errors in error handler
+    // Issue: errorDetails object was incorrectly structured as inline
+    //        console.error argument, causing syntax errors
+    // Fix: Extracted errorDetails as a proper const variable
+    // Date: Recent fix for TypeScript compilation errors
+    // ============================================================
+    // Log detailed error information
+    const errorDetails = {
+      message: error.message,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+      },
+      response: {
         status: error.response?.status,
         statusText: error.response?.statusText,
+        data: error.response?.data,
         message: error.message,
         responseData: error.response?.data,
         requestData: error.config?.data,
@@ -87,45 +87,89 @@ api.interceptors.response.use(
         errorName: error.name,
         isAxiosError: error.isAxiosError,
         hasResponse: !!error.response,
-      };
-      
-      console.error(
-        `❌ API Error [${error.config?.method?.toUpperCase()} ${
-          error.config?.url
-        }]:`,
-        errorDetails
-      );
-      
-      // CHANGED - Log the full error object for debugging
-      if (!error.response) {
-        console.error('⚠️ No response received - possible network error:', error);
-      } else {
-        console.error('📋 Full error response:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data,
-          headers: error.response.headers,
-        });
-      }
+      },
+    };
+    
+    console.error("API Error:", errorDetails);
+    
+    console.error(
+      `❌ API Error [${error.config?.method?.toUpperCase()} ${
+        error.config?.url
+      }]:`,
+      errorDetails
+    );
+    
+    // CHANGED - Log the full error object for debugging
+    if (!error.response) {
+      console.error('⚠️ No response received - possible network error:', error);
+    } else {
+      console.error('📋 Full error response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        headers: error.response.headers,
+      });
     }
+    
+    // ============================================================
+    // CHANGED: Removed orphaned code causing syntax errors
+    // Issue: Lines 103-106 had orphaned code fragments that broke syntax
+    // Fix: Commented out the duplicate/orphaned code instead of deleting
+    //      to preserve any potential logic that might be needed later
+    // ============================================================
+    // COMMENTED OUT - Duplicate/orphaned code that was causing syntax errors
+    // requestData: error.config?.data, // ADDED TO SEE WHAT WAS SENT
+    // },
+    // });
 
-    // Handle errors
     if (error.response?.status === 401) {
-      console.log("🔒 401 Unauthorized - Clearing auth tokens");
-      // Clear token and redirect to login (client side only)
+      console.log("🔒 401 Unauthorized - Token may be invalid");
+      
+      // Only redirect if we're not already on the login page and it's not a network error
       if (typeof window !== "undefined") {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user");
-        window.location.href = "/auth/login";
+        const currentPath = window.location.pathname;
+        const isLoginPage = currentPath.startsWith("/auth/login");
+        const isNetworkError = !error.response; // Network errors don't have response
+        
+        // Don't redirect if already on login page or if it's a network error
+        if (!isLoginPage && !isNetworkError) {
+          // Check if token exists - if not, might be a temporary issue
+          const token = localStorage.getItem("auth_token");
+          
+          if (token) {
+            // Token exists but got 401 - likely expired or invalid
+            console.log("Token exists but unauthorized - clearing and redirecting");
+            localStorage.removeItem("auth_token");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("token");
+            localStorage.removeItem("jwt");
+            localStorage.removeItem("user");
+            
+            // Use router if available, otherwise use window.location
+            // Add a small delay to prevent redirect loops
+            setTimeout(() => {
+              window.location.href = "/auth/login";
+            }, 100);
+          } else {
+            // No token - might be a temporary API issue, don't redirect aggressively
+            console.log("No token found - might be temporary issue, not redirecting");
+          }
+        }
       }
     }
 
     if (error.response?.status === 403) {
-      console.log("🚫 403 Forbidden - Insufficient permissions");
-      console.log("Endpoint:", error.config?.url);
-      console.log("User role may not have access to this endpoint");
+      console.log("Forbidden - Insufficient permissions");
     }
 
+    // ============================================================
+    // CHANGED: Fixed duplicate error message extraction logic
+    // Issue: Two separate error message extraction blocks existed
+    //        (lines 149-168 and 169-197), causing syntax errors
+    // Fix: Completed the first block properly and commented out
+    //      the duplicate second block to preserve logic
+    // Date: Recent fix for TypeScript compilation errors
+    // ============================================================
     // CHANGED - Extract error message with better handling for validation errors
     let errorMessage = "An error occurred";
     
@@ -148,6 +192,42 @@ api.interceptors.response.use(
     } else {
       errorMessage = `HTTP ${error.response?.status || "Unknown"} error`;
     }
+    
+    // ============================================================
+    // CHANGED: Commented out duplicate error extraction logic
+    // Reason: Preserved old logic in comments in case it's needed
+    //         The active logic above (lines 149-168) handles all cases
+    // ============================================================
+    // COMMENTED OUT - Duplicate error message extraction logic (old version)
+    // // Extract error message
+    // let errorMessage = "An error occurred";
+    //
+    // if (error.response?.data) {
+    //   const data = error.response.data;
+    //
+    //   if (typeof data === "string") {
+    //     errorMessage = data;
+    //   } else if (data.message) {
+    //     errorMessage = data.message;
+    //   } else if (data.error) {
+    //     errorMessage = data.error;
+    //   } else if (Array.isArray(data.errors)) {
+    //     errorMessage = data.errors.join(", ");
+    //   } else {
+    //     try {
+    //       errorMessage = JSON.stringify(data);
+    //     } catch (e) {
+    //       errorMessage = "Error parsing response";
+    //     }
+    //   }
+    // } else if (error.message) {
+    //   errorMessage = error.message;
+    // }
+    //
+    // // Add status code if available
+    // if (error.response?.status) {
+    //   errorMessage = `HTTP ${error.response.status}: ${errorMessage}`;
+    // }
 
     //change
     // Create a more detailed error object

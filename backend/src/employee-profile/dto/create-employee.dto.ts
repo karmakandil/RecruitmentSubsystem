@@ -111,6 +111,10 @@ export class CreateEmployeeDto {
   biography?: string;
 
   @IsOptional()
+  @IsString()
+  candidateId?: string; // Add this field
+
+  @IsOptional()
   @Type(() => Date)
   @IsDate()
   contractStartDate?: Date;

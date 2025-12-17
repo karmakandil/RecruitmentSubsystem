@@ -20,19 +20,6 @@ export enum NotificationType {
   LEAVE_FINALIZED = 'leave_finalized',         // All parties: Leave request finalized
   LEAVE_RETURNED_FOR_CORRECTION = 'leave_returned_for_correction', // Employee: Fix and resubmit
 
-  // =============================================================================
-  // TIME MANAGEMENT MODULE NOTIFICATIONS
-  // =============================================================================
-  // Sent to employees, managers, and HR regarding attendance and shifts
-  
-  SHIFT_EXPIRY = 'shift_expiry',                       // HR Admin: Shift assignment expiring soon
-  SHIFT_EXPIRY_ALERT = 'SHIFT_EXPIRY_ALERT',           // HR Admin: Single shift expiry alert
-  SHIFT_EXPIRY_BULK_ALERT = 'SHIFT_EXPIRY_BULK_ALERT', // HR Admin: Multiple shifts expiring
-  SHIFT_RENEWAL_CONFIRMATION = 'SHIFT_RENEWAL_CONFIRMATION',   // HR Admin: Shift renewed
-  SHIFT_ARCHIVE_NOTIFICATION = 'SHIFT_ARCHIVE_NOTIFICATION',   // HR Admin: Shift archived
-  MISSED_PUNCH = 'missed_punch',                       // Legacy: Missed punch notification
-  MISSED_PUNCH_EMPLOYEE_ALERT = 'MISSED_PUNCH_EMPLOYEE_ALERT', // Employee: You missed a punch
-  MISSED_PUNCH_MANAGER_ALERT = 'MISSED_PUNCH_MANAGER_ALERT',   // Manager: Employee missed punch
 
   // ===== RECRUITMENT SUBSYSTEM =====
   // Interview, hiring, and application notifications
@@ -86,4 +73,20 @@ export enum NotificationType {
   ACCESS_REVOKED = 'ACCESS_REVOKED',
   FINAL_SETTLEMENT_TRIGGERED = 'FINAL_SETTLEMENT_TRIGGERED',
   FINAL_SETTLEMENT_COMPLETED = 'FINAL_SETTLEMENT_COMPLETED',
+
+  // Time Management Module Notifications
+  SHIFT_EXPIRY = 'shift_expiry',
+  SHIFT_EXPIRY_ALERT = 'SHIFT_EXPIRY_ALERT',
+  SHIFT_EXPIRY_BULK_ALERT = 'SHIFT_EXPIRY_BULK_ALERT',
+  SHIFT_RENEWAL_CONFIRMATION = 'SHIFT_RENEWAL_CONFIRMATION',
+  SHIFT_ARCHIVE_NOTIFICATION = 'SHIFT_ARCHIVE_NOTIFICATION',
+  MISSED_PUNCH = 'missed_punch',
+  MISSED_PUNCH_EMPLOYEE_ALERT = 'MISSED_PUNCH_EMPLOYEE_ALERT',
+  MISSED_PUNCH_MANAGER_ALERT = 'MISSED_PUNCH_MANAGER_ALERT',
+
+  // Employee Profile Module Notifications
+  PROFILE_CHANGE_REQUEST_SUBMITTED = 'profile_change_request_submitted',
+  PROFILE_CHANGE_APPROVED = 'profile_change_approved',
+  PROFILE_CHANGE_REJECTED = 'profile_change_rejected',
+  PROFILE_UPDATED = 'profile_updated',
 }

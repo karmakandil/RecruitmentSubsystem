@@ -74,7 +74,13 @@ export class LeaveController {
 
   @Get('calendar/:year')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_ADMIN)
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.DEPARTMENT_EMPLOYEE,
+  )
   async getCalendar(@Param('year') year: string) {
     return await this.leavesService.getCalendarByYear(Number(year));
   }
@@ -132,7 +138,7 @@ export class LeaveController {
 
   @Post('request')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.DEPARTMENT_HEAD)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE)
   async createLeaveRequest(
     @Body() createLeaveRequestDto: CreateLeaveRequestDto,
   ) {
@@ -143,6 +149,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
@@ -155,6 +162,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
   )
@@ -170,7 +178,7 @@ export class LeaveController {
 
   @Delete('request/:id')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async deleteLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.deleteLeaveRequest(id);
   }
@@ -385,6 +393,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -401,7 +410,7 @@ export class LeaveController {
 
   @Post('request/:id/cancel')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_ADMIN)
+  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
   async cancelLeaveRequest(@Param('id') id: string) {
     return await this.leavesService.cancelLeaveRequest(id);
   }
@@ -411,6 +420,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -430,6 +440,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -440,13 +451,22 @@ export class LeaveController {
     @Query('toDate') toDate?: string,
     @Query('status') status?: string,
     @Query('leaveTypeId') leaveTypeId?: string,
+    @Req() req?: any, // Get current user to check if they're a delegate
   ) {
+    const userId = req?.user?.userId || req?.user?._id || req?.user?.id;
+    // Normalize status: convert empty string to undefined, and normalize case
+    let normalizedStatus: string | undefined = undefined;
+    if (status && status.trim() !== '') {
+      normalizedStatus = status.trim().toLowerCase();
+      console.log(`[Controller] Received status: "${status}", normalized to: "${normalizedStatus}"`);
+    }
+    
     return await this.leavesService.getPastLeaveRequests(employeeId, {
-      fromDate: fromDate ? new Date(fromDate) : undefined,
-      toDate: toDate ? new Date(toDate) : undefined,
-      status,
-      leaveTypeId,
-    });
+      fromDate: fromDate && fromDate.trim() ? new Date(fromDate) : undefined,
+      toDate: toDate && toDate.trim() ? new Date(toDate) : undefined,
+      status: normalizedStatus,
+      leaveTypeId: leaveTypeId && leaveTypeId.trim() ? leaveTypeId.trim() : undefined,
+    }, userId);
   }
 
   // REQ-033: Filter leave history
@@ -454,14 +474,24 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
   )
   async filterLeaveHistory(@Body() filterDto: FilterLeaveHistoryDto) {
+    // Normalize status to lowercase if provided
+    const normalizedDto = { ...filterDto };
+    if (normalizedDto.status && typeof normalizedDto.status === 'string' && normalizedDto.status.trim() !== '') {
+      normalizedDto.status = normalizedDto.status.trim().toLowerCase() as any;
+      console.log(`[Controller] filterLeaveHistory - Normalizing status: "${filterDto.status}" -> "${normalizedDto.status}"`);
+    } else if (normalizedDto.status === '') {
+      delete normalizedDto.status;
+    }
+    
     return await this.leavesService.filterLeaveHistory(
-      filterDto.employeeId,
-      filterDto,
+      normalizedDto.employeeId,
+      normalizedDto,
     );
   }
 
@@ -477,9 +507,9 @@ export class LeaveController {
   ) {
     return await this.leavesService.getTeamLeaveBalances(
       managerId,
-      upcomingFromDate ? new Date(upcomingFromDate) : undefined,
-      upcomingToDate ? new Date(upcomingToDate) : undefined,
-      departmentId,
+      upcomingFromDate && upcomingFromDate.trim() ? new Date(upcomingFromDate) : undefined,
+      upcomingToDate && upcomingToDate.trim() ? new Date(upcomingToDate) : undefined,
+      departmentId && departmentId.trim() ? departmentId.trim() : undefined,
     );
   }
 
@@ -513,7 +543,6 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
   )
   async autoAccrueLeave(@Body() accrueDto: AutoAccrueLeaveDto) {
     return await this.leavesService.autoAccrueLeave(
@@ -532,7 +561,7 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+
   )
   async autoAccrueAllEmployees(@Body() accrueAllDto: AccrueAllEmployeesDto) {
     return await this.leavesService.autoAccrueAllEmployees(
@@ -549,15 +578,35 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+
   )
   async runCarryForward(@Body() carryForwardDto: RunCarryForwardDto) {
-    return await this.leavesService.runCarryForward(
-      carryForwardDto.leaveTypeId,
-      carryForwardDto.employeeId,
-      carryForwardDto.asOfDate,
-      carryForwardDto.departmentId,
-    );
+    console.log(`[Controller] runCarryForward called with:`, {
+      leaveTypeId: carryForwardDto.leaveTypeId,
+      employeeId: carryForwardDto.employeeId,
+      asOfDate: carryForwardDto.asOfDate,
+      departmentId: carryForwardDto.departmentId,
+    });
+    
+    try {
+      const result = await this.leavesService.runCarryForward(
+        carryForwardDto.leaveTypeId,
+        carryForwardDto.employeeId,
+        carryForwardDto.asOfDate,
+        carryForwardDto.departmentId,
+      );
+      
+      console.log(`[Controller] runCarryForward completed:`, {
+        successful: result.successful,
+        failed: result.failed,
+        total: result.total,
+      });
+      
+      return result;
+    } catch (error) {
+      console.error(`[Controller] runCarryForward error:`, error);
+      throw error;
+    }
   }
 
   // REQ-042: Adjust accruals
@@ -566,7 +615,7 @@ export class LeaveController {
   @Roles(
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
-    SystemRole.PAYROLL_SPECIALIST,
+    
   )
   async adjustAccrual(@Body() adjustmentDto: AccrualAdjustmentDto) {
     return await this.leavesService.adjustAccrual(
@@ -640,6 +689,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -687,6 +737,7 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,

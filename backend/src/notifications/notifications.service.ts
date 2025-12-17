@@ -4,6 +4,12 @@ import { Model, Types } from 'mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CreateNotificationDto } from './dtos/notification.dto';
 import { NotificationType } from './enums/notification-type.enum';
+import {
+  SystemRole,
+  EmployeeStatus,
+} from '../employee-profile/enums/employee-profile.enums';
+import { EmployeeSystemRole } from '../employee-profile/models/employee-system-role.schema';
+import { RecruitmentNotificationsService } from './services/recruitment-notifications.service';
 
 @Injectable()
 export class NotificationsService {
@@ -14,12 +20,15 @@ export class NotificationsService {
     private shiftAssignmentModel: Model<any>,
     @InjectModel('EmployeeProfile')
     private employeeProfileModel: Model<any>,
+    @InjectModel(EmployeeSystemRole.name)
+    private employeeSystemRoleModel: Model<any>,
+    private recruitmentNotificationsService: RecruitmentNotificationsService,
   ) {}
 
   // ===== LEAVE MODULE NOTIFICATIONS =====
 
   /**
-   * REQ: As an HR manager, I want the system to notify the employee, the employee's manager, 
+   * REQ: As an HR manager, I want the system to notify the employee, the employee's manager,
    * and the attendance coordinator when a leave request is finalized so that everyone is informed.
    */
   async notifyLeaveRequestFinalized(
@@ -41,6 +50,10 @@ export class NotificationsService {
     
     const message = `Leave request from ${details.employeeName} (${details.fromDate} to ${details.toDate}) has been finalized with status: ${details.status}`;
 
+    console.log(`[NOTIFICATION SERVICE] Creating LEAVE_FINALIZED notifications:`);
+    console.log(`  - Employee ID: ${employeeId}`);
+    console.log(`  - Manager ID: ${managerId}`);
+
     // Notify Employee
     notifications.push(
       this.notificationLogModel.create({
@@ -50,30 +63,36 @@ export class NotificationsService {
       }),
     );
 
-    // Notify Manager
-    notifications.push(
-      this.notificationLogModel.create({
-        to: new Types.ObjectId(managerId),
-        type: NotificationType.LEAVE_FINALIZED,
-        message: message,
-      }),
-    );
+    // Notify Manager (Department Head)
+    if (managerId) {
+      notifications.push(
+        this.notificationLogModel.create({
+          to: new Types.ObjectId(managerId),
+          type: NotificationType.LEAVE_FINALIZED,
+          message: message,
+        }),
+      );
+    }
 
-    // Notify Attendance Coordinator
-    notifications.push(
-      this.notificationLogModel.create({
-        to: new Types.ObjectId(coordinatorId),
-        type: NotificationType.LEAVE_FINALIZED,
-        message: message,
-      }),
-    );
+    // Note: coordinatorId is kept for backward compatibility but not used if it's the same as managerId
+    // Only notify coordinator if it's different from managerId to avoid duplicate notifications
+    if (coordinatorId && coordinatorId !== managerId) {
+      notifications.push(
+        this.notificationLogModel.create({
+          to: new Types.ObjectId(coordinatorId),
+          type: NotificationType.LEAVE_FINALIZED,
+          message: message,
+        }),
+      );
+    }
 
     await Promise.all(notifications);
-    return { success: true, notificationsCreated: 3 };
+    console.log(`[NOTIFICATION SERVICE] Created ${notifications.length} notifications for finalized leave request`);
+    return { success: true, notificationsCreated: notifications.length };
   }
 
   /**
-   * REQ: As a direct manager, I want to receive notifications when a new leave request 
+   * REQ: As a direct manager, I want to receive notifications when a new leave request
    * is assigned to me so that I can review it promptly.
    */
   async notifyLeaveRequestCreated(
@@ -99,7 +118,7 @@ export class NotificationsService {
   }
 
   /**
-   * REQ: As an employee, I want to receive notifications when my leave request is approved, 
+   * REQ: As an employee, I want to receive notifications when my leave request is approved,
    * rejected, returned for correction, or modified so that I am always informed about the progress.
    */
   async notifyLeaveRequestStatusChanged(
@@ -110,7 +129,8 @@ export class NotificationsService {
     const statusMessages = {
       APPROVED: 'Your leave request has been approved',
       REJECTED: 'Your leave request has been rejected',
-      RETURNED_FOR_CORRECTION: 'Your leave request has been returned for correction',
+      RETURNED_FOR_CORRECTION:
+        'Your leave request has been returned for correction',
       MODIFIED: 'Your leave request has been modified',
     };
 
@@ -126,7 +146,7 @@ export class NotificationsService {
   // ===== TIME MANAGEMENT MODULE NOTIFICATIONS =====
 
   /**
-   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry 
+   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry
    * so that schedules can be renewed or reassigned.
    * Send shift expiry notification to HR Admin
    */
@@ -139,13 +159,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} for employee ${employeeId} is expiring in ${daysRemaining} days (${endDate.toISOString().split('T')[0]}). Please renew or reassign.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_EXPIRY_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -166,23 +186,27 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const notifications: any[] = [];
-    
+
     for (const hrAdminId of hrAdminIds) {
       // Create summary message for HR Admin
-      const message = `${expiringAssignments.length} shift assignment(s) expiring soon:\n` +
+      const message =
+        `${expiringAssignments.length} shift assignment(s) expiring soon:\n` +
         expiringAssignments
-          .map(a => `- ${a.employeeName || a.employeeId}: ${a.shiftName || 'Shift'} expires in ${a.daysRemaining} days`)
+          .map(
+            (a) =>
+              `- ${a.employeeName || a.employeeId}: ${a.shiftName || 'Shift'} expires in ${a.daysRemaining} days`,
+          )
           .join('\n');
-      
+
       const notification = await this.notificationLogModel.create({
         to: new Types.ObjectId(hrAdminId),
         type: NotificationType.SHIFT_EXPIRY_BULK_ALERT,
         message,
       });
-      
+
       notifications.push(notification);
     }
-    
+
     return {
       notificationsSent: notifications.length,
       notifications,
@@ -196,11 +220,16 @@ export class NotificationsService {
     const notifications = await this.notificationLogModel
       .find({
         to: new Types.ObjectId(hrAdminId),
-        type: { $in: [NotificationType.SHIFT_EXPIRY_ALERT, NotificationType.SHIFT_EXPIRY_BULK_ALERT] },
+        type: {
+          $in: [
+            NotificationType.SHIFT_EXPIRY_ALERT,
+            NotificationType.SHIFT_EXPIRY_BULK_ALERT,
+          ],
+        },
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -218,13 +247,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} has been renewed. New end date: ${newEndDate.toISOString().split('T')[0]}.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_RENEWAL_CONFIRMATION,
       message,
     });
-    
+
     return notification;
   }
 
@@ -239,13 +268,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Shift assignment ${shiftAssignmentId} for employee ${employeeId} has been archived/expired. Consider creating a new assignment if needed.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_ARCHIVE_NOTIFICATION,
       message,
     });
-    
+
     return notification;
   }
 
@@ -267,20 +296,22 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Group by type for better organization
     const grouped = {
-      expiryAlerts: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_EXPIRY_ALERT || n.type === NotificationType.SHIFT_EXPIRY_BULK_ALERT
+      expiryAlerts: notifications.filter(
+        (n) =>
+          n.type === NotificationType.SHIFT_EXPIRY_ALERT ||
+          n.type === NotificationType.SHIFT_EXPIRY_BULK_ALERT,
       ),
-      renewalConfirmations: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_RENEWAL_CONFIRMATION
+      renewalConfirmations: notifications.filter(
+        (n) => n.type === NotificationType.SHIFT_RENEWAL_CONFIRMATION,
       ),
-      archiveNotifications: notifications.filter(n => 
-        n.type === NotificationType.SHIFT_ARCHIVE_NOTIFICATION
+      archiveNotifications: notifications.filter(
+        (n) => n.type === NotificationType.SHIFT_ARCHIVE_NOTIFICATION,
       ),
     };
-    
+
     return {
       totalCount: notifications.length,
       grouped,
@@ -300,13 +331,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Missed ${missedPunchType === 'CLOCK_IN' ? 'clock-in' : 'clock-out'} detected on ${date.toISOString().split('T')[0]}. Please submit a correction request.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(employeeId),
       type: NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -323,13 +354,13 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const message = `Employee ${employeeName} (${employeeId}) has a missed ${missedPunchType === 'CLOCK_IN' ? 'clock-in' : 'clock-out'} on ${date.toISOString().split('T')[0]}. Pending correction review.`;
-    
+
     const notification = await this.notificationLogModel.create({
       to: new Types.ObjectId(managerId),
       type: NotificationType.MISSED_PUNCH_MANAGER_ALERT,
       message,
     });
-    
+
     return notification;
   }
 
@@ -348,7 +379,7 @@ export class NotificationsService {
     currentUserId: string,
   ) {
     const notifications: any[] = [];
-    
+
     for (const alert of alerts) {
       // Send to employee
       const employeeNotification = await this.sendMissedPunchAlertToEmployee(
@@ -358,8 +389,11 @@ export class NotificationsService {
         alert.date,
         currentUserId,
       );
-      notifications.push({ type: 'employee', notification: employeeNotification });
-      
+      notifications.push({
+        type: 'employee',
+        notification: employeeNotification,
+      });
+
       // Send to manager if provided
       if (alert.managerId) {
         const managerNotification = await this.sendMissedPunchAlertToManager(
@@ -371,10 +405,13 @@ export class NotificationsService {
           alert.date,
           currentUserId,
         );
-        notifications.push({ type: 'manager', notification: managerNotification });
+        notifications.push({
+          type: 'manager',
+          notification: managerNotification,
+        });
       }
     }
-    
+
     return {
       alertsProcessed: alerts.length,
       notificationsSent: notifications.length,
@@ -393,7 +430,7 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -411,7 +448,7 @@ export class NotificationsService {
       })
       .sort({ createdAt: -1 })
       .exec();
-    
+
     return {
       count: notifications.length,
       notifications,
@@ -421,29 +458,39 @@ export class NotificationsService {
   /**
    * Get all missed punch notifications (for HR Admin)
    */
-  async getAllMissedPunchNotifications(
-    filters: { startDate?: Date; endDate?: Date },
-  ) {
+  async getAllMissedPunchNotifications(filters: {
+    startDate?: Date;
+    endDate?: Date;
+  }) {
     const query: any = {
-      type: { $in: [NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT, NotificationType.MISSED_PUNCH_MANAGER_ALERT] },
+      type: {
+        $in: [
+          NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
+          NotificationType.MISSED_PUNCH_MANAGER_ALERT,
+        ],
+      },
     };
-    
+
     if (filters.startDate && filters.endDate) {
       query.createdAt = {
         $gte: filters.startDate,
         $lte: filters.endDate,
       };
     }
-    
+
     const notifications = await this.notificationLogModel
       .find(query)
       .sort({ createdAt: -1 })
       .exec();
-    
+
     // Group by type
-    const employeeAlerts = notifications.filter(n => n.type === NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT);
-    const managerAlerts = notifications.filter(n => n.type === NotificationType.MISSED_PUNCH_MANAGER_ALERT);
-    
+    const employeeAlerts = notifications.filter(
+      (n) => n.type === NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
+    );
+    const managerAlerts = notifications.filter(
+      (n) => n.type === NotificationType.MISSED_PUNCH_MANAGER_ALERT,
+    );
+
     return {
       total: notifications.length,
       employeeAlerts: {
@@ -459,7 +506,7 @@ export class NotificationsService {
 
   /**
    * Legacy method for backward compatibility
-   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry 
+   * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry
    * so that schedules can be renewed or reassigned.
    */
   async notifyShiftAssignmentExpiry(
@@ -492,9 +539,11 @@ export class NotificationsService {
     coordinatorId: string,
     attendanceDetails: any,
   ) {
-    const date = attendanceDetails.date ? new Date(attendanceDetails.date) : new Date();
+    const date = attendanceDetails.date
+      ? new Date(attendanceDetails.date)
+      : new Date();
     const missedPunchType = attendanceDetails.missedPunchType || 'CLOCK_IN';
-    
+
     const notifications = [];
 
     // Notify Employee
@@ -545,7 +594,9 @@ export class NotificationsService {
         .lean()
         .exec();
 
-      console.log(`Found ${allNotifications.length} notifications for user ${userId}`);
+      console.log(
+        `Found ${allNotifications.length} notifications for user ${userId}`,
+      );
 
       // Ensure isRead field is always present (default to false if not set)
       const transformed = allNotifications.map((notif: any) => ({
@@ -558,7 +609,10 @@ export class NotificationsService {
       return transformed;
     } catch (error) {
       console.error('Error fetching notifications:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
+      console.error(
+        'Error details:',
+        error instanceof Error ? error.message : String(error),
+      );
       return [];
     }
   }
@@ -590,7 +644,8 @@ export class NotificationsService {
       const testNotification = await this.notificationLogModel.create({
         to: new Types.ObjectId(userId),
         type: NotificationType.LEAVE_CREATED,
-        message: 'This is a test notification. New leave request from John Doe (Dec 15-20) awaiting your review',
+        message:
+          'This is a test notification. New leave request from John Doe (Dec 15-20) awaiting your review',
       });
       return testNotification;
     } catch (error) {
@@ -607,7 +662,9 @@ export class NotificationsService {
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async handleShiftExpiryNotifications() {
     try {
-      console.log('[SCHEDULED TASK] Running shift expiry notification check...');
+      console.log(
+        '[SCHEDULED TASK] Running shift expiry notification check...',
+      );
 
       const now = new Date();
       const expiryDate = new Date(now);
@@ -692,7 +749,12 @@ export class NotificationsService {
               shiftName: shiftName,
               endDate: assignment.endDate?.toISOString() || '',
               daysRemaining: daysRemaining,
-              urgency: daysRemaining <= 2 ? 'HIGH' : daysRemaining <= 4 ? 'MEDIUM' : 'LOW',
+              urgency:
+                daysRemaining <= 2
+                  ? 'HIGH'
+                  : daysRemaining <= 4
+                    ? 'MEDIUM'
+                    : 'LOW',
             },
             isRead: false,
             createdAt: new Date(),
@@ -709,7 +771,10 @@ export class NotificationsService {
         );
       }
     } catch (error) {
-      console.error('[SCHEDULED TASK] Error in shift expiry notification:', error);
+      console.error(
+        '[SCHEDULED TASK] Error in shift expiry notification:',
+        error,
+      );
       // Don't throw - let the scheduled task continue even if it fails
     }
   }
@@ -717,9 +782,7 @@ export class NotificationsService {
   /**
    * Helper method to map status to notification type
    */
-  private mapStatusToNotificationType(
-    status: string,
-  ): string {
+  private mapStatusToNotificationType(status: string): string {
     const statusMap = {
       APPROVED: NotificationType.LEAVE_APPROVED,
       REJECTED: NotificationType.LEAVE_REJECTED,
@@ -743,68 +806,7 @@ export class NotificationsService {
       stage: string;
     },
   ) {
-    if (!panelMemberIds || panelMemberIds.length === 0) {
-      console.log('[INTERVIEW_NOTIFICATION] No panel members to notify');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedDate = interviewDetails.scheduledDate.toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const methodText = interviewDetails.method || 'TBD';
-    const videoLinkText = interviewDetails.videoLink 
-      ? `\nVideo Link: ${interviewDetails.videoLink}` 
-      : '';
-
-    for (const panelMemberId of panelMemberIds) {
-      try {
-        const message = `You have been assigned as an interview panel member.\n\n` +
-          `📋 Interview Details:\n` +
-          `• Candidate: ${interviewDetails.candidateName}\n` +
-          `• Position: ${interviewDetails.positionTitle}\n` +
-          `• Stage: ${interviewDetails.stage}\n` +
-          `• Date & Time: ${formattedDate}\n` +
-          `• Method: ${methodText}${videoLinkText}\n\n` +
-          `Please review the candidate's profile and prepare for the interview.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(panelMemberId),
-          type: NotificationType.INTERVIEW_PANEL_INVITATION,
-          message: message,
-          data: {
-            interviewId: interviewDetails.interviewId,
-            candidateName: interviewDetails.candidateName,
-            positionTitle: interviewDetails.positionTitle,
-            scheduledDate: interviewDetails.scheduledDate.toISOString(),
-            method: interviewDetails.method,
-            videoLink: interviewDetails.videoLink,
-            stage: interviewDetails.stage,
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[INTERVIEW_NOTIFICATION] Sent notification to panel member: ${panelMemberId}`);
-      } catch (error) {
-        console.error(`[INTERVIEW_NOTIFICATION] Failed to notify panel member ${panelMemberId}:`, error);
-        // Continue with other notifications even if one fails
-      }
-    }
-
-    console.log(`[INTERVIEW_NOTIFICATION] Successfully created ${notifications.length} notifications for panel members`);
-    
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.notifyInterviewPanelMembers(panelMemberIds, interviewDetails);
   }
 
   // Notify HR staff when a candidate submits a new application
@@ -818,66 +820,7 @@ export class NotificationsService {
       isReferral?: boolean;
     },
   ) {
-    if (!hrRecipientIds || hrRecipientIds.length === 0) {
-      console.log('[APPLICATION_NOTIFICATION] No HR recipients to notify');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const referralBadge = applicationDetails.isReferral ? '⭐ REFERRAL - ' : '';
-    const internalBadge = (applicationDetails as any).isInternalCandidate ? '👤 INTERNAL CANDIDATE - ' : '';
-    const appliedAt = new Date().toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const screeningInfo = (applicationDetails as any).screeningScore !== undefined
-      ? `\n📊 Electronic Screening:\n` +
-        `• Score: ${(applicationDetails as any).screeningScore}/100\n` +
-        `• Status: ${(applicationDetails as any).screeningPassed ? '✓ Passed' : '⚠ Needs Review'}\n`
-      : '';
-
-    for (const recipientId of hrRecipientIds) {
-      try {
-        const message = `${internalBadge}${referralBadge}New job application received!\n\n` +
-          `📋 Application Details:\n` +
-          `• Candidate: ${applicationDetails.candidateName}\n` +
-          `• Position: ${applicationDetails.positionTitle}\n` +
-          `• Applied: ${appliedAt}${screeningInfo}\n\n` +
-          `Please review the application and schedule screening.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(recipientId),
-          type: NotificationType.NEW_APPLICATION_RECEIVED,
-          message: message,
-          data: {
-            applicationId: applicationDetails.applicationId,
-            candidateName: applicationDetails.candidateName,
-            positionTitle: applicationDetails.positionTitle,
-            requisitionId: applicationDetails.requisitionId,
-            isReferral: applicationDetails.isReferral || false,
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[APPLICATION_NOTIFICATION] Sent notification to HR: ${recipientId}`);
-      } catch (error) {
-        console.error(`[APPLICATION_NOTIFICATION] Failed to notify HR ${recipientId}:`, error);
-      }
-    }
-
-    console.log(`[APPLICATION_NOTIFICATION] Successfully created ${notifications.length} notifications for HR staff`);
-    
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.notifyHRNewApplication(hrRecipientIds, applicationDetails);
   }
 
   // Notify panel members when an interview is cancelled
@@ -889,44 +832,7 @@ export class NotificationsService {
       originalDate: Date;
     },
   ) {
-    if (!panelMemberIds || panelMemberIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedDate = interviewDetails.originalDate.toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    for (const panelMemberId of panelMemberIds) {
-      try {
-        const message = `An interview you were assigned to has been cancelled.\n\n` +
-          `• Candidate: ${interviewDetails.candidateName}\n` +
-          `• Position: ${interviewDetails.positionTitle}\n` +
-          `• Originally Scheduled: ${formattedDate}`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(panelMemberId),
-          type: NotificationType.INTERVIEW_CANCELLED,
-          message: message,
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[INTERVIEW_NOTIFICATION] Failed to notify panel member ${panelMemberId} about cancellation:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyInterviewCancelled(panelMemberIds, interviewDetails);
   }
 
   // Notify panel members when an interview is rescheduled
@@ -942,87 +848,12 @@ export class NotificationsService {
       videoLink?: string;
     },
   ) {
-    if (!panelMemberIds || panelMemberIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const oldFormattedDate = interviewDetails.oldDate.toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const newFormattedDate = interviewDetails.newDate.toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    for (const panelMemberId of panelMemberIds) {
-      try {
-        const message = `An interview you are assigned to has been rescheduled.\n\n` +
-          `• Candidate: ${interviewDetails.candidateName}\n` +
-          `• Position: ${interviewDetails.positionTitle}\n` +
-          `• Previous Date: ${oldFormattedDate}\n` +
-          `• New Date: ${newFormattedDate}\n` +
-          `• Method: ${interviewDetails.method}` +
-          (interviewDetails.videoLink ? `\n• Video Link: ${interviewDetails.videoLink}` : '');
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(panelMemberId),
-          type: NotificationType.INTERVIEW_RESCHEDULED,
-          message: message,
-          data: {
-            interviewId: interviewDetails.interviewId,
-            candidateName: interviewDetails.candidateName,
-            positionTitle: interviewDetails.positionTitle,
-            oldDate: interviewDetails.oldDate.toISOString(),
-            newDate: interviewDetails.newDate.toISOString(),
-            method: interviewDetails.method,
-            videoLink: interviewDetails.videoLink,
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[INTERVIEW_NOTIFICATION] Failed to notify panel member ${panelMemberId} about reschedule:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyInterviewRescheduled(panelMemberIds, interviewDetails);
   }
 
   // Get all interview notifications for a user
   async getInterviewNotifications(userId: string) {
-    const notifications = await this.notificationLogModel
-      .find({
-        to: new Types.ObjectId(userId),
-        type: {
-          $in: [
-            NotificationType.INTERVIEW_PANEL_INVITATION,
-            NotificationType.INTERVIEW_SCHEDULED,
-            NotificationType.INTERVIEW_CANCELLED,
-            NotificationType.INTERVIEW_RESCHEDULED,
-          ],
-        },
-      })
-      .sort({ createdAt: -1 })
-      .exec();
-
-    return {
-      count: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.getInterviewNotifications(userId);
   }
 
   // Notify candidate when their interview is scheduled
@@ -1037,59 +868,7 @@ export class NotificationsService {
       stage: string;
     },
   ) {
-    if (!candidateId) {
-      console.log('[INTERVIEW_NOTIFICATION] No candidate ID provided');
-      return { success: false, message: 'No candidate ID provided' };
-    }
-
-    try {
-      const formattedDate = interviewDetails.scheduledDate.toLocaleString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-
-      const methodText = interviewDetails.method || 'TBD';
-      const videoLinkText = interviewDetails.videoLink 
-        ? `\n• Video Link: ${interviewDetails.videoLink}` 
-        : '';
-
-      const message = `🎉 Great news! Your interview has been scheduled.\n\n` +
-        `📋 Interview Details:\n` +
-        `• Position: ${interviewDetails.positionTitle}\n` +
-        `• Stage: ${interviewDetails.stage}\n` +
-        `• Date & Time: ${formattedDate}\n` +
-        `• Method: ${methodText}${videoLinkText}\n\n` +
-        `Please make sure to be available at the scheduled time. Good luck!`;
-
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(candidateId),
-        type: NotificationType.INTERVIEW_SCHEDULED,
-        message: message,
-        data: {
-          interviewId: interviewDetails.interviewId,
-          positionTitle: interviewDetails.positionTitle,
-          scheduledDate: interviewDetails.scheduledDate.toISOString(),
-          method: interviewDetails.method,
-          videoLink: interviewDetails.videoLink,
-          stage: interviewDetails.stage,
-        },
-        isRead: false,
-      });
-
-      console.log(`[INTERVIEW_NOTIFICATION] Sent interview scheduled notification to candidate: ${candidateId}`);
-      
-      return {
-        success: true,
-        notification,
-      };
-    } catch (error) {
-      console.error(`[INTERVIEW_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
-      return { success: false, error };
-    }
+    return this.recruitmentNotificationsService.notifyCandidateInterviewScheduled(candidateId, interviewDetails);
   }
 
   // Notify HR employees when a candidate is hired
@@ -1103,50 +882,7 @@ export class NotificationsService {
       offerId?: string;
     },
   ) {
-    if (!hrEmployeeIds || hrEmployeeIds.length === 0) {
-      console.log('[HIRING_NOTIFICATION] No HR Employees to notify about hiring');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-
-    for (const hrEmployeeId of hrEmployeeIds) {
-      try {
-        const message = `🎉 A candidate has been HIRED!\n\n` +
-          `📋 Hiring Details:\n` +
-          `• Candidate: ${hiringDetails.candidateName}\n` +
-          `• Position: ${hiringDetails.positionTitle}\n\n` +
-          `Next Steps:\n` +
-          `• Send the acceptance letter to the candidate\n` +
-          `• Prepare onboarding documents\n` +
-          `• Track the candidate in "Candidate Tracking"`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrEmployeeId),
-          type: NotificationType.CANDIDATE_HIRED,
-          message: message,
-          data: {
-            candidateName: hiringDetails.candidateName,
-            candidateId: hiringDetails.candidateId,
-            positionTitle: hiringDetails.positionTitle,
-            applicationId: hiringDetails.applicationId,
-            offerId: hiringDetails.offerId,
-            action: 'HIRED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[HIRING_NOTIFICATION] Sent HIRED notification to HR Employee: ${hrEmployeeId}`);
-      } catch (error) {
-        console.error(`[HIRING_NOTIFICATION] Failed to notify HR Employee ${hrEmployeeId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHREmployeesCandidateHired(hrEmployeeIds, hiringDetails);
   }
 
   // Notify HR employees when a candidate is rejected
@@ -1160,48 +896,7 @@ export class NotificationsService {
       rejectionReason?: string;
     },
   ) {
-    if (!hrEmployeeIds || hrEmployeeIds.length === 0) {
-      console.log('[HIRING_NOTIFICATION] No HR Employees to notify about rejection');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-
-    for (const hrEmployeeId of hrEmployeeIds) {
-      try {
-        const message = `❌ A candidate has been REJECTED.\n\n` +
-          `📋 Details:\n` +
-          `• Candidate: ${rejectionDetails.candidateName}\n` +
-          `• Position: ${rejectionDetails.positionTitle}\n` +
-          (rejectionDetails.rejectionReason ? `• Reason: ${rejectionDetails.rejectionReason}\n` : '') +
-          `\nThe rejection notification has been sent to the candidate.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrEmployeeId),
-          type: NotificationType.CANDIDATE_REJECTED,
-          message: message,
-          data: {
-            candidateName: rejectionDetails.candidateName,
-            candidateId: rejectionDetails.candidateId,
-            positionTitle: rejectionDetails.positionTitle,
-            applicationId: rejectionDetails.applicationId,
-            rejectionReason: rejectionDetails.rejectionReason,
-            action: 'REJECTED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[HIRING_NOTIFICATION] Sent REJECTED notification to HR Employee: ${hrEmployeeId}`);
-      } catch (error) {
-        console.error(`[HIRING_NOTIFICATION] Failed to notify HR Employee ${hrEmployeeId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHREmployeesCandidateRejected(hrEmployeeIds, rejectionDetails);
   }
 
   // Notify candidate when they are hired
@@ -1212,38 +907,7 @@ export class NotificationsService {
       applicationId: string;
     },
   ) {
-    if (!candidateId) {
-      return { success: false, message: 'No candidate ID provided' };
-    }
-
-    try {
-      const message = `🎉 Congratulations! You have been HIRED!\n\n` +
-        `We are delighted to inform you that your application for ${acceptanceDetails.positionTitle} has been successful.\n\n` +
-        `You will receive your official acceptance letter and onboarding details shortly.\n\n` +
-        `Welcome to the team!`;
-
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(candidateId),
-        type: NotificationType.APPLICATION_ACCEPTED,
-        message: message,
-        data: {
-          positionTitle: acceptanceDetails.positionTitle,
-          applicationId: acceptanceDetails.applicationId,
-          action: 'ACCEPTED',
-        },
-        isRead: false,
-      });
-
-      console.log(`[HIRING_NOTIFICATION] Sent ACCEPTED notification to candidate: ${candidateId}`);
-      
-      return {
-        success: true,
-        notification,
-      };
-    } catch (error) {
-      console.error(`[HIRING_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
-      return { success: false, error };
-    }
+    return this.recruitmentNotificationsService.notifyCandidateAccepted(candidateId, acceptanceDetails);
   }
 
   // Notify candidate when their application is rejected
@@ -1255,43 +919,7 @@ export class NotificationsService {
       rejectionReason?: string;
     },
   ) {
-    if (!candidateId) {
-      return { success: false, message: 'No candidate ID provided' };
-    }
-
-    try {
-      let message = `Thank you for your interest in the ${rejectionDetails.positionTitle} position.\n\n` +
-        `After careful consideration, we regret to inform you that we will not be moving forward with your application at this time.\n\n`;
-      
-      if (rejectionDetails.rejectionReason) {
-        message += `Feedback: ${rejectionDetails.rejectionReason}\n\n`;
-      }
-      
-      message += `We appreciate the time you invested in the application process and wish you the best in your job search.`;
-
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(candidateId),
-        type: NotificationType.APPLICATION_REJECTED,
-        message: message,
-        data: {
-          positionTitle: rejectionDetails.positionTitle,
-          applicationId: rejectionDetails.applicationId,
-          rejectionReason: rejectionDetails.rejectionReason,
-          action: 'REJECTED',
-        },
-        isRead: false,
-      });
-
-      console.log(`[HIRING_NOTIFICATION] Sent REJECTED notification to candidate: ${candidateId}`);
-      
-      return {
-        success: true,
-        notification,
-      };
-    } catch (error) {
-      console.error(`[HIRING_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
-      return { success: false, error };
-    }
+    return this.recruitmentNotificationsService.notifyCandidateRejected(candidateId, rejectionDetails);
   }
 
   // Notify candidate when interview is completed (all feedback submitted)
@@ -1303,39 +931,7 @@ export class NotificationsService {
       interviewId: string;
     },
   ) {
-    if (!candidateId) {
-      return { success: false, message: 'No candidate ID provided' };
-    }
-
-    try {
-      const message = `✅ Your interview has been completed.\n\n` +
-        `We have received all feedback from the interview panel for the ${interviewDetails.positionTitle} position.\n\n` +
-        `Our team is now reviewing the feedback and will notify you of our decision soon.\n\n` +
-        `Thank you for your patience!`;
-
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(candidateId),
-        type: NotificationType.INTERVIEW_COMPLETED,
-        message: message,
-        data: {
-          positionTitle: interviewDetails.positionTitle,
-          applicationId: interviewDetails.applicationId,
-          interviewId: interviewDetails.interviewId,
-          action: 'INTERVIEW_COMPLETED',
-        },
-        isRead: false,
-      });
-
-      console.log(`[INTERVIEW_NOTIFICATION] Sent INTERVIEW_COMPLETED notification to candidate: ${candidateId}`);
-      
-      return {
-        success: true,
-        notification,
-      };
-    } catch (error) {
-      console.error(`[INTERVIEW_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
-      return { success: false, error };
-    }
+    return this.recruitmentNotificationsService.notifyCandidateInterviewCompleted(candidateId, interviewDetails);
   }
 
   // Notify HR manager when all interview feedback is submitted and ready for review
@@ -1348,47 +944,7 @@ export class NotificationsService {
       interviewId: string;
     },
   ) {
-    if (!hrManagerIds || hrManagerIds.length === 0) {
-      console.log('[FEEDBACK_NOTIFICATION] No HR Managers to notify about ready feedback');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-
-    for (const hrManagerId of hrManagerIds) {
-      try {
-        const message = `📋 An application is ready for review.\n\n` +
-          `All interview feedback has been submitted for:\n` +
-          `• Candidate: ${reviewDetails.candidateName}\n` +
-          `• Position: ${reviewDetails.positionTitle}\n\n` +
-          `Please review the feedback and make a decision (accept/reject).\n\n` +
-          `You can view the application and feedback in the "Job Offers & Approvals" page.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrManagerId),
-          type: NotificationType.FEEDBACK_READY_FOR_REVIEW,
-          message: message,
-          data: {
-            candidateName: reviewDetails.candidateName,
-            positionTitle: reviewDetails.positionTitle,
-            applicationId: reviewDetails.applicationId,
-            interviewId: reviewDetails.interviewId,
-            action: 'FEEDBACK_READY',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[FEEDBACK_NOTIFICATION] Sent FEEDBACK_READY notification to HR Manager: ${hrManagerId}`);
-      } catch (error) {
-        console.error(`[FEEDBACK_NOTIFICATION] Failed to notify HR Manager ${hrManagerId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHRManagerFeedbackReady(hrManagerIds, reviewDetails);
   }
 
   // Notify candidate when they receive a job offer
@@ -1401,57 +957,7 @@ export class NotificationsService {
       deadline: Date;
     },
   ) {
-    if (!candidateId) {
-      console.log('[OFFER_NOTIFICATION] No candidate ID provided');
-      return { success: false, message: 'No candidate ID provided' };
-    }
-
-    try {
-      const formattedDeadline = offerDetails.deadline.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const formattedSalary = offerDetails.grossSalary.toLocaleString('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-      });
-
-      const message = `🎉 Great news! You have received a job offer!\n\n` +
-        `📋 Offer Details:\n` +
-        `• Position: ${offerDetails.positionTitle}\n` +
-        `• Salary: ${formattedSalary}\n` +
-        `• Response Deadline: ${formattedDeadline}\n\n` +
-        `Please review the full offer details and respond before the deadline.\n` +
-        `Go to "Job Offers" in your dashboard to view and respond.`;
-
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(candidateId),
-        type: NotificationType.OFFER_RECEIVED,
-        message: message,
-        data: {
-          offerId: offerDetails.offerId,
-          positionTitle: offerDetails.positionTitle,
-          grossSalary: offerDetails.grossSalary,
-          deadline: offerDetails.deadline.toISOString(),
-          action: 'OFFER_RECEIVED',
-        },
-        isRead: false,
-      });
-
-      console.log(`[OFFER_NOTIFICATION] Sent OFFER_RECEIVED notification to candidate: ${candidateId}`);
-      
-      return {
-        success: true,
-        notification,
-      };
-    } catch (error) {
-      console.error(`[OFFER_NOTIFICATION] Failed to notify candidate ${candidateId}:`, error);
-      return { success: false, error };
-    }
+    return this.recruitmentNotificationsService.notifyCandidateOfferReceived(candidateId, offerDetails);
   }
 
   // Notify HR when candidate accepts or rejects an offer
@@ -1466,64 +972,7 @@ export class NotificationsService {
       response: 'accepted' | 'rejected';
     },
   ) {
-    if (!hrUserIds || hrUserIds.length === 0) {
-      console.log('[OFFER_NOTIFICATION] No HR users to notify about offer response');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const isAccepted = responseDetails.response === 'accepted';
-    const notificationType = isAccepted 
-      ? NotificationType.OFFER_RESPONSE_ACCEPTED 
-      : NotificationType.OFFER_RESPONSE_REJECTED;
-
-    for (const hrUserId of hrUserIds) {
-      try {
-        let message: string;
-        
-        if (isAccepted) {
-          message = `✅ ${responseDetails.candidateName} has ACCEPTED the job offer!\n\n` +
-            `📋 Details:\n` +
-            `• Position: ${responseDetails.positionTitle}\n\n` +
-            `Next Steps:\n` +
-            `• Review and finalize the offer in "Job Offers & Approvals"\n` +
-            `• Once finalized, the candidate will be marked as HIRED\n` +
-            `• Prepare onboarding documentation`;
-        } else {
-          message = `❌ ${responseDetails.candidateName} has REJECTED the job offer.\n\n` +
-            `📋 Details:\n` +
-            `• Position: ${responseDetails.positionTitle}\n\n` +
-            `The application status will be updated accordingly.\n` +
-            `Consider other candidates for this position.`;
-        }
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrUserId),
-          type: notificationType,
-          message: message,
-          data: {
-            candidateName: responseDetails.candidateName,
-            candidateId: responseDetails.candidateId,
-            positionTitle: responseDetails.positionTitle,
-            offerId: responseDetails.offerId,
-            applicationId: responseDetails.applicationId,
-            response: responseDetails.response,
-            action: isAccepted ? 'OFFER_ACCEPTED' : 'OFFER_REJECTED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[OFFER_NOTIFICATION] Sent ${responseDetails.response.toUpperCase()} notification to HR: ${hrUserId}`);
-      } catch (error) {
-        console.error(`[OFFER_NOTIFICATION] Failed to notify HR user ${hrUserId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHROfferResponse(hrUserIds, responseDetails);
   }
 
   // Helper to get HR employee IDs for notifications (placeholder - IDs fetched in calling methods)
@@ -1549,51 +998,8 @@ export class NotificationsService {
     }
   }
 
-  // =============================================================================
-  // ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS (ONB-018, ONB-019)
-  // =============================================================================
-  //
-  // This section handles notifications for the onboarding-to-payroll integration.
-  // When a new hire is onboarded, the payroll team needs to be notified so they
-  // can include the employee in the next payroll run.
-  //
-  // Flow:
-  //   1. Employee profile created from contract
-  //   2. Onboarding created with payroll tasks
-  //   3. triggerPayrollInitiation() called → notifyPayrollTeamNewHire()
-  //   4. processSigningBonus() called → notifyPayrollTeamSigningBonus()
-  //   5. Payroll team reviews pending items before payroll run
-  //
-  // =============================================================================
-
-  /**
-   * ONB-018: Notify Payroll Team about New Hire Ready for Payroll
-   * 
-   * Purpose: Inform Payroll Specialist and Payroll Manager that a new employee
-   * has been onboarded and will be included in the next payroll run.
-   * 
-   * Called by: triggerPayrollInitiation() in RecruitmentService
-   * 
-   * Flow:
-   * createEmployeeFromContract() → triggerPayrollInitiation() → notifyPayrollTeamNewHire()
-   *                                                                    ↓
-   *                                                        Payroll Specialist sees notification
-   *                                                        "New hire ready for payroll"
-   *                                                                    ↓
-   *                                                        Employee included in next payroll run
-   * 
-   * @param payrollTeamIds - Array of Payroll Specialist/Manager user IDs
-   * @param newHireDetails - Object containing:
-   *   - employeeId: MongoDB ObjectId of the new employee
-   *   - employeeName: Full name of the new hire
-   *   - employeeNumber: Employee number/ID
-   *   - positionTitle: Job title
-   *   - departmentName: Department name
-   *   - grossSalary: Monthly gross salary
-   *   - contractStartDate: Employment start date
-   *   - signingBonus: (optional) Signing bonus amount
-   * @returns Object with success status and count of notifications created
-   */
+  // ===== ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS =====
+  // ONB-018: Notify Payroll Team about New Hire Ready for Payroll
   async notifyPayrollTeamNewHire(
     payrollTeamIds: string[],
     newHireDetails: {
@@ -1607,113 +1013,10 @@ export class NotificationsService {
       signingBonus?: number;
     },
   ) {
-    if (!payrollTeamIds || payrollTeamIds.length === 0) {
-      console.log('[PAYROLL_NOTIFICATION] No payroll team members to notify');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedStartDate = newHireDetails.contractStartDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    const formattedSalary = newHireDetails.grossSalary.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    });
-
-    for (const payrollUserId of payrollTeamIds) {
-      try {
-        let message = `📋 New Hire Ready for Payroll (ONB-018)\n\n` +
-          `A new employee has been onboarded and is ready for payroll inclusion.\n\n` +
-          `👤 Employee Details:\n` +
-          `• Name: ${newHireDetails.employeeName}\n` +
-          (newHireDetails.employeeNumber ? `• Employee #: ${newHireDetails.employeeNumber}\n` : '') +
-          `• Position: ${newHireDetails.positionTitle}\n` +
-          (newHireDetails.departmentName ? `• Department: ${newHireDetails.departmentName}\n` : '') +
-          `• Start Date: ${formattedStartDate}\n` +
-          `• Gross Salary: ${formattedSalary}\n`;
-
-        if (newHireDetails.signingBonus && newHireDetails.signingBonus > 0) {
-          const formattedBonus = newHireDetails.signingBonus.toLocaleString('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            maximumFractionDigits: 0,
-          });
-          message += `• Signing Bonus: ${formattedBonus} (pending review)\n`;
-        }
-
-        message += `\n📌 Action Required:\n` +
-          `• Employee will be automatically included in the next payroll run\n` +
-          `• Verify salary and benefits configuration\n` +
-          `• Review any pending signing bonuses`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(payrollUserId),
-          type: NotificationType.NEW_HIRE_PAYROLL_READY,
-          message: message,
-          data: {
-            employeeId: newHireDetails.employeeId,
-            employeeName: newHireDetails.employeeName,
-            employeeNumber: newHireDetails.employeeNumber,
-            positionTitle: newHireDetails.positionTitle,
-            departmentName: newHireDetails.departmentName,
-            grossSalary: newHireDetails.grossSalary,
-            contractStartDate: newHireDetails.contractStartDate.toISOString(),
-            signingBonus: newHireDetails.signingBonus,
-            action: 'NEW_HIRE_PAYROLL_READY',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[PAYROLL_NOTIFICATION] Sent NEW_HIRE_PAYROLL_READY to: ${payrollUserId}`);
-      } catch (error) {
-        console.error(`[PAYROLL_NOTIFICATION] Failed to notify payroll user ${payrollUserId}:`, error);
-      }
-    }
-
-    console.log(`[PAYROLL_NOTIFICATION] Created ${notifications.length} notifications for payroll team (ONB-018)`);
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.notifyPayrollTeamNewHire(payrollTeamIds, newHireDetails);
   }
 
-  /**
-   * ONB-019: Notify Payroll Team about Signing Bonus Pending Review
-   * 
-   * Purpose: Inform Payroll Specialist and Payroll Manager that a signing bonus
-   * record has been created for a new hire and needs review before payroll run.
-   * 
-   * Called by: processSigningBonus() in RecruitmentService
-   * 
-   * Flow:
-   * createEmployeeFromContract() → processSigningBonus() → notifyPayrollTeamSigningBonus()
-   *                                                                ↓
-   *                                                    Payroll team sees notification
-   *                                                    "Signing bonus pending review"
-   *                                                                ↓
-   *                                                    Payroll team reviews/approves bonus
-   *                                                    (via reviewSigningBonus in payroll-execution)
-   * 
-   * @param payrollTeamIds - Array of Payroll Specialist/Manager user IDs
-   * @param bonusDetails - Object containing:
-   *   - employeeId: MongoDB ObjectId of the employee
-   *   - employeeName: Full name of the employee
-   *   - employeeNumber: Employee number/ID
-   *   - positionTitle: Job title
-   *   - signingBonusAmount: Bonus amount
-   *   - signingBonusId: MongoDB ObjectId of the EmployeeSigningBonus record
-   *   - paymentDate: Expected payment date
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-019: Notify Payroll Team about Signing Bonus Pending Review
   async notifyPayrollTeamSigningBonus(
     payrollTeamIds: string[],
     bonusDetails: {
@@ -1726,87 +1029,10 @@ export class NotificationsService {
       paymentDate: Date;
     },
   ) {
-    if (!payrollTeamIds || payrollTeamIds.length === 0) {
-      console.log('[PAYROLL_NOTIFICATION] No payroll team members to notify about signing bonus');
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedPaymentDate = bonusDetails.paymentDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    const formattedBonus = bonusDetails.signingBonusAmount.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    });
-
-    for (const payrollUserId of payrollTeamIds) {
-      try {
-        const message = `🎁 Signing Bonus Pending Review (ONB-019)\n\n` +
-          `A signing bonus has been created for a new hire and requires your review.\n\n` +
-          `👤 Employee Details:\n` +
-          `• Name: ${bonusDetails.employeeName}\n` +
-          (bonusDetails.employeeNumber ? `• Employee #: ${bonusDetails.employeeNumber}\n` : '') +
-          `• Position: ${bonusDetails.positionTitle}\n\n` +
-          `💰 Bonus Details:\n` +
-          `• Amount: ${formattedBonus}\n` +
-          `• Payment Date: ${formattedPaymentDate}\n` +
-          (bonusDetails.signingBonusId ? `• Bonus ID: ${bonusDetails.signingBonusId.slice(-8)}\n` : '') +
-          `\n📌 Action Required:\n` +
-          `• Review the signing bonus in Payroll → Review Signing Bonuses\n` +
-          `• Approve or reject before payroll initiation\n` +
-          `• Ensure bonus is processed in the correct payroll period`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(payrollUserId),
-          type: NotificationType.SIGNING_BONUS_PENDING_REVIEW,
-          message: message,
-          data: {
-            employeeId: bonusDetails.employeeId,
-            employeeName: bonusDetails.employeeName,
-            employeeNumber: bonusDetails.employeeNumber,
-            positionTitle: bonusDetails.positionTitle,
-            signingBonusAmount: bonusDetails.signingBonusAmount,
-            signingBonusId: bonusDetails.signingBonusId,
-            paymentDate: bonusDetails.paymentDate.toISOString(),
-            action: 'SIGNING_BONUS_PENDING_REVIEW',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[PAYROLL_NOTIFICATION] Sent SIGNING_BONUS_PENDING_REVIEW to: ${payrollUserId}`);
-      } catch (error) {
-        console.error(`[PAYROLL_NOTIFICATION] Failed to notify payroll user ${payrollUserId} about signing bonus:`, error);
-      }
-    }
-
-    console.log(`[PAYROLL_NOTIFICATION] Created ${notifications.length} notifications for signing bonus (ONB-019)`);
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.notifyPayrollTeamSigningBonus(payrollTeamIds, bonusDetails);
   }
 
-  /**
-   * ONB-018: Notify HR about Payroll Task Completion
-   * 
-   * Purpose: Confirm to HR Manager/Employee that the payroll initiation task
-   * has been completed for a new hire.
-   * 
-   * Called by: triggerPayrollInitiation() in RecruitmentService
-   * 
-   * @param hrUserIds - Array of HR Manager/Employee user IDs
-   * @param completionDetails - Object containing employee and task details
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-018: Notify HR about Payroll Task Completion
   async notifyHRPayrollTaskCompleted(
     hrUserIds: string[],
     completionDetails: {
@@ -1816,146 +1042,312 @@ export class NotificationsService {
       grossSalary: number;
     },
   ) {
-    if (!hrUserIds || hrUserIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedSalary = completionDetails.grossSalary.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    });
-
-    for (const hrUserId of hrUserIds) {
-      try {
-        const message = `✅ Payroll Task Completed (ONB-018)\n\n` +
-          `Payroll initiation has been completed for a new hire.\n\n` +
-          `👤 Employee: ${completionDetails.employeeName}\n` +
-          `📋 Position: ${completionDetails.positionTitle}\n` +
-          `💰 Gross Salary: ${formattedSalary}\n\n` +
-          `The employee is now ready for payroll inclusion. ` +
-          `The payroll team has been notified.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrUserId),
-          type: NotificationType.ONBOARDING_PAYROLL_TASK_COMPLETED,
-          message: message,
-          data: {
-            employeeId: completionDetails.employeeId,
-            employeeName: completionDetails.employeeName,
-            positionTitle: completionDetails.positionTitle,
-            grossSalary: completionDetails.grossSalary,
-            action: 'PAYROLL_TASK_COMPLETED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[PAYROLL_NOTIFICATION] Failed to notify HR user ${hrUserId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHRPayrollTaskCompleted(hrUserIds, completionDetails);
   }
 
-  // =============================================================================
-  // ONBOARDING NOTIFICATIONS (ONB-004, ONB-005, ONB-007, ONB-009, ONB-012)
-  // =============================================================================
-
-  /**
-   * ONB-005: Send Welcome Notification to New Hire
-   * 
-   * Purpose: Welcome the new employee and provide an overview of onboarding tasks.
-   * 
-   * Called by: createOnboarding() in RecruitmentService
-   * 
-   * @param newHireId - MongoDB ObjectId of the new hire
-   * @param welcomeDetails - Object containing onboarding summary
-   * @returns Object with success status and notification object
-   */
+  // ===== ONBOARDING NOTIFICATIONS =====
+  // ONB-005: Send Welcome Notification to New Hire
   async notifyNewHireWelcome(
     newHireId: string,
     welcomeDetails: {
       employeeName: string;
-      employeeNumber: string; // ONB-004/ONB-005: Include employee number so new hire can log in
+      employeeNumber: string;
       positionTitle: string;
       startDate: Date;
       totalTasks: number;
       onboardingId: string;
     },
   ) {
-    if (!newHireId) {
-      return { success: false, message: 'No new hire ID provided' };
-    }
+    return this.recruitmentNotificationsService.notifyNewHireWelcome(newHireId, welcomeDetails);
+  }
 
+  // ===== EMPLOYEE PROFILE MODULE NOTIFICATIONS =====
+
+  /**
+   * N-040: Notify HR Manager/Admin when profile change request is submitted
+   * @param employeeProfileId - The ID of the employee making the request
+   * @param changeRequestId - The requestId (string) of the change request
+   * @param changeDescription - Description of the requested change
+   */
+  async notifyProfileChangeRequestSubmitted(
+    employeeProfileId: string,
+    changeRequestId: string,
+    changeDescription: string,
+  ): Promise<{ success: boolean; notificationsSent: number; error?: string }> {
     try {
-      const formattedStartDate = welcomeDetails.startDate.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      console.log(
+        '[NOTIFICATION SERVICE] Creating PROFILE_CHANGE_REQUEST_SUBMITTED notifications',
+      );
 
-      // ONB-004/ONB-005: Include employee number in welcome message so new hire can log in
-      const message = `🎉 Welcome to the Team, ${welcomeDetails.employeeName}!\n\n` +
-        `We're excited to have you join us as ${welcomeDetails.positionTitle}.\n\n` +
-        `🔐 Your Login Credentials:\n` +
-        `• Employee Number: ${welcomeDetails.employeeNumber}\n` +
-        `• Password: Use the same password you created during registration\n\n` +
-        `📋 Your Onboarding Summary:\n` +
-        `• Start Date: ${formattedStartDate}\n` +
-        `• Total Tasks: ${welcomeDetails.totalTasks} tasks to complete\n\n` +
-        `📌 Next Steps:\n` +
-        `• Log in with your Employee Number above\n` +
-        `• Visit "My Onboarding" to view your task tracker\n` +
-        `• Upload required documents (ID, certifications)\n` +
-        `• Complete tasks before deadlines\n\n` +
-        `If you have any questions, contact HR. Welcome aboard! 🚀`;
+      // FIXED: Get HR users from employee_system_roles collection
+      const hrRoles = [
+        SystemRole.HR_MANAGER,
+        SystemRole.HR_ADMIN,
+        SystemRole.SYSTEM_ADMIN,
+        SystemRole.HR_EMPLOYEE,
+      ];
+
+      let hrUsers = [];
+
+      try {
+        // Find all employee system roles with HR roles
+        const hrSystemRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: hrRoles },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .exec();
+
+        console.log(`Found ${hrSystemRoles.length} HR system role records`);
+
+        // Extract employee IDs
+        const hrEmployeeIds = hrSystemRoles.map(
+          (role) => role.employeeProfileId,
+        );
+
+        if (hrEmployeeIds.length > 0) {
+          // Get employee profiles for these IDs
+          hrUsers = await this.employeeProfileModel
+            .find({
+              _id: { $in: hrEmployeeIds },
+              status: EmployeeStatus.ACTIVE,
+            })
+            .select('_id firstName lastName email')
+            .exec();
+        }
+
+        console.log(
+          `Found ${hrUsers.length} HR users to notify from system roles`,
+        );
+      } catch (roleError) {
+        console.warn('Error querying system roles, using fallback:', roleError);
+      }
+
+      // Fallback if no HR users found or error
+      if (hrUsers.length === 0) {
+        console.warn(
+          'No HR users found via system roles, using fallback approach',
+        );
+
+        // Try known HR user IDs from logs
+        const knownHRUserIds = [
+          '692b63778b731e72cccc10cd', // HR Manager from your logs
+        ].filter((id) => id && id.length === 24);
+
+        if (knownHRUserIds.length > 0) {
+          hrUsers = await this.employeeProfileModel
+            .find({
+              _id: { $in: knownHRUserIds.map((id) => new Types.ObjectId(id)) },
+              status: EmployeeStatus.ACTIVE,
+            })
+            .select('_id firstName lastName email')
+            .exec();
+
+          console.log(
+            `Fallback: Found ${hrUsers.length} HR users via known IDs`,
+          );
+        }
+      }
+
+      if (hrUsers.length === 0) {
+        console.warn(
+          'No HR users found to notify. Please check employee_system_roles collection.',
+        );
+        return { success: true, notificationsSent: 0 };
+      }
+
+      const notifications = [];
+      const employee = await this.employeeProfileModel
+        .findById(employeeProfileId)
+        .select('firstName lastName employeeNumber')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Unknown Employee';
+      const employeeNumber = employee?.employeeNumber || 'N/A';
+
+      // Parse change description to get type if it's JSON
+      let changeType = 'Profile Update';
+      let parsedChanges = '';
+
+      try {
+        const parsedDesc = JSON.parse(changeDescription);
+        if (parsedDesc.type) {
+          changeType = parsedDesc.type.replace(/_/g, ' ');
+        }
+        if (parsedDesc.changes && typeof parsedDesc.changes === 'object') {
+          parsedChanges = Object.entries(parsedDesc.changes)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ');
+        }
+      } catch {
+        // Not JSON, use as-is
+        parsedChanges =
+          changeDescription.length > 50
+            ? changeDescription.substring(0, 47) + '...'
+            : changeDescription;
+      }
+
+      const message = `New ${changeType} request from ${employeeName} (${employeeNumber})`;
+
+      // Create notifications for each HR user
+      for (const hrUser of hrUsers) {
+        try {
+          const notification = await this.notificationLogModel.create({
+            to: hrUser._id,
+            type: NotificationType.PROFILE_CHANGE_REQUEST_SUBMITTED,
+            message,
+            isRead: false,
+            data: {
+              employeeProfileId,
+              employeeName,
+              employeeNumber,
+              changeRequestId,
+              changeType,
+              changeDescription: parsedChanges,
+              link: `/dashboard/employee-profile/admin/approvals`,
+              timestamp: new Date(),
+            },
+          });
+          notifications.push(notification);
+          console.log(`Notification created for HR user: ${hrUser.email}`);
+        } catch (userError) {
+          console.error(
+            `Failed to create notification for HR user ${hrUser._id}:`,
+            userError,
+          );
+          // Continue with other users
+        }
+      }
+
+      console.log(`Successfully created ${notifications.length} notifications`);
+      return {
+        success: true,
+        notificationsSent: notifications.length,
+      };
+    } catch (error) {
+      console.error(
+        'Failed to create profile change request notifications:',
+        error,
+      );
+      // Don't throw - notification failure shouldn't block main action
+      return {
+        success: false,
+        notificationsSent: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * N-037: Notify employee when change request is approved/rejected
+   * @param employeeProfileId - The ID of the employee who made the request
+   * @param changeRequestId - The requestId (string) of the change request
+   * @param status - 'APPROVED' or 'REJECTED'
+   * @param reason - Optional reason for rejection
+   */
+  async notifyProfileChangeRequestProcessed(
+    employeeProfileId: string,
+    changeRequestId: string,
+    status: 'APPROVED' | 'REJECTED',
+    reason?: string,
+  ): Promise<{ success: boolean; notification?: any; error?: string }> {
+    try {
+      console.log(
+        `[NOTIFICATION SERVICE] Creating PROFILE_CHANGE_${status} notification`,
+      );
+
+      // FIXED: Clean employeeProfileId if it's an object string
+      let cleanEmployeeId = employeeProfileId;
+
+      // If it looks like an object string (from your error logs), extract the ID
+      if (
+        typeof employeeProfileId === 'string' &&
+        employeeProfileId.includes('ObjectId')
+      ) {
+        try {
+          // Extract ObjectId from the string representation
+          const match = employeeProfileId.match(
+            /ObjectId\("([0-9a-fA-F]{24})"\)/,
+          );
+          if (match && match[1]) {
+            cleanEmployeeId = match[1];
+            console.log(`✅ Extracted clean employee ID: ${cleanEmployeeId}`);
+          } else {
+            // Try alternative pattern
+            const altMatch = employeeProfileId.match(/"([0-9a-fA-F]{24})"/);
+            if (altMatch && altMatch[1]) {
+              cleanEmployeeId = altMatch[1];
+              console.log(
+                `✅ Extracted clean employee ID (alt): ${cleanEmployeeId}`,
+              );
+            }
+          }
+        } catch (extractError) {
+          console.warn(
+            'Could not extract ID from string, using as-is:',
+            extractError,
+          );
+        }
+      }
+
+      // Get employee details for better context
+      const employee = await this.employeeProfileModel
+        .findById(cleanEmployeeId)
+        .select('firstName lastName email')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Employee';
+
+      const statusMessages = {
+        APPROVED: `Your profile change request has been approved`,
+        REJECTED: reason
+          ? `Your profile change request has been rejected. Reason: ${reason}`
+          : 'Your profile change request has been rejected',
+      };
+
+      const notificationType =
+        status === 'APPROVED'
+          ? NotificationType.PROFILE_CHANGE_APPROVED
+          : NotificationType.PROFILE_CHANGE_REJECTED;
 
       const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(newHireId),
-        type: NotificationType.ONBOARDING_WELCOME,
-        message: message,
-        data: {
-          employeeName: welcomeDetails.employeeName,
-          employeeNumber: welcomeDetails.employeeNumber,
-          positionTitle: welcomeDetails.positionTitle,
-          startDate: welcomeDetails.startDate.toISOString(),
-          totalTasks: welcomeDetails.totalTasks,
-          onboardingId: welcomeDetails.onboardingId,
-          action: 'WELCOME',
-        },
+        to: new Types.ObjectId(cleanEmployeeId),
+        type: notificationType,
+        message: statusMessages[status],
         isRead: false,
+        data: {
+          changeRequestId,
+          status,
+          reason,
+          employeeName,
+          link: `/dashboard/employee-profile/change-requests`,
+          timestamp: new Date(),
+        },
       });
 
-      console.log(`[ONBOARDING_NOTIFICATION] Sent WELCOME notification to new hire: ${newHireId} (Employee Number: ${welcomeDetails.employeeNumber})`);
-
+      console.log(`Notification created for employee: ${employeeName}`);
       return {
         success: true,
         notification,
       };
     } catch (error) {
-      console.error(`[ONBOARDING_NOTIFICATION] Failed to send welcome notification:`, error);
-      return { success: false, error };
+      console.error(
+        'Failed to create profile change processed notification:',
+        error,
+      );
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
-  /**
-   * ONB-005: Send Task Reminder Notification
-   * 
-   * Purpose: Remind new hire or assigned department about pending/overdue tasks.
-   * 
-   * Called by: sendOnboardingReminders() in RecruitmentService
-   * 
-   * @param recipientId - MongoDB ObjectId of the recipient
-   * @param reminderDetails - Object containing task and deadline info
-   * @returns Object with success status and notification object
-   */
+  // ONB-005: Send Task Reminder Notification
   async notifyOnboardingTaskReminder(
     recipientId: string,
     reminderDetails: {
@@ -1967,68 +1359,82 @@ export class NotificationsService {
       daysRemaining?: number;
     },
   ) {
-    if (!recipientId) {
-      return { success: false, message: 'No recipient ID provided' };
-    }
+    return this.recruitmentNotificationsService.notifyOnboardingTaskReminder(recipientId, reminderDetails);
+  }
 
+  /**
+   * Notify employee when profile is updated by HR
+   * @param employeeProfileId - The ID of the employee whose profile was updated
+   * @param updatedBy - The ID of the HR user who made the update
+   * @param changes - Array of field names that were changed
+   */
+  async notifyProfileUpdated(
+    employeeProfileId: string,
+    updatedBy: string,
+    changes: string[],
+  ): Promise<{ success: boolean; notification?: any; error?: string }> {
     try {
-      const formattedDeadline = reminderDetails.deadline.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      console.log(
+        '[NOTIFICATION SERVICE] Creating PROFILE_UPDATED notification',
+      );
 
-      const urgencyEmoji = reminderDetails.isOverdue ? '🚨' : '⏰';
-      const urgencyText = reminderDetails.isOverdue 
-        ? 'OVERDUE' 
-        : `Due in ${reminderDetails.daysRemaining} day(s)`;
+      // Get updater details
+      const updater = await this.employeeProfileModel
+        .findById(updatedBy)
+        .select('firstName lastName')
+        .exec();
 
-      const message = `${urgencyEmoji} Onboarding Task Reminder\n\n` +
-        `👤 Employee: ${reminderDetails.employeeName}\n` +
-        `📋 Task: ${reminderDetails.taskName}\n` +
-        `🏢 Department: ${reminderDetails.taskDepartment}\n` +
-        `📅 Deadline: ${formattedDeadline}\n` +
-        `⚠️ Status: ${urgencyText}\n\n` +
-        `Please complete this task as soon as possible.`;
+      const updaterName = updater
+        ? `${updater.firstName} ${updater.lastName}`.trim()
+        : 'HR Admin';
+
+      // Get employee details
+      const employee = await this.employeeProfileModel
+        .findById(employeeProfileId)
+        .select('firstName lastName')
+        .exec();
+
+      const employeeName = employee
+        ? `${employee.firstName} ${employee.lastName}`.trim()
+        : 'Employee';
+
+      const changesText =
+        changes.length > 0
+          ? `Changes: ${changes.join(', ')}`
+          : 'Profile updated';
+
+      const message = `Your profile has been updated by ${updaterName}. ${changesText}`;
 
       const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(recipientId),
-        type: NotificationType.ONBOARDING_TASK_REMINDER,
-        message: message,
-        data: {
-          employeeName: reminderDetails.employeeName,
-          taskName: reminderDetails.taskName,
-          taskDepartment: reminderDetails.taskDepartment,
-          deadline: reminderDetails.deadline.toISOString(),
-          isOverdue: reminderDetails.isOverdue,
-          daysRemaining: reminderDetails.daysRemaining,
-          action: 'TASK_REMINDER',
-        },
+        to: new Types.ObjectId(employeeProfileId),
+        type: NotificationType.PROFILE_UPDATED,
+        message,
         isRead: false,
+        data: {
+          updatedBy,
+          updaterName,
+          changes,
+          employeeName,
+          link: `/dashboard/employee-profile/my-profile`,
+          timestamp: new Date(),
+        },
       });
 
+      console.log(`Profile update notification created for: ${employeeName}`);
       return {
         success: true,
         notification,
       };
     } catch (error) {
-      console.error(`[ONBOARDING_NOTIFICATION] Failed to send task reminder:`, error);
-      return { success: false, error };
+      console.error('Failed to create profile updated notification:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 
-  /**
-   * ONB-007: Notify HR about Document Upload
-   * 
-   * Purpose: Inform HR that a new hire has uploaded a compliance document.
-   * 
-   * Called by: uploadDocumentForTask() in RecruitmentService
-   * 
-   * @param hrUserIds - Array of HR user IDs to notify
-   * @param documentDetails - Object containing document and employee info
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-007: Notify HR about Document Upload
   async notifyHRDocumentUploaded(
     hrUserIds: string[],
     documentDetails: {
@@ -2040,64 +1446,10 @@ export class NotificationsService {
       onboardingId: string;
     },
   ) {
-    if (!hrUserIds || hrUserIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-
-    for (const hrUserId of hrUserIds) {
-      try {
-        const message = `📄 Document Uploaded (ONB-007)\n\n` +
-          `A new hire has uploaded a compliance document.\n\n` +
-          `👤 Employee: ${documentDetails.employeeName}\n` +
-          `📋 Task: ${documentDetails.taskName}\n` +
-          `📁 Document Type: ${documentDetails.documentType}\n` +
-          `📎 File: ${documentDetails.documentName}\n\n` +
-          `📌 Action Required:\n` +
-          `• Review the document for compliance\n` +
-          `• Verify document authenticity\n` +
-          `• Mark task as verified if approved`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(hrUserId),
-          type: NotificationType.ONBOARDING_DOCUMENT_UPLOADED,
-          message: message,
-          data: {
-            employeeId: documentDetails.employeeId,
-            employeeName: documentDetails.employeeName,
-            documentType: documentDetails.documentType,
-            documentName: documentDetails.documentName,
-            taskName: documentDetails.taskName,
-            onboardingId: documentDetails.onboardingId,
-            action: 'DOCUMENT_UPLOADED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify HR user ${hrUserId}:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyHRDocumentUploaded(hrUserIds, documentDetails);
   }
 
-  /**
-   * ONB-009, ONB-013: Notify about Access Provisioning
-   * 
-   * Purpose: Inform new hire and IT that system access has been provisioned.
-   * 
-   * Called by: provisionSystemAccess() in RecruitmentService
-   * 
-   * @param recipientIds - Array of recipient IDs (new hire, IT team)
-   * @param accessDetails - Object containing access provisioning info
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-009, ONB-013: Notify about Access Provisioning
   async notifyAccessProvisioned(
     recipientIds: string[],
     accessDetails: {
@@ -2108,60 +1460,10 @@ export class NotificationsService {
       provisionedBy: string;
     },
   ) {
-    if (!recipientIds || recipientIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-
-    for (const recipientId of recipientIds) {
-      try {
-        const message = `🔐 Access Provisioned (ONB-009)\n\n` +
-          `System access has been provisioned.\n\n` +
-          `👤 Employee: ${accessDetails.employeeName}\n` +
-          `🔑 Access Type: ${accessDetails.accessType}\n` +
-          `💻 System: ${accessDetails.systemName}\n` +
-          `👤 Provisioned By: ${accessDetails.provisionedBy}\n\n` +
-          `The employee can now access the system.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(recipientId),
-          type: NotificationType.ONBOARDING_ACCESS_PROVISIONED,
-          message: message,
-          data: {
-            employeeId: accessDetails.employeeId,
-            employeeName: accessDetails.employeeName,
-            accessType: accessDetails.accessType,
-            systemName: accessDetails.systemName,
-            provisionedBy: accessDetails.provisionedBy,
-            action: 'ACCESS_PROVISIONED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about access:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyAccessProvisioned(recipientIds, accessDetails);
   }
 
-  /**
-   * ONB-012: Notify about Equipment/Workspace Reserved
-   * 
-   * Purpose: Inform new hire and Admin that equipment/workspace is ready.
-   * 
-   * Called by: reserveEquipmentAndResources() in RecruitmentService
-   * 
-   * @param recipientIds - Array of recipient IDs (new hire, Admin team)
-   * @param reservationDetails - Object containing reservation info
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-012: Notify about Equipment/Workspace Reserved
   async notifyEquipmentReserved(
     recipientIds: string[],
     reservationDetails: {
@@ -2173,80 +1475,10 @@ export class NotificationsService {
       readyDate: Date;
     },
   ) {
-    if (!recipientIds || recipientIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedReadyDate = reservationDetails.readyDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    for (const recipientId of recipientIds) {
-      try {
-        const equipmentListText = reservationDetails.equipmentList.length > 0
-          ? reservationDetails.equipmentList.map(item => `  • ${item}`).join('\n')
-          : '  • No equipment specified';
-
-        const message = `🏢 Equipment & Workspace Reserved (ONB-012)\n\n` +
-          `Resources have been reserved for the new hire.\n\n` +
-          `👤 Employee: ${reservationDetails.employeeName}\n` +
-          `📅 Ready Date: ${formattedReadyDate}\n\n` +
-          `📦 Equipment:\n${equipmentListText}\n` +
-          (reservationDetails.workspaceDetails ? `\n🪑 Workspace: ${reservationDetails.workspaceDetails}\n` : '') +
-          `\n👤 Reserved By: ${reservationDetails.reservedBy}\n\n` +
-          `All resources will be ready on Day 1.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(recipientId),
-          type: NotificationType.ONBOARDING_EQUIPMENT_RESERVED,
-          message: message,
-          data: {
-            employeeId: reservationDetails.employeeId,
-            employeeName: reservationDetails.employeeName,
-            equipmentList: reservationDetails.equipmentList,
-            workspaceDetails: reservationDetails.workspaceDetails,
-            reservedBy: reservationDetails.reservedBy,
-            readyDate: reservationDetails.readyDate.toISOString(),
-            action: 'EQUIPMENT_RESERVED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about equipment:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyEquipmentReserved(recipientIds, reservationDetails);
   }
 
-  /**
-   * ONB-001: Notify Departments About Assigned Onboarding Tasks
-   * 
-   * Purpose: Inform IT, Admin, and HR departments about their assigned tasks
-   * for a new hire's onboarding. Ensures all departments are aware of their
-   * responsibilities and deadlines.
-   * 
-   * Called by: createOnboarding() in recruitment.service.ts
-   * 
-   * Flow:
-   * Onboarding created → notifyOnboardingTaskAssigned()
-   *                              ↓
-   *                  Each department receives their tasks
-   *                  "You have been assigned onboarding tasks for [employee]"
-   * 
-   * @param recipientIds - Array of recipient IDs (department users)
-   * @param taskDetails - Object containing task assignment info
-   * @returns Object with success status and count of notifications created
-   */
+  // ONB-001: Notify Departments About Assigned Onboarding Tasks
   async notifyOnboardingTaskAssigned(
     recipientIds: string[],
     taskDetails: {
@@ -2258,79 +1490,10 @@ export class NotificationsService {
       onboardingId: string;
     },
   ) {
-    if (!recipientIds || recipientIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedDeadline = taskDetails.deadline.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    // Department-specific emoji and title
-    const deptConfig: Record<string, { emoji: string; title: string }> = {
-      'IT': { emoji: '💻', title: 'IT Department' },
-      'Admin': { emoji: '🏢', title: 'Admin/Facilities' },
-      'HR': { emoji: '👥', title: 'HR Department' },
-    };
-    const config = deptConfig[taskDetails.department] || { emoji: '📋', title: taskDetails.department };
-
-    for (const recipientId of recipientIds) {
-      try {
-        const taskListText = taskDetails.tasks.length > 0
-          ? taskDetails.tasks.map(task => `  • ${task}`).join('\n')
-          : '  • No tasks specified';
-
-        const message = `${config.emoji} Onboarding Tasks Assigned - ${config.title}\n\n` +
-          `You have been assigned onboarding tasks for a new hire.\n\n` +
-          `👤 New Hire: ${taskDetails.employeeName}\n` +
-          `📅 Deadline: ${formattedDeadline}\n\n` +
-          `📋 Your Tasks:\n${taskListText}\n\n` +
-          `Please complete these tasks before the deadline to ensure the new hire is ready on Day 1.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(recipientId),
-          type: NotificationType.ONBOARDING_TASK_REMINDER, // Reuse task reminder type
-          message: message,
-          data: {
-            employeeId: taskDetails.employeeId,
-            employeeName: taskDetails.employeeName,
-            department: taskDetails.department,
-            tasks: taskDetails.tasks,
-            deadline: taskDetails.deadline.toISOString(),
-            onboardingId: taskDetails.onboardingId,
-            action: 'ONBOARDING_TASK_ASSIGNED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-        console.log(`[ONBOARDING_NOTIFICATION] Task assignment sent to ${recipientId} for ${taskDetails.department}`);
-      } catch (error) {
-        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about tasks:`, error);
-      }
-    }
-
-    console.log(`[ONBOARDING_NOTIFICATION] Sent ${notifications.length} task assignment notifications for ${taskDetails.department}`);
-    
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyOnboardingTaskAssigned(recipientIds, taskDetails);
   }
 
-  /**
-   * Notify about Onboarding Completion
-   * 
-   * Purpose: Inform new hire and HR that all onboarding tasks are completed.
-   * 
-   * @param recipientIds - Array of recipient IDs (new hire, HR)
-   * @param completionDetails - Object containing completion info
-   * @returns Object with success status and count of notifications created
-   */
+  // Notify about Onboarding Completion
   async notifyOnboardingCompleted(
     recipientIds: string[],
     completionDetails: {
@@ -2341,127 +1504,17 @@ export class NotificationsService {
       totalTasks: number;
     },
   ) {
-    if (!recipientIds || recipientIds.length === 0) {
-      return { success: true, notificationsCreated: 0 };
-    }
-
-    const notifications: any[] = [];
-    const formattedDate = completionDetails.completedDate.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-
-    for (const recipientId of recipientIds) {
-      try {
-        const message = `🎉 Onboarding Completed!\n\n` +
-          `All onboarding tasks have been successfully completed.\n\n` +
-          `👤 Employee: ${completionDetails.employeeName}\n` +
-          `📋 Position: ${completionDetails.positionTitle}\n` +
-          `📅 Completion Date: ${formattedDate}\n` +
-          `✅ Tasks Completed: ${completionDetails.totalTasks}\n\n` +
-          `Welcome to the team! The employee is now fully onboarded.`;
-
-        const notification = await this.notificationLogModel.create({
-          to: new Types.ObjectId(recipientId),
-          type: NotificationType.ONBOARDING_COMPLETED,
-          message: message,
-          data: {
-            employeeId: completionDetails.employeeId,
-            employeeName: completionDetails.employeeName,
-            positionTitle: completionDetails.positionTitle,
-            completedDate: completionDetails.completedDate.toISOString(),
-            totalTasks: completionDetails.totalTasks,
-            action: 'ONBOARDING_COMPLETED',
-          },
-          isRead: false,
-        });
-
-        notifications.push(notification);
-      } catch (error) {
-        console.error(`[ONBOARDING_NOTIFICATION] Failed to notify ${recipientId} about completion:`, error);
-      }
-    }
-
-    return {
-      success: true,
-      notificationsCreated: notifications.length,
-    };
+    return this.recruitmentNotificationsService.notifyOnboardingCompleted(recipientIds, completionDetails);
   }
 
-  /**
-   * Get all onboarding-related notifications for a user
-   * 
-   * @param userId - MongoDB ObjectId string of the user
-   * @returns Object with count and array of onboarding notifications
-   */
+  // Get all onboarding-related notifications for a user
   async getOnboardingNotifications(userId: string) {
-    const notifications = await this.notificationLogModel
-      .find({
-        to: new Types.ObjectId(userId),
-        type: {
-          $in: [
-            NotificationType.NEW_HIRE_PAYROLL_READY,
-            NotificationType.SIGNING_BONUS_PENDING_REVIEW,
-            NotificationType.ONBOARDING_PAYROLL_TASK_COMPLETED,
-            NotificationType.ONBOARDING_WELCOME,
-            NotificationType.ONBOARDING_TASK_REMINDER,
-            NotificationType.ONBOARDING_COMPLETED,
-            NotificationType.ONBOARDING_DOCUMENT_UPLOADED,
-            NotificationType.ONBOARDING_ACCESS_PROVISIONED,
-            NotificationType.ONBOARDING_EQUIPMENT_RESERVED,
-          ],
-        },
-      })
-      .sort({ createdAt: -1 })
-      .exec();
-
-    return {
-      count: notifications.length,
-      notifications,
-    };
+    return this.recruitmentNotificationsService.getOnboardingNotifications(userId);
   }
 
-  /**
-   * Get payroll-related notifications for Payroll team
-   * 
-   * @param userId - MongoDB ObjectId string of the payroll user
-   * @returns Object with counts and grouped notifications
-   */
+  // Get payroll-related notifications for Payroll team
   async getPayrollNotifications(userId: string) {
-    const notifications = await this.notificationLogModel
-      .find({
-        to: new Types.ObjectId(userId),
-        type: {
-          $in: [
-            NotificationType.NEW_HIRE_PAYROLL_READY,
-            NotificationType.SIGNING_BONUS_PENDING_REVIEW,
-          ],
-        },
-      })
-      .sort({ createdAt: -1 })
-      .exec();
-
-    const newHireNotifications = notifications.filter(
-      n => n.type === NotificationType.NEW_HIRE_PAYROLL_READY
-    );
-    const signingBonusNotifications = notifications.filter(
-      n => n.type === NotificationType.SIGNING_BONUS_PENDING_REVIEW
-    );
-
-    return {
-      totalCount: notifications.length,
-      newHires: {
-        count: newHireNotifications.length,
-        notifications: newHireNotifications,
-      },
-      signingBonuses: {
-        count: signingBonusNotifications.length,
-        notifications: signingBonusNotifications,
-      },
-      all: notifications,
-    };
+    return this.recruitmentNotificationsService.getPayrollNotifications(userId);
   }
 
   // =============================================================================
