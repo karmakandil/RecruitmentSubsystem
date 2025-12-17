@@ -11,11 +11,15 @@ import {
   AppraisalTemplateType,
   AppraisalRatingScaleType,
 } from "@/types/performance";
+import {
+  CreateAppraisalTemplateInput,
+  UpdateAppraisalTemplateInput,
+} from "@/components/Performance/performanceTemplates";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
-import { AppraisalTemplateForm } from "@/components/performance/AppraisalTemplateForm";
+import { AppraisalTemplateForm } from "@/components/Performance/AppraisalTemplateForm";
 import { SystemRole } from "@/types";
 
 export default function AppraisalTemplatesPage() {
@@ -26,6 +30,7 @@ export default function AppraisalTemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<AppraisalTemplate | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     loadTemplates();
@@ -58,20 +63,67 @@ export default function AppraisalTemplatesPage() {
     setEditingTemplate(null);
   };
 
-  const handleSubmit = async (formData: CreateAppraisalTemplateDto | UpdateAppraisalTemplateDto) => {
+  const handleCreate = async (input: CreateAppraisalTemplateInput) => {
     try {
-      if (editingTemplate) {
-        await performanceApi.updateTemplate(editingTemplate._id, formData as UpdateAppraisalTemplateDto);
-        showToast("Appraisal template updated successfully", "success");
-      } else {
-        await performanceApi.createTemplate(formData as CreateAppraisalTemplateDto);
-        showToast("Appraisal template created successfully", "success");
-      }
+      setIsSubmitting(true);
+      // Convert Input type to Dto type for API
+      const dto: CreateAppraisalTemplateDto = {
+        name: input.name,
+        templateType: input.templateType as AppraisalTemplateType,
+        description: input.description,
+        ratingScale: {
+          type: input.ratingScale.type as AppraisalRatingScaleType,
+          min: input.ratingScale.min,
+          max: input.ratingScale.max,
+          step: input.ratingScale.step,
+          labels: input.ratingScale.labels,
+        },
+        criteria: input.criteria,
+        instructions: input.instructions,
+        applicableDepartmentIds: input.applicableDepartmentIds,
+        applicablePositionIds: input.applicablePositionIds,
+      };
+      await performanceApi.createTemplate(dto);
+      showToast("Appraisal template created successfully", "success");
       handleCloseModal();
       loadTemplates();
     } catch (error: any) {
-      showToast(error.message || "Failed to save appraisal template", "error");
+      showToast(error.message || "Failed to create appraisal template", "error");
       throw error;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (input: UpdateAppraisalTemplateInput) => {
+    if (!editingTemplate) return;
+    try {
+      setIsSubmitting(true);
+      // Convert Input type to Dto type for API
+      const dto: UpdateAppraisalTemplateDto = {
+        description: input.description,
+        ratingScale: input.ratingScale ? {
+          type: input.ratingScale.type as AppraisalRatingScaleType,
+          min: input.ratingScale.min,
+          max: input.ratingScale.max,
+          step: input.ratingScale.step,
+          labels: input.ratingScale.labels,
+        } : undefined,
+        criteria: input.criteria,
+        instructions: input.instructions,
+        applicableDepartmentIds: input.applicableDepartmentIds,
+        applicablePositionIds: input.applicablePositionIds,
+        isActive: input.isActive,
+      };
+      await performanceApi.updateTemplate(editingTemplate._id, dto);
+      showToast("Appraisal template updated successfully", "success");
+      handleCloseModal();
+      loadTemplates();
+    } catch (error: any) {
+      showToast(error.message || "Failed to update appraisal template", "error");
+      throw error;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -212,9 +264,12 @@ export default function AppraisalTemplatesPage() {
         size="xl"
       >
         <AppraisalTemplateForm
-          template={editingTemplate}
-          onSubmit={handleSubmit}
+          mode={editingTemplate ? "edit" : "create"}
+          initialValue={editingTemplate || undefined}
+          onCreate={handleCreate}
+          onUpdate={handleUpdate}
           onCancel={handleCloseModal}
+          isSubmitting={isSubmitting}
         />
       </Modal>
     </div>

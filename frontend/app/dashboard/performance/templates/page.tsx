@@ -1,7 +1,7 @@
 "use client";
 
-import { AppraisalTemplatesPage } from "@/components/performance/AppraisalTemplatesPage";
-import { AppraisalCyclesPage } from "@/components/performance/AppraisalCyclesPage";
+import { AppraisalTemplatesPage } from "@/components/Performance/AppraisalTemplatesPage";
+import { AppraisalCyclesPage } from "@/components/Performance/AppraisalCyclesPage";
 
 export default function PerformanceTemplatesRoute() {
   return <AppraisalTemplatesPage />;

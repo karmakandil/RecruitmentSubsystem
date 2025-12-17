@@ -1,7 +1,7 @@
 // frontend/lib/api/performance/Api/performanceAssignmentsApi.ts
 
 import api from "@/lib/api/client";
-import { AppraisalAssignment } from "@/components/performance/performanceAssignments";
+import { AppraisalAssignment } from "@/components/Performance/performanceAssignments";
 
 const ASSIGNMENTS_BASE_PATH = "/performance/assignments";
 

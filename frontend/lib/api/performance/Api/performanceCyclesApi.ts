@@ -4,7 +4,7 @@ import api from "@/lib/api/client";
 import {
   AppraisalCycle,
   CreateAppraisalCycleInput,
-} from "@/components/performance/performanceCycles";
+} from "@/components/Performance/performanceCycles";
 
 const CYCLES_BASE_PATH = "/performance/cycles";
 
