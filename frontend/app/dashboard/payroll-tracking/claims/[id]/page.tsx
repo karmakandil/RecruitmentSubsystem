@@ -447,9 +447,9 @@ export default function ClaimDetailsPage() {
               <p className="font-semibold text-blue-900 mb-1">Multi-Step Approval Workflow</p>
               <p className="text-sm text-blue-800 mb-3">
                 {isPayrollManager
-                  ? "As a Payroll Manager, you are confirming the Payroll Specialist's approval. Once you confirm, Finance Staff will be automatically notified to process the refund."
+                  ? "As a Payroll Manager, you can confirm approval of expense claims, so that finance staff can be notified. (multi-step approval) Only approved claims will reach you for confirmation."
                   : isPayrollSpecialist
-                  ? "As a Payroll Specialist, you can approve or reject claims. Approved claims will be escalated to the Payroll Manager for final confirmation."
+                  ? "As a Payroll Specialist, you can approve/reject expense claims, so that they can be escalated to the Payroll Manager in case of approval."
                   : "Your claim goes through the following stages:"}
               </p>
               <div className="space-y-2">

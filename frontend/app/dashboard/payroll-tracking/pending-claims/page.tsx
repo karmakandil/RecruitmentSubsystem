@@ -113,7 +113,7 @@ export default function PendingClaimsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Pending Claims</h1>
           <p className="text-gray-600 mt-1">
-            Review and process expense claims awaiting your approval
+            As a Payroll Specialist, approve/reject expense claims, so that they can be escalated to the Payroll Manager in case of approval.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-specialist")}>
@@ -198,13 +198,20 @@ export default function PendingClaimsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">Review Process</p>
+              <p className="font-semibold text-blue-900 mb-1">Approve/Reject Expense Claims</p>
               <p className="text-sm text-blue-800 mb-2">
-                Click "Review Claim" to view full details and approve or reject the claim.
-                Approved claims will be forwarded to the Payroll Manager for final confirmation.
+                As a Payroll Specialist, you can approve or reject expense claims. Click "Review Claim" to investigate the claim and make your decision.
               </p>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+                <li>
+                  <strong>Approve:</strong> If the claim is valid, approve it. You can approve a partial amount if needed. The claim will be escalated to the Payroll Manager for final confirmation.
+                </li>
+                <li>
+                  <strong>Reject:</strong> If the claim is invalid, reject it with a clear reason. The employee will be notified of the rejection.
+                </li>
+              </ul>
               <p className="text-sm text-blue-800">
-                Workflow: Employee submits → Payroll Specialist reviews → Payroll Manager confirms → Finance processes refund
+                <strong>Workflow:</strong> Employee submits → Payroll Specialist approves/rejects → (If approved) Payroll Manager confirms → Finance processes refund
               </p>
             </div>
           </div>

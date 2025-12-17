@@ -166,7 +166,7 @@ export default function SalaryHistoryPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Salary History</h1>
           <p className="text-gray-600 mt-1">
-            Track your salary payments over time
+            As an Employee, access your salary history so you can track payments over time.
           </p>
         </div>
         <div className="flex gap-2">
@@ -343,27 +343,33 @@ export default function SalaryHistoryPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Salary History</p>
+              <p className="font-semibold text-blue-900 mb-1">Track Your Payments Over Time</p>
               <p className="text-sm text-blue-800 mb-3">
-                Your salary history shows all your past and current salary payments:
+                Your salary history allows you to track all your salary payments over time. This helps you:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
-                  <strong>Gross Salary:</strong> Your total earnings before deductions
+                  <strong>Monitor Payment Trends:</strong> See how your salary has changed over time, including gross salary, deductions, and net pay.
                 </li>
                 <li>
-                  <strong>Deductions:</strong> Total amount deducted for taxes, insurance, penalties, etc.
+                  <strong>Track Payment Status:</strong> View whether each payment has been processed (Paid/Pending) so you know when payments were made.
                 </li>
                 <li>
-                  <strong>Net Pay:</strong> Your take-home salary after all deductions
+                  <strong>Review Payment Details:</strong> Each entry shows gross salary, total deductions, and net pay for that period.
                 </li>
                 <li>
-                  <strong>Payment Status:</strong> Whether the payment has been processed (Paid/Pending)
+                  <strong>Access Historical Data:</strong> Use the limit selector to view different time periods (6, 12, 24, 36 months, or all time).
+                </li>
+                <li>
+                  <strong>View Statistics:</strong> See totals, averages, and ranges for gross salary, deductions, and net pay across all periods.
+                </li>
+                <li>
+                  <strong>Detailed Payslip Access:</strong> Click "View Details" on any entry to see the full payslip with all earnings and deductions breakdown.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> You can view detailed information for any payslip by clicking
-                "View Details". You can also download payslips as PDFs from the detailed view.
+                <strong>Note:</strong> Your salary history is sorted by most recent first. You can view detailed information for any payslip by clicking
+                "View Details". This helps you track payments over time and understand your salary trends.
               </p>
             </div>
           </div>

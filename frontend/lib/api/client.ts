@@ -73,7 +73,11 @@ api.interceptors.response.use(
     const isOptionalPayrollRuns = status === 403 && url.includes('/payroll/runs') && 
       (url.includes('limit') || url.includes('?'));
     
-    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns) {
+    // Suppress timeout errors for notifications endpoint (optional feature, may be slow or unavailable)
+    const isNotificationsTimeout = (error.message?.includes('timeout') || error.code === 'ECONNABORTED') && 
+      (url.includes('/notifications') || url.includes('notification'));
+    
+    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
       // Silently handle these errors - they're expected for optional features or unimplemented endpoints
       // Browser console will show the network error, but we don't treat it as an app error
       // Return a clean error that can be caught and handled gracefully

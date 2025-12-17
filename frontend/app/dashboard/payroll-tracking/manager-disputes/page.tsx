@@ -119,7 +119,7 @@ export default function ManagerDisputesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Pending Dispute Confirmations</h1>
           <p className="text-gray-600 mt-1">
-            Review and confirm disputes that have been approved by Payroll Specialists
+            As a Payroll Manager, confirm approval of disputes, so that finance staff can be notified. (multi-step approval)
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-manager")}>
@@ -215,13 +215,23 @@ export default function ManagerDisputesPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">Confirmation Process</p>
+              <p className="font-semibold text-blue-900 mb-1">Confirm Dispute Approval (Multi-Step Approval)</p>
               <p className="text-sm text-blue-800 mb-2">
-                Click "Review & Confirm" to view full details and confirm the approval. Once confirmed,
-                the dispute will be forwarded to Finance for refund processing.
+                As a Payroll Manager, you can confirm disputes that have been approved by Payroll Specialists. Only approved disputes will reach you for confirmation.
               </p>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+                <li>
+                  <strong>Review:</strong> Click "Review & Confirm" to view full dispute details and the specialist's resolution comment.
+                </li>
+                <li>
+                  <strong>Confirm:</strong> Once you confirm the approval, the dispute status becomes "Approved" and finance staff will be notified.
+                </li>
+                <li>
+                  <strong>Finance Notification:</strong> Finance staff will receive a notification that the dispute is ready for refund processing.
+                </li>
+              </ul>
               <p className="text-sm text-blue-800">
-                Workflow: Employee submits → Payroll Specialist approves → <strong>You confirm</strong> → Finance processes refund
+                <strong>Multi-Step Workflow:</strong> Employee submits → Payroll Specialist approves → <strong>You confirm</strong> → Finance staff notified → Finance processes refund
               </p>
             </div>
           </div>

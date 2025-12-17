@@ -150,7 +150,7 @@ export default function BaseSalaryPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">My Base Salary</h1>
           <p className="text-gray-600 mt-1">
-            Base salary according to your employment contract
+            As an Employee, view your base salary according to your employment contract (full-time, part-time, temporary, etc.) so you know your standard monthly earnings.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -330,9 +330,12 @@ export default function BaseSalaryPage() {
             <span className="text-xl">ℹ️</span>
             <div>
               <p className="font-semibold text-blue-900 mb-1">About Your Base Salary</p>
+              <p className="text-sm text-blue-800 mb-2">
+                Your base salary is the standard monthly amount according to your employment contract ({getContractTypeDisplay(baseSalaryData.contractType).toLowerCase()}). 
+                This represents your standard monthly earnings before any allowances, bonuses, or deductions.
+              </p>
               <p className="text-sm text-blue-800">
-                Your base salary is the standard monthly amount according to your employment contract. 
-                Your actual monthly earnings may differ based on allowances, bonuses, deductions, and other factors. 
+                <strong>Note:</strong> Your actual monthly earnings may differ based on allowances, bonuses, deductions, and other factors. 
                 For detailed breakdowns of your actual earnings, please refer to your payslips.
               </p>
             </div>

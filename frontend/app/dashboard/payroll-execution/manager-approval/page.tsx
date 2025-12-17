@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
@@ -44,8 +44,12 @@ interface PayrollRun {
 
 export default function ManagerApprovalPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
+
+  // Get view from query params: 'pending' (default) or 'history'
+  const view = searchParams.get("view") || "pending";
 
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [filteredRuns, setFilteredRuns] = useState<PayrollRun[]>([]);
@@ -65,7 +69,7 @@ export default function ManagerApprovalPage() {
 
   useEffect(() => {
     filterRuns();
-  }, [payrollRuns, searchTerm]);
+  }, [payrollRuns, searchTerm, user, view]);
 
   const fetchPayrollRuns = async () => {
     setLoading(true);
@@ -84,43 +88,139 @@ export default function ManagerApprovalPage() {
         runsData = (runsResponse as any).data.items;
       }
 
+      // Debug logging to understand what we're getting
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Manager Approval - All Payroll Runs:', {
+          total: runsData.length,
+          runs: runsData.map(r => ({
+            runId: r.runId,
+            status: r.status,
+            payrollManagerId: r.payrollManagerId,
+            currentUserId: user?.userId || user?.id || user?._id,
+          })),
+        });
+      }
+
       setPayrollRuns(runsData);
     } catch (err: any) {
       setError(err.message || "Failed to load payroll runs");
+      console.error("Error fetching payroll runs:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const filterRuns = () => {
-    // Show only payroll runs under review that are assigned to current manager
-    const underReview = payrollRuns.filter((run) => {
-      const statusMatch =
-        run.status?.toLowerCase() === "under review" ||
-        run.status?.toLowerCase() === "under_review";
-      
-      // If payrollManagerId is set, only show runs assigned to current user
-      if (run.payrollManagerId) {
-        return statusMatch && run.payrollManagerId === user?.userId;
-      }
-      
-      // If no manager assigned, show all under review runs (any manager can approve)
-      return statusMatch;
-    });
+    let filtered: PayrollRun[] = [];
+
+    if (view === "history") {
+      // Show history: approved, rejected, locked, unlocked, pending finance approval
+      // These are runs that have already been processed by the manager
+      filtered = payrollRuns.filter((run) => {
+        const status = run.status?.toLowerCase()?.trim() || "";
+        return (
+          status === "approved" ||
+          status === "rejected" ||
+          status === "locked" ||
+          status === "unlocked" ||
+          status === "pending finance approval" ||
+          status === "pending_finance_approval"
+        );
+      });
+    } else {
+      // Default view: Show payroll runs that need manager approval (pending)
+      // Accept multiple status variations that indicate pending manager approval
+      filtered = payrollRuns.filter((run) => {
+        const status = run.status?.toLowerCase()?.trim() || "";
+        
+        // Check for various status formats that indicate pending manager approval
+        const statusMatch =
+          status === "under review" ||
+          status === "under_review" ||
+          status === "pending approval" ||
+          status === "pending_approval" ||
+          status === "pending manager approval" ||
+          status === "pending_manager_approval" ||
+          status === "awaiting manager approval" ||
+          status === "awaiting_manager_approval";
+        
+        if (!statusMatch) {
+          return false;
+        }
+        
+        // If payrollManagerId is set, check if it matches current user
+        if (run.payrollManagerId) {
+          // Try multiple user ID fields and normalize for comparison
+          let managerIdToCompare = "";
+          if (typeof run.payrollManagerId === 'object' && run.payrollManagerId !== null) {
+            // Handle ObjectId or populated object
+            managerIdToCompare = (run.payrollManagerId as any)?._id?.toString()?.trim() || 
+                                 (run.payrollManagerId as any)?.id?.toString()?.trim() || 
+                                 run.payrollManagerId.toString().trim();
+          } else {
+            managerIdToCompare = run.payrollManagerId.toString().trim();
+          }
+          
+          const currentUserId = (user?.userId?.toString() || user?.id?.toString() || user?._id?.toString() || "").trim();
+          
+          const matches = managerIdToCompare === currentUserId;
+          
+          // Debug logging for ID matching
+          if (process.env.NODE_ENV === 'development') {
+            console.log('ID Matching Debug:', {
+              runId: run.runId,
+              status: run.status,
+              statusMatch,
+              managerIdRaw: run.payrollManagerId,
+              managerIdType: typeof run.payrollManagerId,
+              managerIdToCompare,
+              currentUserId,
+              matches,
+              willShow: matches,
+            });
+          }
+          
+          return matches;
+        }
+        
+        // If no manager assigned, show all runs needing approval (any manager can approve)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Run with no manager assigned:', {
+            runId: run.runId,
+            status: run.status,
+            statusMatch,
+            willShow: true,
+          });
+        }
+        return true;
+      });
+    }
 
     // Filter by search term
-    let filtered = underReview;
+    let finalFiltered = filtered;
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = underReview.filter(
+      finalFiltered = filtered.filter(
         (run) =>
-          run.runId.toLowerCase().includes(searchLower) ||
-          run.entity.toLowerCase().includes(searchLower) ||
+          run.runId?.toLowerCase().includes(searchLower) ||
+          run.entity?.toLowerCase().includes(searchLower) ||
           formatDate(run.payrollPeriod).toLowerCase().includes(searchLower)
       );
     }
 
-    setFilteredRuns(filtered);
+    setFilteredRuns(finalFiltered);
+    
+    // Debug logging (remove in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Manager Approval Filter Debug:', {
+        view,
+        totalRuns: payrollRuns.length,
+        filtered: filtered.length,
+        finalFiltered: finalFiltered.length,
+        currentUserId: user?.userId || user?.id || user?._id,
+        runStatuses: payrollRuns.map(r => ({ runId: r.runId, status: r.status, managerId: r.payrollManagerId })),
+      });
+    }
   };
 
   const handleDecision = (run: PayrollRun, decisionType: "approve" | "reject") => {
@@ -225,6 +325,18 @@ export default function ManagerApprovalPage() {
           Rejected
         </span>
       );
+    } else if (statusLower === "locked") {
+      return (
+        <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-semibold">
+          Locked
+        </span>
+      );
+    } else if (statusLower === "unlocked") {
+      return (
+        <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-semibold">
+          Unlocked
+        </span>
+      );
     }
     return (
       <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
@@ -237,11 +349,36 @@ export default function ManagerApprovalPage() {
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">
-          Approve Payroll Runs
+          {view === "history" ? "Payroll Approval History" : "Payroll Manager Approval"}
         </h1>
         <p className="text-gray-600 mt-1">
-          Review and approve payroll runs to ensure validation at the managerial level prior to distribution
+          {view === "history" 
+            ? "View previously approved or rejected payroll runs and their approval history."
+            : "As a Payroll Manager, approve payroll runs so that validation is ensured at the managerial level prior to distribution."}
         </p>
+        {/* View Toggle */}
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={() => router.push("/dashboard/payroll-execution/manager-approval?view=pending")}
+            className={`px-4 py-2 rounded-md font-medium transition ${
+              view === "pending"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
+          >
+            Pending Approvals
+          </button>
+          <button
+            onClick={() => router.push("/dashboard/payroll-execution/manager-approval?view=history")}
+            className={`px-4 py-2 rounded-md font-medium transition ${
+              view === "history"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
+          >
+            Approval History
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -286,11 +423,51 @@ export default function ManagerApprovalPage() {
           <CardContent className="py-12 text-center">
             <FileText className="h-12 w-12 mx-auto text-gray-400 mb-4" />
             <p className="text-gray-600 text-lg mb-2">
-              No payroll runs pending approval
+              {view === "history" 
+                ? "No payroll approval history found"
+                : "No payroll runs pending approval"}
             </p>
-            <p className="text-gray-500 text-sm">
-              Payroll runs will appear here after they have been sent for approval by Payroll Specialists
+            <p className="text-gray-500 text-sm mb-4">
+              {view === "history"
+                ? "Approved, rejected, locked, or pending finance approval payroll runs will appear here."
+                : "Payroll runs will appear here after they have been sent for approval by Payroll Specialists. Manager approval is required before these payroll runs can proceed to distribution."}
             </p>
+            {process.env.NODE_ENV === 'development' && payrollRuns.length > 0 && (
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left max-w-2xl mx-auto">
+                <p className="text-sm font-semibold text-yellow-800 mb-2">Debug Information:</p>
+                <p className="text-xs text-yellow-700 mb-1">
+                  Total payroll runs loaded: <strong>{payrollRuns.length}</strong>
+                </p>
+                <p className="text-xs text-yellow-700 mb-1">
+                  Current user ID: <strong>{user?.userId || user?.id || user?._id || "Not found"}</strong>
+                </p>
+                <p className="text-xs text-yellow-700 mb-2">Statuses found in payroll runs:</p>
+                <ul className="text-xs text-yellow-700 list-disc list-inside space-y-1 mb-2">
+                  {Array.from(new Set(payrollRuns.map(r => r.status || "(empty)"))).map(status => (
+                    <li key={status}>{status}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-yellow-700">
+                  <strong>Note:</strong> Payroll runs need status "under review", "under_review", "pending approval", or similar to appear here.
+                  The 33 pending items shown in the dashboard are likely payroll configuration approvals (tax rules, signing bonuses, etc.), not payroll run approvals.
+                  To see payroll runs here, they must be sent for approval by Payroll Specialists first.
+                </p>
+              </div>
+            )}
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md text-left max-w-2xl mx-auto">
+              <p className="text-sm font-semibold text-blue-800 mb-2">ℹ️ Understanding Pending Approvals:</p>
+              <p className="text-xs text-blue-700 mb-2">
+                The "33 pending approvals" shown in your dashboard refers to <strong>payroll configuration approvals</strong> (tax rules, signing bonuses, termination benefits, etc.), 
+                not payroll run approvals.
+              </p>
+              <p className="text-xs text-blue-700 mb-2">
+                <strong>Payroll Run Approvals</strong> appear here only after a Payroll Specialist sends a draft payroll run for approval. 
+                The payroll run must have status "under review" or "under_review" to appear in this list.
+              </p>
+              <p className="text-xs text-blue-700">
+                To review configuration approvals, go to <strong>Payroll Configuration → Approvals</strong>.
+              </p>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -358,25 +535,39 @@ export default function ManagerApprovalPage() {
                     className="flex-1"
                   >
                     <Eye className="h-5 w-5 mr-2" />
-                    View Details
+                    {view === "history" ? "View Details" : "Review Draft Details"}
                   </Button>
-                  <Button
-                    onClick={() => handleDecision(run, "approve")}
-                    className="bg-green-600 hover:bg-green-700 text-white flex-1"
-                    disabled={processing}
-                  >
-                    <CheckCircle className="h-5 w-5 mr-2" />
-                    Approve
-                  </Button>
-                  <Button
-                    onClick={() => handleDecision(run, "reject")}
-                    variant="destructive"
-                    className="flex-1"
-                    disabled={processing}
-                  >
-                    <XCircle className="h-5 w-5 mr-2" />
-                    Reject
-                  </Button>
+                  {view === "pending" && run.exceptions && run.exceptions > 0 && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/payroll-execution/resolve-irregularities?payrollRunId=${run._id}`)}
+                      variant="outline"
+                      className="flex-1 border-red-500 text-red-700 hover:bg-red-50"
+                    >
+                      <AlertCircle className="h-5 w-5 mr-2" />
+                      Resolve Irregularities ({run.exceptions})
+                    </Button>
+                  )}
+                  {view === "pending" && (
+                    <>
+                      <Button
+                        onClick={() => handleDecision(run, "approve")}
+                        className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                        disabled={processing}
+                      >
+                        <CheckCircle className="h-5 w-5 mr-2" />
+                        Approve
+                      </Button>
+                      <Button
+                        onClick={() => handleDecision(run, "reject")}
+                        variant="destructive"
+                        className="flex-1"
+                        disabled={processing}
+                      >
+                        <XCircle className="h-5 w-5 mr-2" />
+                        Reject
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -396,8 +587,8 @@ export default function ManagerApprovalPage() {
               </CardTitle>
               <CardDescription>
                 {decision === "approve"
-                  ? "Confirm approval of this payroll run. It will be sent to Finance Staff for final approval."
-                  : "Provide a reason for rejecting this payroll run. The payroll run will be marked as rejected."}
+                  ? "Confirm approval of this payroll run. Manager approval is required before distribution. After your approval, it will be sent to Finance Staff for final approval."
+                  : "Provide a reason for rejecting this payroll run. The payroll run will be marked as rejected and cannot proceed to distribution."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -442,8 +633,10 @@ export default function ManagerApprovalPage() {
               {decision === "approve" && (
                 <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
                   <p className="text-sm text-yellow-800">
-                    <strong>⚠️ Important:</strong> Approving this payroll run will send it to Finance Staff for final approval. 
-                    Please ensure all amounts and employee details are correct before proceeding.
+                    <strong>⚠️ Important:</strong> Manager approval is required before distribution. 
+                    Approving this payroll run will send it to Finance Staff for final approval. 
+                    Please ensure all amounts and employee details are correct before proceeding. 
+                    This validation step ensures accuracy at the managerial level prior to distribution.
                   </p>
                 </div>
               )}

@@ -110,7 +110,7 @@ export default function PendingDisputesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Pending Disputes</h1>
           <p className="text-gray-600 mt-1">
-            Review and investigate payroll disputes awaiting your action
+            As a Payroll Specialist, approve/reject disputes, so that they can be escalated to the Payroll Manager in case of approval.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-specialist")}>
@@ -194,13 +194,20 @@ export default function PendingDisputesPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">Review Process</p>
+              <p className="font-semibold text-blue-900 mb-1">Approve/Reject Disputes</p>
               <p className="text-sm text-blue-800 mb-2">
-                Click "Review Dispute" to investigate the issue and approve or reject the dispute.
-                Approved disputes will be forwarded to the Payroll Manager for final confirmation.
+                As a Payroll Specialist, you can approve or reject disputes. Click "Review Dispute" to investigate the issue and make your decision.
               </p>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+                <li>
+                  <strong>Approve:</strong> If the dispute is valid, approve it. The dispute will be escalated to the Payroll Manager for final confirmation.
+                </li>
+                <li>
+                  <strong>Reject:</strong> If the dispute is invalid, reject it with a clear reason. The employee will be notified of the rejection.
+                </li>
+              </ul>
               <p className="text-sm text-blue-800">
-                Workflow: Employee disputes → Payroll Specialist investigates → Payroll Manager confirms → Finance processes refund
+                <strong>Workflow:</strong> Employee disputes → Payroll Specialist approves/rejects → (If approved) Payroll Manager confirms → Finance processes refund
               </p>
             </div>
           </div>

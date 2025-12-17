@@ -173,7 +173,7 @@ export default function PayrollPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Payroll Tracking</h1>
-        <p className="text-gray-600 mt-1">Manage and track your payroll information, claims, and disputes</p>
+        <p className="text-gray-600 mt-1">As an Employee, view and download your payslips online so you can see your monthly salary. Manage and track your payroll information, claims, and disputes.</p>
       </div>
 
       {/* Quick Actions Grid */}
@@ -365,7 +365,7 @@ export default function PayrollPage() {
       {/* Payslips Section */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">My Payslips</h2>
-        <p className="text-gray-600 mb-4">View and download your monthly payslips</p>
+        <p className="text-gray-600 mb-4">View and download your monthly payslips online. Click "View Details" to see a complete breakdown of your earnings and deductions, or "Download PDF" to save a copy.</p>
       </div>
 
       {payslips.length === 0 ? (
@@ -459,23 +459,45 @@ export default function PayrollPage() {
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={async () => {
+                      onClick={async (e) => {
                         try {
                           const employeeId = user?.id || user?.userId;
+                          if (!employeeId) {
+                            alert("User ID not found. Please log in again.");
+                            return;
+                          }
+                          
+                          // Show loading state
+                          const button = e.currentTarget;
+                          const originalText = button.textContent;
+                          button.disabled = true;
+                          button.textContent = "Downloading...";
+                          
                           const blob = await payslipsApi.downloadPayslip(
-                            employeeId!,
+                            employeeId,
                             payslip._id
                           );
+                          
                           const url = window.URL.createObjectURL(blob);
                           const a = document.createElement("a");
                           a.href = url;
-                          a.download = `payslip-${payslip.payrollRunId?.runId || payslip._id}.pdf`;
+                          const fileName = `payslip-${payslip.payrollRunId?.runId || payslip._id}-${formatDate(payslip.payrollRunId?.payrollPeriod).replace(/\s/g, '-')}.pdf`;
+                          a.download = fileName;
                           document.body.appendChild(a);
                           a.click();
                           window.URL.revokeObjectURL(url);
                           document.body.removeChild(a);
+                          
+                          // Restore button
+                          button.disabled = false;
+                          button.textContent = originalText;
                         } catch (err: any) {
-                          alert(err.message || "Failed to download payslip");
+                          console.error("Error downloading payslip:", err);
+                          alert(err.message || "Failed to download payslip. Please try again.");
+                          // Restore button on error
+                          const button = e.currentTarget;
+                          button.disabled = false;
+                          button.textContent = "Download PDF";
                         }
                       }}
                     >

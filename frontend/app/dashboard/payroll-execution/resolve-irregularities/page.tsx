@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Search,
   Filter,
+  Eye,
 } from "lucide-react";
 
 interface PayrollRun {
@@ -68,6 +69,7 @@ interface ExceptionsData {
 
 export default function ResolveIrregularitiesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
 
@@ -90,7 +92,13 @@ export default function ResolveIrregularitiesPage() {
 
   useEffect(() => {
     fetchPayrollRuns();
-  }, []);
+    
+    // Check for payrollRunId in query params
+    const payrollRunIdFromQuery = searchParams.get("payrollRunId");
+    if (payrollRunIdFromQuery) {
+      setSelectedPayrollRunId(payrollRunIdFromQuery);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (selectedPayrollRunId) {
@@ -344,7 +352,7 @@ export default function ResolveIrregularitiesPage() {
           Resolve Payroll Irregularities
         </h1>
         <p className="text-gray-600 mt-1">
-          Review and resolve escalated irregularities flagged by Payroll Specialists
+          As a Payroll Manager, resolve escalated irregularities reported by Payroll Specialists so that payroll exceptions are addressed at a higher decision level.
         </p>
       </div>
 
@@ -367,27 +375,41 @@ export default function ResolveIrregularitiesPage() {
         <CardHeader>
           <CardTitle>Select Payroll Run</CardTitle>
           <CardDescription>
-            Choose a payroll run to view and resolve irregularities
+            Choose a payroll run to view and resolve escalated irregularities. Irregularities flagged by Payroll Specialists are escalated to you for resolution at a higher decision level.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div>
-            <Label htmlFor="payrollRun">Payroll Run</Label>
-            <select
-              id="payrollRun"
-              value={selectedPayrollRunId}
-              onChange={(e) => setSelectedPayrollRunId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={loading}
-            >
-              <option value="">Select a payroll run</option>
-              {payrollRuns.map((run) => (
-                <option key={run._id} value={run._id}>
-                  {run.runId} - {formatDate(run.payrollPeriod)} -{" "}
-                  {run.exceptions || 0} exception{run.exceptions !== 1 ? "s" : ""}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="payrollRun">Payroll Run</Label>
+              <select
+                id="payrollRun"
+                value={selectedPayrollRunId}
+                onChange={(e) => setSelectedPayrollRunId(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={loading}
+              >
+                <option value="">Select a payroll run</option>
+                {payrollRuns.map((run) => (
+                  <option key={run._id} value={run._id}>
+                    {run.runId} - {formatDate(run.payrollPeriod)} -{" "}
+                    {run.exceptions || 0} exception{run.exceptions !== 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {selectedPayrollRunId && (
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => router.push(`/dashboard/payroll-execution/preview?payrollRunId=${selectedPayrollRunId}`)}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Payroll Draft
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -398,7 +420,10 @@ export default function ResolveIrregularitiesPage() {
           {/* Summary Card */}
           <Card className="mb-6 border-2 border-blue-200">
             <CardHeader>
-              <CardTitle>Exceptions Summary</CardTitle>
+              <CardTitle>Escalated Irregularities Summary</CardTitle>
+              <CardDescription>
+                These irregularities were flagged by Payroll Specialists and escalated to you for resolution at a higher decision level.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

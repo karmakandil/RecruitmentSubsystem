@@ -30,10 +30,31 @@ interface Claim {
   updatedAt?: string;
 }
 
+interface Refund {
+  _id: string;
+  claimId?: {
+    _id: string;
+  };
+  disputeId?: {
+    _id: string;
+  };
+  refundDetails: {
+    description: string;
+    amount: number;
+  };
+  status: "pending" | "paid";
+  paidInPayrollRunId?: {
+    _id: string;
+    runId: string;
+    payrollPeriod: string;
+  };
+}
+
 export default function ClaimsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [claims, setClaims] = useState<Claim[]>([]);
+  const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,12 +81,20 @@ export default function ClaimsPage() {
         let data;
         
         // If user is an employee, fetch only their claims
+        let refundsData: Refund[] = [];
+        
         if (isEmployee && (user?.id || user?.userId)) {
           const employeeId = user.id || user.userId;
-          data = await payslipsApi.getClaimsByEmployeeId(employeeId!);
+          [data, refundsData] = await Promise.all([
+            payslipsApi.getClaimsByEmployeeId(employeeId!),
+            payslipsApi.getRefundsByEmployeeId(employeeId!),
+          ]);
         } else if (isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) {
           // For payroll staff, fetch all claims (regardless of status)
-          data = await payslipsApi.getAllClaims();
+          [data, refundsData] = await Promise.all([
+            payslipsApi.getAllClaims(),
+            payslipsApi.getAllRefunds(),
+          ]);
         } else {
           setError("User ID not found");
           setLoading(false);
@@ -73,6 +102,7 @@ export default function ClaimsPage() {
         }
         
         setClaims(Array.isArray(data) ? data : []);
+        setRefunds(Array.isArray(refundsData) ? refundsData : []);
       } catch (err: any) {
         // If error is 403 and user is payroll staff, show empty state instead of error
         if ((isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) && err.message?.includes('403')) {
@@ -142,6 +172,46 @@ export default function ClaimsPage() {
     }
   };
 
+  const getPaymentStatusBadge = (status: string) => {
+    if (status === "paid") {
+      return (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+          Paid
+        </span>
+      );
+    } else {
+      return (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800 border border-orange-300">
+          Pending Payment
+        </span>
+      );
+    }
+  };
+
+  const getPaymentStatus = (claim: Claim) => {
+    const refund = refunds.find(
+      (r) => r.claimId?._id === claim._id
+    );
+    
+    if (!refund) {
+      // Check if approved but no refund yet
+      if (claim.status === "approved") {
+        return { status: "pending", message: "Awaiting refund generation" };
+      }
+      return { status: "not_applicable", message: "Not approved yet" };
+    }
+    
+    if (refund.status === "paid") {
+      return {
+        status: "paid",
+        message: `Paid in ${refund.paidInPayrollRunId?.runId || "payroll run"}`,
+        refund,
+      };
+    }
+    
+    return { status: "pending", message: "Pending payment in next payroll", refund };
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-6 py-8">
@@ -184,7 +254,7 @@ export default function ClaimsPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             {isEmployee 
-              ? "Track and manage your expense reimbursement claims"
+              ? "As an Employee, track the approval and payment status of your claims and disputes, so that you know when you'll be reimbursed."
               : "View and manage all expense reimbursement claims"}
           </p>
         </div>
@@ -210,6 +280,10 @@ export default function ClaimsPage() {
                         {claim.claimId}
                       </h3>
                       {getStatusBadge(claim.status)}
+                      {(() => {
+                        const paymentStatus = getPaymentStatus(claim);
+                        return paymentStatus.status !== "not_applicable" && getPaymentStatusBadge(paymentStatus.status);
+                      })()}
                       <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-300">
                         {claim.claimType}
                       </span>
@@ -230,6 +304,12 @@ export default function ClaimsPage() {
                           </p>
                         </div>
                       )}
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">Payment Status</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {getPaymentStatus(claim).message}
+                        </p>
+                      </div>
                       <div>
                         <p className="text-sm text-gray-500 mb-1">Created</p>
                         <p className="text-sm text-gray-900">{formatDate(claim.createdAt)}</p>

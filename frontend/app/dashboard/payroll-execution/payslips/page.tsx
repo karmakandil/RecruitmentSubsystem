@@ -9,7 +9,7 @@ import { payrollExecutionApi } from "@/lib/api/payroll-execution/payroll-executi
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { Input } from "@/components/shared/ui/Input";
-import { FileText, Search, Download, Eye } from "lucide-react";
+import { FileText, Search, Download, Eye, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 interface Payslip {
@@ -64,10 +64,24 @@ export default function PayslipsPage() {
     setLoading(true);
     setError(null);
     try {
+      console.log('[Payslips Page] Fetching payslips with filters:', {
+        ...filters,
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+      
       const response = await payrollExecutionApi.getAllPayslips({
         ...filters,
         page: pagination.page,
         limit: pagination.limit,
+      });
+      
+      console.log('[Payslips Page] API Response:', {
+        dataCount: response.data?.length || 0,
+        total: response.total || 0,
+        page: response.page || 0,
+        limit: response.limit || 0,
+        firstPayslip: response.data?.[0] || null,
       });
       
       setPayslips(response.data || []);
@@ -75,7 +89,15 @@ export default function PayslipsPage() {
         ...prev,
         total: response.total || 0,
       }));
+      
+      if (response.data && response.data.length === 0 && response.total === 0) {
+        console.warn('[Payslips Page] No payslips found in database. This could mean:');
+        console.warn('1. Payslips were not saved successfully');
+        console.warn('2. Payslips are in a different collection');
+        console.warn('3. Database connection issue');
+      }
     } catch (err: any) {
+      console.error('[Payslips Page] Error fetching payslips:', err);
       setError(err.message || "Failed to load payslips");
     } finally {
       setLoading(false);
@@ -119,13 +141,21 @@ export default function PayslipsPage() {
           Payslip Management
         </h1>
         <p className="text-gray-600">
-          View and manage all generated employee payslips
+          View and manage all generated employee payslips. Payslips are automatically generated and distributed after Finance approval (REQ-PY-15) and Payroll Manager lock (REQ-PY-7). Payment status is set to "Paid" since we don't handle bank system integration.
         </p>
       </div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
           <p className="text-red-800">{error}</p>
+          <Button
+            onClick={fetchPayslips}
+            variant="outline"
+            size="sm"
+            className="mt-2"
+          >
+            Retry
+          </Button>
         </div>
       )}
 
@@ -221,9 +251,19 @@ export default function PayslipsPage() {
                 {pagination.total} total payslips found
               </CardDescription>
             </div>
-            <Link href="/dashboard/payroll-execution/payslips/generate">
-              <Button>Generate New Payslips</Button>
-            </Link>
+            <div className="flex gap-2">
+              <Button
+                onClick={fetchPayslips}
+                variant="outline"
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Link href="/dashboard/payroll-execution/payslips/generate">
+                <Button>Generate New Payslips</Button>
+              </Link>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -234,7 +274,22 @@ export default function PayslipsPage() {
           ) : filteredPayslips.length === 0 ? (
             <div className="text-center py-8">
               <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-500">No payslips found</p>
+              <p className="text-gray-500 mb-2">No payslips found</p>
+              {payslips.length === 0 && pagination.total === 0 && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left max-w-2xl mx-auto">
+                  <p className="text-sm font-semibold text-yellow-800 mb-2">Troubleshooting:</p>
+                  <ul className="text-sm text-yellow-700 list-disc list-inside space-y-1 mb-2">
+                    <li>Payslips are automatically generated after Finance approval and Payroll Manager lock</li>
+                    <li>If you just generated payslips, wait a few seconds and click "Refresh"</li>
+                    <li>Check the browser console for detailed debug information</li>
+                    <li>Verify the payroll run status is "locked" and payment status is "paid"</li>
+                    <li>Check backend logs for payslip generation errors</li>
+                  </ul>
+                  <p className="text-sm text-yellow-700 mt-2">
+                    <strong>Note:</strong> If payslips were generated successfully but don't appear here, there may be a database query issue. Check the console logs for details.
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <>

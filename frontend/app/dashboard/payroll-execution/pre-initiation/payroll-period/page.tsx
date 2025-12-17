@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useRequireAuth } from "@/lib/hooks/use-auth";
+import { useRequireAuth, useAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { Button } from "../../../../../components/shared/ui/Button";
 import { Label } from "../../../../../components/shared/ui/Label";
@@ -34,6 +34,7 @@ interface ApprovedPeriod {
 
 export default function PayrollPeriodPage() {
   useRequireAuth(SystemRole.PAYROLL_SPECIALIST);
+  const { user } = useAuth();
   const router = useRouter();
   const [payrollPeriod, setPayrollPeriod] = useState("");
   const [approvedPeriod, setApprovedPeriod] = useState<ApprovedPeriod | null>(null);
@@ -101,10 +102,11 @@ export default function PayrollPeriodPage() {
     try {
       if (decision === "approve") {
         // Store approved period in localStorage (frontend state only as per user story)
+        const userId = user?.id || user?.userId || user?._id || "unknown";
         const approved: ApprovedPeriod = {
           period: payrollPeriod,
           approvedAt: new Date().toISOString(),
-          approvedBy: "current-user", // In real app, get from auth context
+          approvedBy: userId,
         };
         localStorage.setItem(APPROVED_PERIOD_KEY, JSON.stringify(approved));
         setApprovedPeriod(approved);

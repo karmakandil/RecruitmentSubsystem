@@ -238,20 +238,31 @@ export default function NewDisputePage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Payroll Disputes</p>
+              <p className="font-semibold text-blue-900 mb-1">Disputing Payroll Errors</p>
               <p className="text-sm text-blue-800 mb-3">
-                You can dispute payroll errors such as:
+                You can dispute payroll errors by selecting the payslip with the error. Common payroll errors include:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
-                <li>Over-deductions (incorrect tax or insurance amounts)</li>
-                <li>Missing bonuses or allowances</li>
-                <li>Incorrect salary calculations</li>
-                <li>Missing overtime payments</li>
-                <li>Any other payroll discrepancies</li>
+                <li>
+                  <strong>Over-deductions:</strong> Incorrect tax amounts, insurance deductions that are too high, or other deductions that don't match your expectations.
+                </li>
+                <li>
+                  <strong>Missing bonuses:</strong> Bonuses that were approved but not included in your payslip, or bonuses that are missing from the calculation.
+                </li>
+                <li>
+                  <strong>Missing allowances:</strong> Allowances (transportation, housing, etc.) that should have been included but are missing.
+                </li>
+                <li>
+                  <strong>Incorrect salary calculations:</strong> Base salary, overtime, or other earnings that are calculated incorrectly.
+                </li>
+                <li>
+                  <strong>Other discrepancies:</strong> Any other payroll errors that need to be corrected.
+                </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Your dispute will be reviewed by the payroll team. You'll be notified
-                of the status and any resolution. You can track the progress of your disputes on the disputes page.
+                <strong>How it works:</strong> Select the payslip with the error, provide a detailed description of what's wrong, 
+                and submit your dispute. The payroll team will review your dispute promptly and work to correct the error. 
+                You'll be notified of the status and any resolution. You can track the progress of your disputes on the disputes page.
               </p>
             </div>
           </div>

@@ -27,6 +27,7 @@ import {
   CheckCircle,
   TrendingUp,
   FileText,
+  Send,
 } from "lucide-react";
 
 interface PayrollRun {
@@ -191,7 +192,7 @@ export default function PayrollPreviewPage() {
           Payroll Preview Dashboard
         </h1>
         <p className="text-gray-600 mt-1">
-          Review system-generated payroll results before finalization
+          As a Payroll Specialist, review system-generated payroll results in this preview dashboard so you can confirm accuracy before finalization.
         </p>
       </div>
 
@@ -205,12 +206,12 @@ export default function PayrollPreviewPage() {
 
       {/* Payroll Run Selection */}
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Select Payroll Run</CardTitle>
-          <CardDescription>
-            Choose a payroll run to preview its results
-          </CardDescription>
-        </CardHeader>
+          <CardHeader>
+            <CardTitle>Select Payroll Run</CardTitle>
+            <CardDescription>
+              Choose a payroll run to preview its system-generated results. Review all calculations, deductions, and employee details to confirm accuracy before finalization.
+            </CardDescription>
+          </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -272,6 +273,16 @@ export default function PayrollPreviewPage() {
         <div className="text-center py-12">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400" />
           <p className="text-gray-500 mt-2">Loading payroll preview...</p>
+        </div>
+      )}
+
+      {/* Information Card */}
+      {preview && !loading && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-800">
+            <strong>ℹ️ Review Instructions:</strong> Review all payroll calculations, employee details, deductions, and exceptions below. 
+            Once you've confirmed accuracy, you can send this payroll run for approval. Check for any irregularities before finalization.
+          </p>
         </div>
       )}
 
@@ -642,7 +653,7 @@ export default function PayrollPreviewPage() {
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-500 mt-1">
-                                    Net Salary - Penalties + Refunds
+                                    Net Pay = Net Salary - Penalties (missing working hours/days) + Refunds (if available)
                                   </p>
                                 </div>
                               </div>
@@ -692,14 +703,34 @@ export default function PayrollPreviewPage() {
         </>
       )}
 
-      {/* Back Button */}
-      <div className="mt-8">
+      {/* Action Buttons */}
+      <div className="mt-8 flex gap-4">
         <Button
           onClick={() => router.push("/dashboard/payroll-execution")}
-          className="bg-gray-600 hover:bg-gray-700 text-white"
+          variant="outline"
+          className="flex-1"
         >
           ← Back to Payroll Execution
         </Button>
+        {preview && preview.payrollRun.status?.toLowerCase() === "draft" && (
+          <Button
+            onClick={() => router.push(`/dashboard/payroll-execution/send-for-approval?payrollRunId=${selectedPayrollRunId}`)}
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Send for Approval (After Review)
+          </Button>
+        )}
+        {preview && (
+          <Button
+            onClick={() => router.push(`/dashboard/payroll-execution/flag-irregularities?payrollRunId=${selectedPayrollRunId}`)}
+            variant="outline"
+            className="flex-1 border-red-500 text-red-700 hover:bg-red-50"
+          >
+            <AlertCircle className="h-4 w-4 mr-2" />
+            Flag Irregularities
+          </Button>
+        )}
       </div>
     </div>
   );

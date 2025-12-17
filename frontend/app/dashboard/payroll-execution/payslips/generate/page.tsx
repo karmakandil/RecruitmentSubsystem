@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Download,
   Send,
+  Eye,
 } from "lucide-react";
 
 interface PayrollRun {
@@ -108,13 +109,38 @@ export default function GeneratePayslipsPage() {
         distributionMethod,
       });
 
+      console.log('[Generate Payslips] Full response:', response);
+      console.log('[Generate Payslips] Response details:', {
+        successful: response.successful,
+        failed: response.failed,
+        verifiedPayslips: response.verifiedPayslips,
+        actualDatabaseCount: response.actualDatabaseCount,
+        totalEmployees: response.totalEmployees,
+        warnings: response.warnings,
+        payslipsCount: response.payslips?.length || 0,
+      });
+      
       setResult(response);
       setSuccess(
-        `Successfully generated ${response.successful || 0} payslip${response.successful !== 1 ? "s" : ""} via ${distributionMethod}`
+        `Successfully generated ${response.successful || 0} payslip${response.successful !== 1 ? "s" : ""} via ${distributionMethod}. ${response.actualDatabaseCount || 0} payslip${(response.actualDatabaseCount || 0) !== 1 ? "s" : ""} verified in database.`
       );
+      
+      if (response.warnings && response.warnings.length > 0) {
+        console.warn('[Generate Payslips] Warnings:', response.warnings);
+      }
+      
       if (response.failed > 0) {
         setError(
           `Warning: ${response.failed} payslip${response.failed !== 1 ? "s" : ""} failed to generate. Check the logs for details.`
+        );
+      }
+      
+      // If actualDatabaseCount is 0 but successful > 0, there's a problem
+      if (response.successful > 0 && (response.actualDatabaseCount === 0 || !response.actualDatabaseCount)) {
+        console.error('[Generate Payslips] CRITICAL: Payslips were generated but not found in database!');
+        console.error('[Generate Payslips] This suggests a database save or query issue.');
+        setError(
+          `Warning: Payslips were generated but may not be saved to database. Database count: ${response.actualDatabaseCount || 0}. Please check backend logs and try refreshing the payslips page.`
         );
       }
     } catch (err: any) {
@@ -176,9 +202,20 @@ export default function GeneratePayslipsPage() {
           Generate & Distribute Payslips
         </h1>
         <p className="text-gray-600 mt-1">
-          Automatically generate and distribute employee payslips via PDF, email,
-          or portal
+          The system automatically generates and distributes payslips after Finance approval (REQ-PY-15) and Payroll Manager lock (REQ-PY-7). You can also manually generate payslips here for locked payroll runs with "Paid" payment status. Payment status is set to "Paid" since we don't handle bank system integration.
         </p>
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-800">
+            <strong>ℹ️ Automatic Generation:</strong> Payslips are automatically generated and distributed (via Portal) when:
+          </p>
+          <ul className="text-sm text-blue-800 mt-2 list-disc list-inside space-y-1">
+            <li>Finance Staff approves the payroll run (sets payment status to "Paid") AND the payroll is already locked, OR</li>
+            <li>Payroll Manager locks the payroll run AND payment status is already "Paid"</li>
+          </ul>
+          <p className="text-sm text-blue-800 mt-2">
+            Use this page to manually generate payslips if needed, or to regenerate payslips with a different distribution method (PDF, Email, or Portal).
+          </p>
+        </div>
       </div>
 
       {/* Error/Success Messages */}
@@ -415,7 +452,42 @@ export default function GeneratePayslipsPage() {
                 <p className="text-sm text-gray-700 mt-1">
                   <strong>Message:</strong> {result.message}
                 </p>
+                {result.actualDatabaseCount !== undefined && (
+                  <p className="text-sm text-gray-700 mt-1">
+                    <strong>Verified in Database:</strong> {result.actualDatabaseCount} payslip{result.actualDatabaseCount !== 1 ? "s" : ""}
+                  </p>
+                )}
+                {result.warnings && result.warnings.length > 0 && (
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                    <p className="text-sm font-semibold text-yellow-800">Warnings:</p>
+                    <ul className="text-sm text-yellow-700 list-disc list-inside mt-1">
+                      {result.warnings.map((warning: string, idx: number) => (
+                        <li key={idx}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
+              
+              {result.successful > 0 && (
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    onClick={() => router.push("/dashboard/payroll-execution/payslips")}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View All Payslips
+                  </Button>
+                  {selectedPayrollRunId && (
+                    <Button
+                      onClick={() => router.push(`/dashboard/payroll-execution/payslips?payrollRunId=${selectedPayrollRunId}`)}
+                      variant="outline"
+                    >
+                      View Payslips for This Run
+                    </Button>
+                  )}
+                </div>
+              )}
 
               {result.payslips && result.payslips.length > 0 && (
                 <div>

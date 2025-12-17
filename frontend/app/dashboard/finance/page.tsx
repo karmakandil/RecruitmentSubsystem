@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
@@ -24,12 +25,18 @@ export default function FinanceDashboardPage() {
   const { user } = useAuth();
   useRequireAuth(SystemRole.FINANCE_STAFF);
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="container mx-auto px-6 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white">Finance Dashboard</h1>
         <p className="text-white mt-1">
-          Welcome, {user?.fullName || "Finance Staff"}. Manage payroll approvals, refunds, approved claims, and disputes.
+          {mounted ? `Welcome, ${user?.fullName || "Finance Staff"}. Manage payroll approvals, refunds, approved claims, and disputes.` : 'Welcome. Manage payroll approvals, refunds, approved claims, and disputes.'}
         </p>
       </div>
 

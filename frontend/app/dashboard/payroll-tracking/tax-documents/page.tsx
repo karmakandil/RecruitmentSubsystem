@@ -441,7 +441,7 @@ export default function TaxDocumentsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tax Documents</h1>
           <p className="text-gray-600 mt-1">
-            Annual tax statement for official purposes
+            As an Employee, download tax documents (e.g., annual tax statement) so you can use them for official purposes.
           </p>
         </div>
         <div className="flex gap-2 items-center">
@@ -600,33 +600,32 @@ export default function TaxDocumentsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Tax Documents</p>
+              <p className="font-semibold text-blue-900 mb-1">Using Tax Documents for Official Purposes</p>
               <p className="text-sm text-blue-800 mb-3">
-                Your annual tax statement includes:
+                Your annual tax statement is an official document that can be used for tax filing and other official purposes. It includes:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
-                  <strong>Total Gross Salary:</strong> Your total earnings before any deductions
+                  <strong>Total Gross Salary:</strong> Your total earnings before any deductions - required for tax filing.
                 </li>
                 <li>
-                  <strong>Total Taxes Paid:</strong> All tax deductions for the year (income tax,
-                  social security, etc.)
+                  <strong>Total Taxes Paid:</strong> All tax deductions for the year (income tax, social security, etc.) - needed for tax returns.
                 </li>
                 <li>
-                  <strong>Total Deductions:</strong> All deductions including taxes, insurance,
-                  penalties, etc.
+                  <strong>Total Deductions:</strong> All deductions including taxes, insurance, penalties, etc. - for complete tax documentation.
                 </li>
                 <li>
-                  <strong>Total Net Pay:</strong> Your take-home pay after all deductions
+                  <strong>Total Net Pay:</strong> Your take-home pay after all deductions - for income verification.
                 </li>
                 <li>
-                  <strong>Monthly Breakdown:</strong> Detailed breakdown by payroll period
+                  <strong>Monthly Breakdown:</strong> Detailed breakdown by payroll period - provides month-by-month documentation.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> You can download this document as a PDF using the "Download PDF"
-                button, or print it directly. This document can be used for tax filing and other
-                official purposes.
+                <strong>Download & Print:</strong> You can download this document as a PDF using the "Download PDF" button, 
+                or print it directly using the "Print" button. The downloaded PDF is formatted for official use and can be 
+                submitted to tax authorities, used for loan applications, or other official purposes. The document includes 
+                all necessary information for tax filing and official verification.
               </p>
             </div>
           </div>

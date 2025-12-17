@@ -65,22 +65,34 @@ export default function PayslipDetailPage() {
     }).format(amount);
   };
 
+  const [downloading, setDownloading] = useState(false);
+
   const handleDownload = async () => {
     if (!payslip || !user) return;
 
     try {
       const employeeId = user.id || user.userId;
-      const blob = await payslipsApi.downloadPayslip(employeeId!, payslip._id);
+      if (!employeeId) {
+        alert("User ID not found. Please log in again.");
+        return;
+      }
+      
+      setDownloading(true);
+      const blob = await payslipsApi.downloadPayslip(employeeId, payslip._id);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `payslip-${payslip.payrollRunId?.runId || payslip._id}.pdf`;
+      const fileName = `payslip-${payslip.payrollRunId?.runId || payslip._id}-${formatDate(payslip.payrollRunId?.payrollPeriod).replace(/\s/g, '-')}.pdf`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      setDownloading(false);
     } catch (err: any) {
-      alert(err.message || "Failed to download payslip");
+      console.error("Error downloading payslip:", err);
+      alert(err.message || "Failed to download payslip. Please try again.");
+      setDownloading(false);
     }
   };
 
@@ -127,8 +139,8 @@ export default function PayslipDetailPage() {
           <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
             Back
           </Button>
-          <Button variant="primary" onClick={handleDownload}>
-            Download PDF
+          <Button variant="primary" onClick={handleDownload} disabled={downloading}>
+            {downloading ? "Downloading..." : "Download PDF"}
           </Button>
         </div>
       </div>

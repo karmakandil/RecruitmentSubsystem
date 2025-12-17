@@ -298,7 +298,7 @@ export default function TrackingPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Claims & Disputes Tracking</h1>
           <p className="text-gray-600 mt-1">
-            Track approval and payment status of your claims and disputes
+            As an Employee, track the approval and payment status of your claims and disputes, so that you know when you'll be reimbursed.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>

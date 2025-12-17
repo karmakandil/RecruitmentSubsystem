@@ -115,7 +115,7 @@ export default function DepartmentReportsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Department Payroll Reports</h1>
           <p className="text-gray-600 mt-1">
-            Generate payroll reports by department to analyze salary distribution and budget alignment
+            As a Payroll Specialist, generate payroll reports by department, so that you can analyze salary distribution and ensure budget alignment.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-specialist")}>
@@ -326,10 +326,19 @@ export default function DepartmentReportsPage() {
               <div className="flex items-start gap-3">
                 <span className="text-xl">📊</span>
                 <div>
-                  <p className="font-semibold text-blue-900 mb-1">Budget Analysis</p>
+                  <p className="font-semibold text-blue-900 mb-1">Salary Distribution & Budget Analysis</p>
                   <p className="text-sm text-blue-800 mb-2">
-                    Use this report to analyze salary distribution across the department and ensure budget alignment.
-                    Compare total net pay against department budget allocations.
+                    Use this report to analyze salary distribution across the department and ensure budget alignment. 
+                    The report shows:
+                  </p>
+                  <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+                    <li><strong>Salary Distribution:</strong> See how salaries are distributed across positions and employees in the department</li>
+                    <li><strong>Budget Alignment:</strong> Compare total gross salary, deductions, and net pay against department budget allocations</li>
+                    <li><strong>Average Salary:</strong> Understand the average compensation per employee in the department</li>
+                    <li><strong>Financial Breakdown:</strong> Review taxes and insurance contributions by type</li>
+                  </ul>
+                  <p className="text-sm text-blue-800">
+                    Compare total net pay against department budget allocations to ensure spending stays within approved limits.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
                     <div className="bg-white p-3 rounded border border-blue-200">

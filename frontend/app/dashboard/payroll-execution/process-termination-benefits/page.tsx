@@ -89,7 +89,7 @@ export default function ProcessTerminationBenefitsPage() {
           Process Termination/Resignation Benefits
         </h1>
         <p className="text-gray-600 mt-1">
-          Automatically process benefits for employees with approved termination or resignation requests according to business rules and signed contracts
+          As a Payroll Specialist, automatically process benefits upon resignation according to business rules and signed contracts. The system automatically detects resignations and terminations and processes benefits accordingly.
         </p>
       </div>
 
@@ -114,24 +114,40 @@ export default function ProcessTerminationBenefitsPage() {
             Automatic Termination/Resignation Benefit Processing
           </CardTitle>
           <CardDescription>
-            The system will automatically process termination/resignation benefits for eligible employees.
+            As a Payroll Specialist, the system automatically processes benefits upon termination according to business rules & signed contracts. When you trigger processing, the system will:
           </CardDescription>
           <div className="mt-3">
-            <p className="text-sm text-gray-600 mb-2">Process steps:</p>
+            <p className="text-sm text-gray-600 mb-2">Automatic processing steps:</p>
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-              <li>Find all employees with approved termination or resignation requests</li>
-              <li>Match them with approved termination/resignation benefit configurations</li>
-              <li>Check business rules and signed contracts for eligibility</li>
-              <li>Create employee termination benefit records with PENDING status</li>
+              <li><strong>Detect resignations/terminations:</strong> Find all employees with approved termination or resignation requests</li>
+              <li><strong>Match configurations:</strong> Match them with approved termination/resignation benefit configurations</li>
+              <li><strong>Validate contracts:</strong> Check employee contract start date, end date, and validity</li>
+              <li><strong>Check business rules:</strong> Verify eligibility according to business rules (minimum tenure, termination type, etc.)</li>
+              <li><strong>Calculate amounts:</strong> Calculate benefit amounts based on tenure, salary, or fixed amounts as per business rules</li>
+              <li><strong>Create records:</strong> Automatically create employee termination benefit records with PENDING status for eligible employees</li>
             </ul>
+            <p className="text-sm text-gray-600 mt-3">
+              <strong>Business Rules Validation:</strong> The system checks minimum tenure requirements, termination type (resignation vs termination), and calculates benefits based on contract terms and business rules stored in the benefit configuration.
+            </p>
+            <p className="text-sm text-gray-600 mt-2">
+              <strong>Note:</strong> Termination/resignation benefits are also automatically processed during payroll draft generation.
+            </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-800 mb-2">
+              <strong>Automatic Processing:</strong> The system automatically processes benefits upon resignation and termination. When you click "Process Termination/Resignation Benefits", the system will:
+            </p>
+            <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+              <li>Automatically detect all employees with approved termination or resignation requests</li>
+              <li>Match them with approved termination/resignation benefit configurations</li>
+              <li>Check business rules to determine eligibility</li>
+              <li>Verify eligibility according to signed employment contracts</li>
+              <li>Create termination benefit records with PENDING status for review</li>
+            </ul>
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> After processing, termination/resignation benefits will be
-              created in PENDING status. You will need to review and approve
-              them before they can be included in payroll runs.
+              <strong>Note:</strong> After processing, termination/resignation benefits will be created in PENDING status. You will need to review and approve them before they can be included in payroll runs.
             </p>
           </div>
 
@@ -205,10 +221,11 @@ export default function ProcessTerminationBenefitsPage() {
                 No termination/resignation benefits were processed. This could mean:
               </p>
               <ul className="list-disc list-inside mt-2 text-sm text-gray-600 space-y-1">
-                <li>No employees have approved termination or resignation requests</li>
-                <li>No matching termination/resignation benefit configurations exist</li>
-                <li>Employees are not eligible according to business rules and contracts</li>
-                <li>Benefits have already been processed for existing termination requests</li>
+                <li><strong>No approved requests:</strong> No employees have approved termination or resignation requests</li>
+                <li><strong>No configurations:</strong> No matching termination/resignation benefit configurations exist or are approved</li>
+                <li><strong>Business rules:</strong> Employees are not eligible according to business rules</li>
+                <li><strong>Contract terms:</strong> Employees do not meet eligibility requirements in their signed contracts</li>
+                <li><strong>Already processed:</strong> Benefits have already been processed for existing termination/resignation requests</li>
               </ul>
             </div>
           )}

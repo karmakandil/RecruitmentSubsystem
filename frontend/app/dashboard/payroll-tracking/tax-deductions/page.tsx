@@ -19,6 +19,15 @@ interface TaxDeduction {
   taxAmount?: number;
   description?: string;
   status?: string;
+  configurationDetails?: {
+    name?: string;
+    description?: string;
+    rate?: number;
+    status?: string;
+    approvedAt?: string;
+    approvedBy?: string;
+    warning?: string;
+  };
 }
 
 interface TaxDeductionsData {
@@ -163,7 +172,7 @@ export default function TaxDeductionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tax Deductions</h1>
           <p className="text-gray-600 mt-1">
-            Detailed breakdown of tax deductions with applicable laws and rules
+            As an Employee, view detailed tax deductions (income tax, social contributions, etc.) along with the law or rule applied, so you understand how your taxable salary is calculated.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -278,19 +287,55 @@ export default function TaxDeductionsPage() {
 
                     {/* Law/Rule Information */}
                     <div className="mt-4 pt-4 border-t border-red-200">
-                      <p className="text-xs font-medium text-gray-700 mb-2">Applicable Rule/Law</p>
+                      <p className="text-xs font-medium text-gray-700 mb-2">Applicable Law/Rule</p>
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded">
-                        <p className="text-sm text-blue-900">
-                          <span className="font-semibold">Tax Rule:</span> {taxName}
-                        </p>
-                        {tax.description && (
-                          <p className="text-xs text-blue-800 mt-1">{tax.description}</p>
+                        {tax.configurationDetails ? (
+                          <>
+                            <p className="text-sm text-blue-900 mb-2">
+                              <span className="font-semibold">Tax Rule Name:</span> {tax.configurationDetails.name || taxName}
+                            </p>
+                            {tax.configurationDetails.description && (
+                              <div className="mb-2">
+                                <p className="text-xs font-medium text-blue-800 mb-1">Law/Rule Description:</p>
+                                <p className="text-xs text-blue-800 bg-white p-2 rounded border border-blue-100">
+                                  {tax.configurationDetails.description}
+                                </p>
+                              </div>
+                            )}
+                            {tax.description && !tax.configurationDetails.description && (
+                              <p className="text-xs text-blue-800 mt-1">{tax.description}</p>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-blue-200">
+                              <p className="text-xs text-blue-700">
+                                <span className="font-semibold">Status:</span> {tax.configurationDetails.status || 'N/A'}
+                                {tax.configurationDetails.approvedAt && (
+                                  <span className="ml-2">
+                                    • Approved: {formatDate(tax.configurationDetails.approvedAt)}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            {tax.configurationDetails.warning && (
+                              <p className="text-xs text-orange-700 mt-2 bg-orange-50 p-2 rounded border border-orange-200">
+                                ⚠️ {tax.configurationDetails.warning}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-blue-900">
+                              <span className="font-semibold">Tax Rule:</span> {taxName}
+                            </p>
+                            {tax.description && (
+                              <p className="text-xs text-blue-800 mt-1">{tax.description}</p>
+                            )}
+                            <p className="text-xs text-blue-700 mt-2">
+                              This tax deduction is calculated based on approved tax rules and regulations.
+                              The rate of {taxRate}% is applied to your base salary as per company policy
+                              and applicable tax laws.
+                            </p>
+                          </>
                         )}
-                        <p className="text-xs text-blue-700 mt-2">
-                          This tax deduction is calculated based on approved tax rules and regulations.
-                          The rate of {taxRate}% is applied to your base salary as per company policy
-                          and applicable tax laws.
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -326,10 +371,10 @@ export default function TaxDeductionsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">How Tax Deductions Are Calculated</p>
+              <p className="font-semibold text-blue-900 mb-1">Understanding Your Taxable Salary Calculation</p>
               <p className="text-sm text-blue-800 mb-3">
                 Tax deductions are calculated based on your base salary and the applicable tax rates
-                defined in the company's tax rules. Here's how it works:
+                defined in approved tax rules. Each tax deduction shows the law or rule applied so you understand how your taxable salary is calculated:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
@@ -338,19 +383,23 @@ export default function TaxDeductionsPage() {
                 </li>
                 <li>
                   <strong>Tax Rate:</strong> Each tax type has a specific rate (percentage) that is
-                  applied to your base salary.
+                  applied to your base salary, as defined in the approved tax rule.
                 </li>
                 <li>
                   <strong>Formula:</strong> Tax Amount = Base Salary × Tax Rate (%)
                 </li>
                 <li>
+                  <strong>Law/Rule Applied:</strong> Each tax deduction is linked to an approved tax rule that specifies the applicable law, regulation, or company policy. The rule description explains the legal basis for the deduction.
+                </li>
+                <li>
                   <strong>Tax Types:</strong> Common tax deductions include income tax, social security
-                  contributions, health insurance, and other statutory deductions.
+                  contributions (pension, health insurance, unemployment), and other statutory deductions required by law.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
                 <strong>Note:</strong> Tax rules and rates are determined by applicable laws and
-                company policies. If you have questions about specific tax deductions, please contact
+                company policies. The law/rule description for each tax deduction explains the legal basis.
+                If you have questions about specific tax deductions or how your taxable salary is calculated, please contact
                 HR or Payroll department.
               </p>
             </div>

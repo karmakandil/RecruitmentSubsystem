@@ -142,7 +142,7 @@ export default function TransportationAllowancePage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Transportation Allowance</h1>
           <p className="text-gray-600 mt-1">
-            View your commuting and transportation compensation
+            As an Employee, view transportation or commuting compensation so you know your travel-related costs are covered.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -290,23 +290,23 @@ export default function TransportationAllowancePage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-green-900 mb-1">About Transportation Allowance</p>
+              <p className="font-semibold text-green-900 mb-1">About Transportation & Commuting Compensation</p>
               <p className="text-sm text-green-800 mb-2">
                 Transportation allowance is compensation provided to cover your commuting and travel-related costs.
-                This amount is included in your payslip as part of your earnings.
+                This amount is included in your payslip as part of your earnings, so you know your travel-related costs are covered.
               </p>
               <ul className="text-sm text-green-800 list-disc list-inside space-y-1">
                 <li>
-                  Transportation allowance helps cover costs such as fuel, public transportation, parking, or other commuting expenses.
+                  <strong>Coverage:</strong> Transportation allowance helps cover costs such as fuel, public transportation, parking, vehicle maintenance, or other commuting expenses.
                 </li>
                 <li>
-                  The allowance amount is determined by your employment contract and company policies.
+                  <strong>Contract-Based:</strong> The allowance amount is determined by your employment contract and company policies.
                 </li>
                 <li>
-                  This compensation is included in your gross salary and may be subject to taxes.
+                  <strong>Tax Implications:</strong> This compensation is included in your gross salary and may be subject to taxes depending on local regulations.
                 </li>
                 <li>
-                  If you have questions about your transportation allowance, please contact HR or Payroll department.
+                  <strong>Questions:</strong> If you have questions about your transportation allowance or believe you should receive compensation, please contact HR or Payroll department.
                 </li>
               </ul>
             </div>

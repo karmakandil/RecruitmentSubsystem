@@ -233,7 +233,7 @@ export default function InsuranceDeductionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Insurance Deductions</h1>
           <p className="text-gray-600 mt-1">
-            Itemized breakdown of insurance contributions and protections
+            As an Employee, view insurance deductions (health, pension, unemployment, etc.) itemized, so you know what protections are covered by your contributions.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -433,38 +433,39 @@ export default function InsuranceDeductionsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Insurance Deductions</p>
+              <p className="font-semibold text-blue-900 mb-1">What Protections Are Covered by Your Contributions</p>
               <p className="text-sm text-blue-800 mb-3">
-                Insurance deductions are contributions you make toward various insurance protections.
-                These deductions provide you with important benefits and coverage:
+                Your insurance deductions are contributions you make toward various insurance protections.
+                These itemized deductions show exactly what protections are covered by your contributions:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
                   <strong>Health Insurance:</strong> Covers medical expenses, doctor visits, hospital stays,
-                  and prescription medications.
+                  and prescription medications. Your contribution ensures you have access to healthcare services.
                 </li>
                 <li>
                   <strong>Pension/Retirement:</strong> Builds your retirement savings and provides pension
-                  benefits upon retirement.
+                  benefits upon retirement. Your contributions secure your financial future.
                 </li>
                 <li>
                   <strong>Unemployment Insurance:</strong> Provides financial support if you become unemployed
-                  through no fault of your own.
+                  through no fault of your own. Your contributions protect you during job transitions.
                 </li>
                 <li>
                   <strong>Disability Insurance:</strong> Provides income replacement if you become disabled
-                  and unable to work.
+                  and unable to work. Your contributions ensure financial security during disability.
                 </li>
                 <li>
                   <strong>Social Security:</strong> Provides retirement, disability, and survivor benefits
-                  as part of the social security system.
+                  as part of the social security system. Your contributions support the social safety net.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Your employer may also contribute to these insurance programs.
+                <strong>Understanding Your Contributions:</strong> Your employer may also contribute to these insurance programs.
                 Insurance deductions are calculated as a percentage of your base salary and are subject to
-                salary brackets defined in the insurance configuration. If you have questions about your
-                insurance coverage, please contact HR or Payroll department.
+                salary brackets defined in the insurance configuration. Each itemized deduction shows the specific
+                protection you receive in exchange for your contribution. If you have questions about your
+                insurance coverage or what protections are included, please contact HR or Payroll department.
               </p>
             </div>
           </div>

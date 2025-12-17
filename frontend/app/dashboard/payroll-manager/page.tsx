@@ -266,7 +266,7 @@ export default function PayrollManagerDashboardPage() {
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/manager-approval"
+                href="/dashboard/payroll-execution/manager-approval?view=pending"
                 className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
               >
                 View Pending Approvals →
@@ -283,7 +283,7 @@ export default function PayrollManagerDashboardPage() {
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/manager-approval"
+                href="/dashboard/payroll-execution/manager-approval?view=pending"
                 className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
               >
                 Review & Approve →
@@ -300,7 +300,7 @@ export default function PayrollManagerDashboardPage() {
             </CardHeader>
             <CardContent>
               <Link
-                href="/dashboard/payroll-execution/approval/manager/history"
+                href="/dashboard/payroll-execution/manager-approval?view=history"
                 className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
               >
                 View History →

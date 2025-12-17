@@ -196,7 +196,7 @@ export default function ApprovedDisputesPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Approved Disputes</h1>
           <p className="text-gray-600 mt-1">
-            Disputes that are approved and ready for finance adjustments/refunds
+            As Finance staff, view and get notified with approved disputes, so that adjustments can be done.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/finance")}>
@@ -253,6 +253,7 @@ export default function ApprovedDisputesPage() {
                       variant="primary" 
                       size="sm" 
                       onClick={() => openRefundModal(dispute)}
+                      title="Generate refund for this approved dispute. Refund will have status 'Pending' until executed in payroll cycle."
                     >
                       Generate Refund
                     </Button>
@@ -291,14 +292,26 @@ export default function ApprovedDisputesPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">Notifications</p>
+              <p className="font-semibold text-blue-900 mb-1">View and Get Notified with Approved Disputes</p>
               <p className="text-sm text-blue-800 mb-2">
-                Hook this list to notifications (email or in-app) when a dispute moves to "Approved"
-                so finance can process adjustments promptly.
+                You will receive notifications when disputes are approved by the Payroll Manager. The notification system automatically alerts you when a dispute status changes to "Approved" so you can process adjustments promptly.
               </p>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+                <li>
+                  <strong>Automatic Notifications:</strong> When a Payroll Manager confirms a dispute approval, you will receive a notification with the dispute details.
+                </li>
+                <li>
+                  <strong>View Approved Disputes:</strong> All approved disputes appear in this list, sorted by most recently approved.
+                </li>
+                <li>
+                  <strong>Generate Refunds:</strong> As Finance staff, generate refunds for disputes on approval. Refunds will have status "Pending" until executed in the payroll cycle.
+                </li>
+                <li>
+                  <strong>Payroll Integration:</strong> Pending refunds are automatically included in the next payroll cycle calculation and added to the employee's net pay.
+                </li>
+              </ul>
               <p className="text-sm text-blue-800">
-                Suggested flow: when status changes to Approved → emit event/notification to finance →
-                link directly here to process refunds or adjustments.
+                <strong>Workflow:</strong> Payroll Manager confirms approval → You receive notification → View dispute here → Generate refund for adjustments
               </p>
             </div>
           </div>
@@ -390,8 +403,10 @@ export default function ApprovedDisputesPage() {
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-800">
-                <strong>Note:</strong> The refund will be created with status "Pending" and will be
-                automatically included in the next payroll cycle when it is executed.
+                <strong>Refund Status:</strong> The refund will be created with status "Pending" and will remain pending until it is executed in the payroll cycle. Once the payroll cycle is executed, the refund status will be updated to "Paid".
+              </p>
+              <p className="text-xs text-yellow-800 mt-2">
+                <strong>Payroll Integration:</strong> Pending refunds are automatically included in the next payroll cycle calculation and will be added to the employee's net pay.
               </p>
             </div>
           </div>

@@ -571,9 +571,46 @@ export default function CalculatePayrollPage() {
                     <span className="font-bold text-lg text-gray-900">Net Salary</span>
                     <span className="font-bold text-lg text-blue-600">{formatCurrency(result.netSalary)}</span>
                   </div>
-                  <div className="flex justify-between items-center pt-2 border-t-2 border-blue-300">
-                    <span className="font-bold text-xl text-gray-900">Net Pay</span>
-                    <span className="font-bold text-xl text-blue-700">{formatCurrency(result.netPay)}</span>
+                  
+                  {/* Net Pay Calculation with Penalties and Refunds */}
+                  <div className="pt-2 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">Net Salary</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(result.netSalary)}</span>
+                    </div>
+                    {breakdown ? (
+                      <>
+                        {(breakdown.timeManagementPenalties > 0 || breakdown.unpaidLeavePenalties > 0) && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700">
+                              Less: Penalties (missing working hours/days)
+                            </span>
+                            <span className="font-medium text-red-600">
+                              -{formatCurrency((breakdown.timeManagementPenalties || 0) + (breakdown.unpaidLeavePenalties || 0))}
+                            </span>
+                          </div>
+                        )}
+                        {breakdown.refunds && breakdown.refunds > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700">Add: Refunds (if available)</span>
+                            <span className="font-medium text-green-600">
+                              +{formatCurrency(breakdown.refunds)}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-xs text-gray-500 italic">
+                        Penalties and refunds are included in the net pay calculation but detailed breakdown is not available.
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-2 border-t-2 border-blue-300">
+                      <span className="font-bold text-xl text-gray-900">Net Pay</span>
+                      <span className="font-bold text-xl text-blue-700">{formatCurrency(result.netPay)}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      <strong>Formula:</strong> Net Pay = Net Salary - Penalties (missing working hours/days) + Refunds (if available)
+                    </p>
                   </div>
                 </div>
               </div>
@@ -608,9 +645,9 @@ export default function CalculatePayrollPage() {
                     <li>Base salary fetched from PayGrade configuration (unless overridden)</li>
                     <li>Allowances calculated from approved allowance configurations</li>
                     <li>Taxes and insurance calculated as percentages of base salary</li>
-                    <li>Penalties calculated from time management and unpaid leave records</li>
-                    <li>Refunds included from approved claims and disputes</li>
-                    <li>Net Pay = Net Salary - Penalties + Refunds</li>
+                    <li>Penalties calculated from missing working hours/days (time management and unpaid leave records)</li>
+                    <li>Refunds included from approved claims and disputes (if available)</li>
+                    <li><strong>Net Pay Formula:</strong> Net Pay = Net Salary - Penalties (missing working hours/days) + Refunds (if available)</li>
                   </ul>
                 </div>
               </div>

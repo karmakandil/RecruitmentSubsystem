@@ -1002,6 +1002,17 @@ export class PayrollTrackingService {
         'payslipId',
       );
       
+      // Security: Verify that the payslip belongs to the employee
+      const payslip = await this.payslipModel
+        .findOne({ _id: payslipId, employeeId })
+        .exec();
+      
+      if (!payslip) {
+        throw new NotFoundException(
+          `Payslip with ID ${createDisputeDTO.payslipId} not found for employee ${createDisputeDTO.employeeId}. You can only dispute your own payslips.`,
+        );
+      }
+      
       const disputeId = await this.generateDisputeId();
       const newDispute = new this.disputeModel({
         ...createDisputeDTO,
@@ -3482,14 +3493,20 @@ export class PayrollTrackingService {
         throw new NotFoundException('No payslip found for this employee');
       }
 
+      // Enrich tax deductions with full tax rule details (including laws/rules from description)
+      const taxDeductions = payslip.deductionsDetails?.taxes || [];
+      const enrichedTaxDeductions = await Promise.all(
+        taxDeductions.map((tax: any) => this.enrichTaxDeductionWithConfiguration(tax)),
+      );
+
       return {
         payslipId: payslip._id,
         payrollPeriod: payslip.payrollRunId,
-        taxDeductions: payslip.deductionsDetails?.taxes || [],
-        totalTaxDeductions: payslip.deductionsDetails?.taxes?.reduce(
-          (sum: number, tax: any) => sum + (tax.amount || 0),
+        taxDeductions: enrichedTaxDeductions,
+        totalTaxDeductions: enrichedTaxDeductions.reduce(
+          (sum: number, tax: any) => sum + (tax.amount || tax.taxAmount || 0),
           0,
-        ) || 0,
+        ),
       };
     } catch (error: any) {
       if (

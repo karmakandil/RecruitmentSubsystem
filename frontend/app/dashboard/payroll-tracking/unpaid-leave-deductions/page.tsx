@@ -181,7 +181,7 @@ export default function UnpaidLeaveDeductionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Unpaid Leave Deductions</h1>
           <p className="text-gray-600 mt-1">
-            View how unpaid leave days affect your salary
+            As an Employee, view deductions for unpaid leave days, so you understand how your time off affects your salary.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -410,33 +410,34 @@ export default function UnpaidLeaveDeductionsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Unpaid Leave Deductions</p>
+              <p className="font-semibold text-blue-900 mb-1">How Your Time Off Affects Your Salary</p>
               <p className="text-sm text-blue-800 mb-3">
-                Salary deductions are calculated for unpaid leave days based on the following:
+                Understanding how unpaid leave days result in salary deductions helps you plan your time off. Here's how it works:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
-                  <strong>Unpaid Leave Types:</strong> Leave types marked as "unpaid" will result in
-                  salary deductions for each day taken.
+                  <strong>Unpaid Leave Days:</strong> When you take leave that is marked as "unpaid", each day you're absent results in a salary deduction. This is why part of your salary may be reduced.
                 </li>
                 <li>
-                  <strong>Calculation:</strong> Deduction = Number of unpaid leave days × Daily salary
+                  <strong>Calculation Formula:</strong> Deduction Amount = Number of unpaid leave days × Daily salary. The more unpaid leave days you take, the greater the deduction.
                 </li>
                 <li>
-                  <strong>Daily Salary:</strong> Calculated as monthly base salary ÷ 30 days
+                  <strong>Daily Salary Calculation:</strong> Your daily salary is calculated as your monthly base salary ÷ 30 days. This daily rate is used to determine how much is deducted per unpaid leave day.
                 </li>
                 <li>
-                  <strong>Payroll Period:</strong> Only unpaid leave days within the payroll period
-                  are included in the deduction calculation.
+                  <strong>Payroll Period Impact:</strong> Only unpaid leave days that fall within the current payroll period are included in the deduction calculation. Leave days outside the period won't affect this period's salary.
                 </li>
                 <li>
-                  <strong>Deductible Leave:</strong> Leave types marked as "deductible" may have
-                  additional deduction rules applied.
+                  <strong>Leave Type Matters:</strong> Leave types marked as "unpaid" or "deductible" will result in salary deductions. Paid leave types (like vacation or sick leave) do not result in deductions.
+                </li>
+                <li>
+                  <strong>Time Off Planning:</strong> Understanding these deductions helps you plan your time off. If you need to take unpaid leave, you'll know exactly how it will affect your salary.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> If you have questions about unpaid leave deductions or believe
-                there is an error, please contact HR or your supervisor for clarification.
+                <strong>Note:</strong> Each unpaid leave request shows the specific deduction amount calculated for that leave period. 
+                The total deduction is the sum of all unpaid leave days within the payroll period. If you have questions about unpaid leave deductions 
+                or believe there is an error, please contact HR or your supervisor for clarification.
               </p>
             </div>
           </div>

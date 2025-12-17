@@ -188,7 +188,7 @@ export default function EmployerContributionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Employer Contributions</h1>
           <p className="text-gray-600 mt-1">
-            View your employer contributions for insurance, pension, and other benefits
+            As an Employee, view employer contributions (insurance, pension, allowances) so you know the full value of your benefits package.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -380,32 +380,32 @@ export default function EmployerContributionsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Employer Contributions</p>
+              <p className="font-semibold text-blue-900 mb-1">Your Full Benefits Package</p>
               <p className="text-sm text-blue-800 mb-3">
-                Employer contributions represent the amount your employer pays on your behalf for various benefits:
+                Employer contributions show the full value of your benefits package. Your employer pays these amounts on your behalf for:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
                 <li>
-                  <strong>Insurance Benefits:</strong> Health, dental, vision, life, and disability insurance
-                  where your employer shares the cost.
+                  <strong>Insurance (Health, Dental, Vision, Life, Disability):</strong> Your employer shares the cost of insurance premiums, making comprehensive coverage more affordable.
                 </li>
                 <li>
-                  <strong>Retirement Benefits:</strong> Pension and retirement plan contributions made by
-                  your employer.
+                  <strong>Pension & Retirement Plans:</strong> Your employer contributes to your pension and retirement savings, helping secure your financial future.
                 </li>
                 <li>
-                  <strong>Social Security & Medicare:</strong> Employer contributions to social security and
-                  Medicare programs (if applicable).
+                  <strong>Social Security & Medicare:</strong> Employer contributions to social security and Medicare programs (if applicable in your region).
                 </li>
                 <li>
-                  <strong>Total Coverage:</strong> The combined value of both your contribution and your
-                  employer's contribution.
+                  <strong>Allowances & Other Benefits:</strong> Additional employer contributions for various allowances and benefits as part of your compensation package.
+                </li>
+                <li>
+                  <strong>Total Coverage Value:</strong> The combined value of both your contribution and your employer's contribution shows the total amount invested in your benefits.
                 </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> These contributions are part of your total compensation package
+                <strong>Understanding Your Total Compensation:</strong> These employer contributions are part of your total compensation package
                 and represent additional value beyond your base salary. The employer contribution amount
-                is not deducted from your salary but is paid by your employer on your behalf.
+                is not deducted from your salary but is paid by your employer on your behalf. This helps you understand
+                the full value of your benefits package, including insurance, pension, and allowances.
               </p>
             </div>
           </div>

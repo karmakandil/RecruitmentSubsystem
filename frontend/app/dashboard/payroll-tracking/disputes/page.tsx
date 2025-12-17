@@ -34,10 +34,31 @@ interface Dispute {
   updatedAt?: string;
 }
 
+interface Refund {
+  _id: string;
+  claimId?: {
+    _id: string;
+  };
+  disputeId?: {
+    _id: string;
+  };
+  refundDetails: {
+    description: string;
+    amount: number;
+  };
+  status: "pending" | "paid";
+  paidInPayrollRunId?: {
+    _id: string;
+    runId: string;
+    payrollPeriod: string;
+  };
+}
+
 export default function DisputesPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,13 +84,21 @@ export default function DisputesPage() {
       try {
         let data;
         
+        let refundsData: Refund[] = [];
+        
         // If user is an employee, fetch only their disputes
         if (isEmployee && (user?.id || user?.userId)) {
           const employeeId = user.id || user.userId;
-          data = await payslipsApi.getDisputesByEmployeeId(employeeId!);
+          [data, refundsData] = await Promise.all([
+            payslipsApi.getDisputesByEmployeeId(employeeId!),
+            payslipsApi.getRefundsByEmployeeId(employeeId!),
+          ]);
         } else if (isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) {
           // For payroll staff, fetch all disputes (regardless of status)
-          data = await payslipsApi.getAllDisputes();
+          [data, refundsData] = await Promise.all([
+            payslipsApi.getAllDisputes(),
+            payslipsApi.getAllRefunds(),
+          ]);
         } else {
           setError("User ID not found");
           setLoading(false);
@@ -77,6 +106,7 @@ export default function DisputesPage() {
         }
         
         setDisputes(Array.isArray(data) ? data : []);
+        setRefunds(Array.isArray(refundsData) ? refundsData : []);
       } catch (err: any) {
         // If error is 403 and user is payroll staff, show empty state instead of error
         if ((isPayrollSpecialist || isPayrollManager || isFinanceStaff || isSystemAdmin) && err.message?.includes('403')) {
@@ -139,6 +169,46 @@ export default function DisputesPage() {
     }
   };
 
+  const getPaymentStatusBadge = (status: string) => {
+    if (status === "paid") {
+      return (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+          Paid
+        </span>
+      );
+    } else {
+      return (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800 border border-orange-300">
+          Pending Payment
+        </span>
+      );
+    }
+  };
+
+  const getPaymentStatus = (dispute: Dispute) => {
+    const refund = refunds.find(
+      (r) => r.disputeId?._id === dispute._id
+    );
+    
+    if (!refund) {
+      // Check if approved but no refund yet
+      if (dispute.status === "approved") {
+        return { status: "pending", message: "Awaiting refund generation" };
+      }
+      return { status: "not_applicable", message: "Not approved yet" };
+    }
+    
+    if (refund.status === "paid") {
+      return {
+        status: "paid",
+        message: `Paid in ${refund.paidInPayrollRunId?.runId || "payroll run"}`,
+        refund,
+      };
+    }
+    
+    return { status: "pending", message: "Pending payment in next payroll", refund };
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-6 py-8">
@@ -181,7 +251,7 @@ export default function DisputesPage() {
           </h1>
           <p className="text-gray-600 mt-1">
             {isEmployee 
-              ? "Track and manage your payroll disputes"
+              ? "As an Employee, track the approval and payment status of your claims and disputes, so that you know when you'll be reimbursed."
               : "View and manage all payroll disputes"}
           </p>
         </div>
@@ -220,6 +290,10 @@ export default function DisputesPage() {
                         {dispute.disputeId}
                       </h3>
                       {getStatusBadge(dispute.status)}
+                      {(() => {
+                        const paymentStatus = getPaymentStatus(dispute);
+                        return paymentStatus.status !== "not_applicable" && getPaymentStatusBadge(paymentStatus.status);
+                      })()}
                     </div>
                     <p className="text-gray-700 mb-3">{dispute.description}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
@@ -235,6 +309,9 @@ export default function DisputesPage() {
                               month: "long",
                             })
                           : "N/A"}
+                      </div>
+                      <div>
+                        <span className="font-medium">Payment Status:</span> {getPaymentStatus(dispute).message}
                       </div>
                       <div>
                         <span className="font-medium">Created:</span> {formatDate(dispute.createdAt)}

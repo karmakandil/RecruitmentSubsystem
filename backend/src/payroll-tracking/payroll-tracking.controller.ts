@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
   Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { PayrollTrackingService } from './payroll-tracking.service';
@@ -51,6 +52,19 @@ export class PayrollTrackingController {
     @Body() createClaimDTO: CreateClaimDTO,
     @CurrentUser() user: any,
   ) {
+    // Security: Employees can only create claims for themselves
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only create claims for themselves
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== createClaimDTO.employeeId.toString()) {
+        throw new ForbiddenException('You can only submit expense claims for yourself');
+      }
+    }
+
     return await this.payrollTrackingService.createClaim(createClaimDTO, user.userId);
   }
 
@@ -172,6 +186,19 @@ export class PayrollTrackingController {
     @Body() createDisputeDTO: CreateDisputeDTO,
     @CurrentUser() user: any,
   ) {
+    // Security: Employees can only create disputes for their own payslips
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only create disputes for their own payslips
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== createDisputeDTO.employeeId.toString()) {
+        throw new ForbiddenException('You can only create disputes for your own payslips');
+      }
+    }
+
     return await this.payrollTrackingService.createDispute(createDisputeDTO, user.userId);
   }
 
@@ -412,6 +439,25 @@ export class PayrollTrackingController {
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
   ) {
+    // Security: Employees can only view their own payslips
+    // Payroll Specialists, Managers, Finance Staff, and System Admins can view any employee's payslips
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.some((role: string) => 
+      role === SystemRole.PAYROLL_SPECIALIST ||
+      role === SystemRole.PAYROLL_MANAGER ||
+      role === SystemRole.FINANCE_STAFF ||
+      role === SystemRole.SYSTEM_ADMIN
+    );
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own payslips
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own payslips');
+      }
+    }
+
     return await this.payrollTrackingService.getPayslipsByEmployeeId(employeeId);
   }
 
@@ -423,6 +469,19 @@ export class PayrollTrackingController {
     @Param('payslipId') payslipId: string,
     @CurrentUser() user: any,
   ) {
+    // Security: Employees can only view their own payslips
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own payslips
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own payslips');
+      }
+    }
+
     return await this.payrollTrackingService.getPayslipById(payslipId, employeeId);
   }
 
@@ -435,6 +494,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Res() res: Response,
   ) {
+    // Security: Employees can only download their own payslips
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own payslips
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only download your own payslips');
+      }
+    }
+
     const pdfBuffer = await this.payrollTrackingService.downloadPayslipAsPDF(
       payslipId,
       employeeId,
@@ -455,6 +527,19 @@ export class PayrollTrackingController {
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
   ) {
+    // Security: Employees can only view their own base salary
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own base salary
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own base salary');
+      }
+    }
+
     return await this.payrollTrackingService.getEmployeeBaseSalary(employeeId);
   }
 
@@ -466,6 +551,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payrollRunId') payrollRunId?: string,
   ) {
+    // Security: Employees can only view their own leave encashment
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own leave encashment
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own leave encashment information');
+      }
+    }
+
     return await this.payrollTrackingService.getLeaveEncashmentByEmployeeId(
       employeeId,
       payrollRunId,
@@ -480,6 +578,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own transportation allowance
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own transportation allowance
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own transportation allowance');
+      }
+    }
+
     return await this.payrollTrackingService.getTransportationAllowance(
       employeeId,
       payslipId,
@@ -494,6 +605,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own tax deductions
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own tax deductions
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own tax deductions');
+      }
+    }
+
     return await this.payrollTrackingService.getTaxDeductions(employeeId, payslipId);
   }
 
@@ -505,6 +629,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own insurance deductions
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own insurance deductions
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own insurance deductions');
+      }
+    }
+
     return await this.payrollTrackingService.getInsuranceDeductions(
       employeeId,
       payslipId,
@@ -519,6 +656,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own misconduct deductions
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own misconduct deductions
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own misconduct deductions');
+      }
+    }
+
     return await this.payrollTrackingService.getMisconductDeductions(
       employeeId,
       payslipId,
@@ -533,6 +683,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own unpaid leave deductions
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own unpaid leave deductions
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own unpaid leave deductions');
+      }
+    }
+
     return await this.payrollTrackingService.getUnpaidLeaveDeductions(
       employeeId,
       payslipId,
@@ -547,6 +710,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('limit') limit?: string,
   ) {
+    // Security: Employees can only view their own salary history
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own salary history
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own salary history');
+      }
+    }
+
     return await this.payrollTrackingService.getSalaryHistory(
       employeeId,
       limit ? parseInt(limit, 10) : 12,
@@ -561,6 +737,19 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('payslipId') payslipId?: string,
   ) {
+    // Security: Employees can only view their own employer contributions
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isAdmin = userRoles.includes(SystemRole.SYSTEM_ADMIN);
+
+    if (isEmployee && !isAdmin) {
+      // Employee can only access their own employer contributions
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own employer contributions');
+      }
+    }
+
     return await this.payrollTrackingService.getEmployerContributions(
       employeeId,
       payslipId,
@@ -575,6 +764,26 @@ export class PayrollTrackingController {
     @CurrentUser() user: any,
     @Query('year') year?: string,
   ) {
+    // Security: Employees can only view their own tax documents
+    // Staff roles (Payroll Specialist, Payroll Manager, Finance Staff, System Admin) can view any employee's tax documents
+    const userRoles = user?.roles || [];
+    const isEmployee = userRoles.includes(SystemRole.DEPARTMENT_EMPLOYEE);
+    const isStaff = userRoles.some(
+      (role) =>
+        role === SystemRole.PAYROLL_SPECIALIST ||
+        role === SystemRole.PAYROLL_MANAGER ||
+        role === SystemRole.FINANCE_STAFF ||
+        role === SystemRole.SYSTEM_ADMIN
+    );
+
+    if (isEmployee && !isStaff) {
+      // Employee can only access their own tax documents
+      const userEmployeeId = user?.id || user?.userId;
+      if (userEmployeeId && userEmployeeId.toString() !== employeeId.toString()) {
+        throw new ForbiddenException('You can only view your own tax documents');
+      }
+    }
+
     return await this.payrollTrackingService.getTaxDocuments(
       employeeId,
       year ? parseInt(year, 10) : undefined,

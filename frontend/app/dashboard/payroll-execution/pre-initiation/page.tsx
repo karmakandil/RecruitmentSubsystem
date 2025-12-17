@@ -69,32 +69,35 @@ export default function PreInitiationDashboard() {
     );
   }
 
-  const allComplete = status.allReviewsComplete || false;
-  
   // Calculate progress based on completion of each category (not counts)
   // Each category contributes 1 point if complete, 0 if not
   let completedCategories = 0;
   
   // Signing bonuses are complete if there are no pending items
-  if (status.signingBonuses.pending === 0) {
+  const signingBonusesComplete = status.signingBonuses.pending === 0;
+  if (signingBonusesComplete) {
     completedCategories++;
   }
   
   // Termination benefits are complete if there are no pending items
-  if (status.terminationBenefits.pending === 0) {
+  const terminationBenefitsComplete = status.terminationBenefits.pending === 0;
+  if (terminationBenefitsComplete) {
     completedCategories++;
   }
   
-      // Payroll period is complete if approved
-      // Check both backend status and frontend localStorage
-      const storedPeriod = localStorage.getItem("approved_payroll_period");
-      const periodApproved = status.payrollPeriod.status === "approved" || !!storedPeriod;
-      if (periodApproved) {
-        completedCategories++;
-      }
+  // Payroll period is complete if approved
+  // Check both backend status and frontend localStorage
+  const storedPeriod = typeof window !== "undefined" ? localStorage.getItem("approved_payroll_period") : null;
+  const periodApproved = status.payrollPeriod.status === "approved" || !!storedPeriod;
+  if (periodApproved) {
+    completedCategories++;
+  }
   
   // Calculate percentage: (completed categories / total categories) * 100
   const progressPercentage = (completedCategories / 3) * 100;
+  
+  // All complete if all 3 categories are complete (100% progress) OR backend says allReviewsComplete
+  const allComplete = status.allReviewsComplete || progressPercentage === 100;
 
   return (
     <div className="container mx-auto px-4 py-8">

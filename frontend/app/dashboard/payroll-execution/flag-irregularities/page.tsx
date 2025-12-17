@@ -243,8 +243,7 @@ export default function FlagIrregularitiesPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Flag Irregularities</h1>
         <p className="text-gray-600 mt-1">
-          Detect and flag payroll irregularities such as salary spikes, missing
-          bank accounts, and negative net pay
+          As a Payroll Specialist, the system automatically flags irregularities (e.g., sudden salary spikes, missing bank accounts, negative net pay) so you can take required action. Review and manage flagged irregularities here.
         </p>
       </div>
 
@@ -268,7 +267,7 @@ export default function FlagIrregularitiesPage() {
         <CardHeader>
           <CardTitle>Select Payroll Run</CardTitle>
           <CardDescription>
-            Choose a payroll run to review and flag irregularities
+            Choose a payroll run to review and flag irregularities. The system automatically flags irregularities (salary spikes, missing bank accounts, negative net pay) during draft generation.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -310,42 +309,49 @@ export default function FlagIrregularitiesPage() {
 
       {/* Actions */}
       {selectedPayrollRunId && (
-        <div className="mb-6 flex gap-4">
-          <Button
-            onClick={handleAutoDetect}
-            disabled={detecting}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {detecting ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Detecting...
-              </>
-            ) : (
-              <>
-                <Search className="h-4 w-4 mr-2" />
-                Auto-Detect Irregularities
-              </>
-            )}
-          </Button>
+        <>
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-800">
+              <strong>ℹ️ Automatic Detection:</strong> The system automatically flags irregularities (salary spikes, missing bank accounts, negative net pay) during draft generation. Use "Auto-Detect" to scan for any missed irregularities or manually flag specific issues.
+            </p>
+          </div>
+          <div className="mb-6 flex gap-4">
+            <Button
+              onClick={handleAutoDetect}
+              disabled={detecting}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {detecting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Detecting...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Auto-Detect Irregularities
+                </>
+              )}
+            </Button>
 
-          <Button
-            onClick={() => setShowManualForm(!showManualForm)}
-            className="bg-orange-600 hover:bg-orange-700 text-white"
-          >
-            <Flag className="h-4 w-4 mr-2" />
-            {showManualForm ? "Cancel Manual Flag" : "Manually Flag Irregularity"}
-          </Button>
+            <Button
+              onClick={() => setShowManualForm(!showManualForm)}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              <Flag className="h-4 w-4 mr-2" />
+              {showManualForm ? "Cancel Manual Flag" : "Manually Flag Irregularity"}
+            </Button>
 
-          <Button
-            onClick={fetchIrregularities}
-            disabled={loading}
-            className="bg-gray-600 hover:bg-gray-700 text-white"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh List
-          </Button>
-        </div>
+            <Button
+              onClick={fetchIrregularities}
+              disabled={loading}
+              className="bg-gray-600 hover:bg-gray-700 text-white"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh List
+            </Button>
+          </div>
+        </>
       )}
 
       {/* Manual Flagging Form */}
@@ -432,9 +438,19 @@ export default function FlagIrregularitiesPage() {
             <CardTitle>Detected Irregularities</CardTitle>
             <CardDescription>
               {irregularities.length === 0
-                ? "No irregularities detected yet. Use auto-detect or manually flag issues."
-                : `${irregularities.length} irregularit${irregularities.length === 1 ? "y" : "ies"} found`}
+                ? "No irregularities detected yet. The system automatically flags irregularities during draft generation. Use auto-detect to scan for any missed issues or manually flag specific problems."
+                : `${irregularities.length} irregularit${irregularities.length === 1 ? "y" : "ies"} found. Review each irregularity and take required action.`}
             </CardDescription>
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <p className="text-sm text-yellow-800 font-semibold mb-2">
+                Types of irregularities automatically detected:
+              </p>
+              <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
+                <li><strong>Salary Spikes:</strong> Sudden increases in salary compared to previous payroll runs</li>
+                <li><strong>Missing Bank Accounts:</strong> Employees without valid bank account information</li>
+                <li><strong>Negative Net Pay:</strong> Employees with net pay less than zero</li>
+              </ul>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (

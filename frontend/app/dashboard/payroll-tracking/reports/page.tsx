@@ -183,7 +183,7 @@ export default function FinanceReportsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Finance Reports</h1>
           <p className="text-gray-600 mt-1">
-            Generate tax, insurance, and benefits reports for accounting compliance
+            As Finance Staff, generate reports about taxes, insurance contributions, and benefits, so that accounting books are compliant. Also generate month-end and year-end payroll summaries, so that audits and reporting are simplified.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/finance")}>
@@ -195,9 +195,12 @@ export default function FinanceReportsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Report Type</CardTitle>
-            <CardDescription>Select the report to generate</CardDescription>
+            <CardDescription>Select which section to focus on in the comprehensive report</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
+            <p className="text-xs text-gray-600 mb-2">
+              The report includes taxes, insurance contributions, and benefits. Select a type to focus on specific sections.
+            </p>
             <div className="flex flex-col gap-2">
               <Button
                 variant={reportType === "taxes" ? "primary" : "outline"}
@@ -276,7 +279,10 @@ export default function FinanceReportsPage() {
             <CardDescription>Generate or download the report</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-gray-600">{renderDescription()}</p>
+            <p className="text-sm text-gray-600 mb-2">{renderDescription()}</p>
+            <p className="text-xs text-gray-500">
+              <strong>Note:</strong> The generated report includes all three sections (taxes, insurance contributions, and benefits) to ensure accounting books are compliant.
+            </p>
             <div className="space-y-2">
               <div className="flex gap-2">
                 <Button onClick={handleGenerate} className="flex-1" disabled={loading}>
@@ -317,7 +323,7 @@ export default function FinanceReportsPage() {
         <CardHeader>
           <CardTitle>Payroll Summaries</CardTitle>
           <CardDescription>
-            Generate month-end and year-end payroll summaries for audits and reporting
+            As Finance Staff, generate month-end and year-end payroll summaries, so that audits and reporting are simplified.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -434,6 +440,7 @@ export default function FinanceReportsPage() {
           <CardHeader>
             <CardTitle>Tax, Insurance & Benefits Report</CardTitle>
             <CardDescription>
+              Comprehensive report including taxes, insurance contributions, and benefits for accounting compliance. 
               Period: {reportData.period === "month" ? "Month" : "Year"} | 
               {reportData.startDate && ` From: ${formatDate(reportData.startDate)}`}
               {reportData.endDate && ` To: ${formatDate(reportData.endDate)}`}

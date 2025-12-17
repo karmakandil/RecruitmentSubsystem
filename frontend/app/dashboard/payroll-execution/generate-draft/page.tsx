@@ -164,7 +164,7 @@ export default function GenerateDraftPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Generate Draft Payroll Run</h1>
         <p className="text-gray-600 mt-1">
-          As a Payroll Specialist, automatically calculate salaries, allowances, deductions, and contributions based on configured rules. The system handles all calculations automatically - no manual calculations needed.
+          As a Payroll Specialist, the system automatically generates draft payroll runs at the end of each cycle. You only need to review the generated drafts. The system handles all calculations automatically - no manual calculations needed.
         </p>
       </div>
 
@@ -173,7 +173,7 @@ export default function GenerateDraftPage() {
         <CardHeader>
           <CardTitle>Draft Payroll Generation</CardTitle>
           <CardDescription>
-            Configure the payroll period and entity. The system will automatically calculate salaries, allowances, deductions, and contributions for all employees based on configured rules - no manual calculations required.
+            The system automatically generates draft payroll runs at the end of each cycle. Configure the payroll period and entity to manually trigger generation, or let the system generate automatically. All calculations are performed automatically - you only need to review.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -256,6 +256,12 @@ export default function GenerateDraftPage() {
             )}
             <p className="text-xs text-gray-500 mt-1">
               If not selected, the system will automatically find a default payroll manager
+            </p>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-800">
+              <strong>ℹ️ Automatic Generation:</strong> The system automatically generates draft payroll runs at the end of each cycle. This manual generation option is available for on-demand generation or to regenerate drafts. After generation, you only need to review the draft.
             </p>
           </div>
 
@@ -352,21 +358,24 @@ export default function GenerateDraftPage() {
                 <div>
                   <p className="font-semibold text-blue-900 mb-1">Automatic Draft Generation</p>
                   <p className="text-sm text-blue-800 mb-2">
-                    The system has automatically calculated all payroll components based on configured rules. No manual calculations were needed:
+                    The system automatically generates draft payroll runs at the end of each cycle. All payroll components are calculated automatically based on configured rules - you only need to review. No manual calculations were needed:
                   </p>
                   <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                     <li><strong>Salaries:</strong> Calculated base salaries for all active employees</li>
                     <li><strong>Allowances:</strong> Applied configured allowances automatically</li>
                     <li><strong>Deductions:</strong> Calculated deductions based on configured rules</li>
                     <li><strong>Contributions:</strong> Applied tax, insurance, and other contributions automatically</li>
-                    <li>Processed signing bonuses for new hires</li>
-                    <li>Processed termination/resignation benefits</li>
+                    <li><strong>Signing Bonuses:</strong> Automatically processed signing bonuses for new hires</li>
+                    <li><strong>Termination/Resignation Benefits:</strong> Automatically processed benefits upon resignation and termination according to business rules and signed contracts</li>
                     <li>Applied prorated salaries for mid-month hires/terminations</li>
-                    <li>Applied statutory rules (taxes, insurance) based on configured policies</li>
-                    <li>Calculated net pay for all employees</li>
+                    <li><strong>Statutory Rules:</strong> Automatically applied income tax (Tax = % of Base Salary), pension, insurance, and labor law deductions to ensure compliance without manual intervention</li>
+                    <li><strong>Net Pay:</strong> Calculated as Net Salary - Penalties (missing working hours/days) + Refunds (if available)</li>
                     <li>Flagged any exceptions or irregularities</li>
                   </ul>
                   <p className="text-sm text-blue-800 mt-3">
+                    <strong>Automatic Generation:</strong> The system automatically generates draft payroll runs at the end of each cycle. As a Payroll Specialist, you only need to review the generated drafts.
+                  </p>
+                  <p className="text-sm text-blue-800 mt-2">
                     <strong>Next Steps:</strong> Review the draft payroll run, check for exceptions, and send for approval when ready.
                   </p>
                 </div>

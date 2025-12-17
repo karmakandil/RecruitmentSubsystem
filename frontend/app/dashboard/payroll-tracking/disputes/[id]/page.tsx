@@ -414,9 +414,9 @@ export default function DisputeDetailsPage() {
               <p className="font-semibold text-blue-900 mb-1">Dispute Workflow</p>
               <p className="text-sm text-blue-800 mb-3">
                 {isPayrollManager
-                  ? "As a Payroll Manager, you can confirm disputes that have been approved by Payroll Specialists. Once confirmed, they will be forwarded to Finance for processing."
+                  ? "As a Payroll Manager, you can confirm approval of disputes, so that finance staff can be notified. (multi-step approval) Only approved disputes will reach you for confirmation."
                   : isPayrollSpecialist
-                  ? "As a Payroll Specialist, you can approve or reject disputes. Approved disputes will be escalated to the Payroll Manager."
+                  ? "As a Payroll Specialist, you can approve/reject disputes, so that they can be escalated to the Payroll Manager in case of approval."
                   : "Your dispute goes through the following stages:"}
               </p>
               <ol className="text-sm text-blue-800 list-decimal list-inside space-y-1">

@@ -202,7 +202,7 @@ export default function MisconductDeductionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Misconduct & Absenteeism Deductions</h1>
           <p className="text-gray-600 mt-1">
-            View salary deductions due to misconduct or unapproved absenteeism
+            As an Employee, view any salary deductions due to misconduct or unapproved absenteeism (missing days), so you know why part of your salary was reduced.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -456,31 +456,32 @@ export default function MisconductDeductionsPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">⚠️</span>
             <div>
-              <p className="font-semibold text-yellow-900 mb-1">About Misconduct & Absenteeism Deductions</p>
+              <p className="font-semibold text-yellow-900 mb-1">Why Your Salary Was Reduced</p>
               <p className="text-sm text-yellow-800 mb-3">
-                Salary deductions may be applied for the following reasons:
+                Salary deductions are applied for misconduct or unapproved absenteeism. Here's why part of your salary may have been reduced:
               </p>
               <ul className="text-sm text-yellow-800 list-disc list-inside space-y-1 mb-3">
                 <li>
-                  <strong>Missing Hours:</strong> Deduction for hours not worked due to late arrivals,
-                  early leaves, or short time.
+                  <strong>Missing Days (Unapproved Absenteeism):</strong> Deduction for full days not worked without approved leave. This is the most common reason for salary reduction due to absenteeism.
                 </li>
                 <li>
-                  <strong>Missing Days:</strong> Deduction for full days not worked without approved leave.
+                  <strong>Missing Hours:</strong> Deduction for hours not worked due to late arrivals,
+                  early leaves, or short time. These time exceptions result in reduced pay for hours not worked.
                 </li>
                 <li>
                   <strong>Unpaid Leave:</strong> Deduction for leave days taken without approval or
-                  exceeding available leave balance.
+                  exceeding available leave balance. Unapproved leave results in salary reduction.
                 </li>
                 <li>
-                  <strong>Time Exceptions:</strong> Late arrivals, early leaves, short time, and missed
-                  punches may result in deductions based on company policies.
+                  <strong>Time Exceptions (Misconduct):</strong> Late arrivals, early leaves, short time, and missed
+                  punches may result in deductions based on company policies. Repeated time exceptions are considered misconduct.
                 </li>
               </ul>
               <p className="text-sm text-yellow-800">
-                <strong>Note:</strong> If you believe a deduction is incorrect, please contact HR or
-                your supervisor to discuss the matter. Time exceptions are tracked and may impact
-                your salary if they result in unapproved absences or misconduct.
+                <strong>Understanding Your Deductions:</strong> Each deduction shows the specific reason (missing days, missing hours, etc.) and the amount deducted. 
+                The time exceptions section shows all instances that contributed to these deductions. If you believe a deduction is incorrect, 
+                please contact HR or your supervisor to discuss the matter. Time exceptions and unapproved absences are tracked and may impact
+                your salary if they result in misconduct or unapproved absenteeism.
               </p>
             </div>
           </div>

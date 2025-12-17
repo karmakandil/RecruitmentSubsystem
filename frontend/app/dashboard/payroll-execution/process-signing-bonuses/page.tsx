@@ -74,7 +74,7 @@ export default function ProcessSigningBonusesPage() {
           Process Signing Bonuses
         </h1>
         <p className="text-gray-600 mt-1">
-          Automatically process signing bonuses for eligible employees (new hires within the last 30 days with matching position configurations)
+          As a Payroll Specialist, automatically process signing bonuses for new hires. The system automatically detects new hires and processes their signing bonuses based on approved configurations.
         </p>
         <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
@@ -105,24 +105,34 @@ export default function ProcessSigningBonusesPage() {
             Automatic Signing Bonus Processing
           </CardTitle>
           <CardDescription>
-            The system will automatically process signing bonuses for eligible employees.
+            The system automatically processes signing bonuses for new hires. When you trigger processing, the system will:
           </CardDescription>
           <div className="mt-3">
-            <p className="text-sm text-gray-600 mb-2">Process steps:</p>
+            <p className="text-sm text-gray-600 mb-2">Automatic processing steps:</p>
             <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-              <li>Find all employees hired within the last 30 days</li>
-              <li>Match them with approved signing bonus configurations by position</li>
-              <li>Check if they are eligible according to their employment contract</li>
-              <li>Create employee signing bonus records with PENDING status</li>
+              <li><strong>Detect new hires:</strong> Find all employees hired within the last 30 days</li>
+              <li><strong>Match configurations:</strong> Match them with approved signing bonus configurations by position</li>
+              <li><strong>Check eligibility:</strong> Verify eligibility according to their employment contract</li>
+              <li><strong>Create records:</strong> Automatically create employee signing bonus records with PENDING status</li>
             </ul>
+            <p className="text-sm text-gray-600 mt-3">
+              <strong>Note:</strong> Signing bonuses are also automatically processed during payroll draft generation for new hires.
+            </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-800 mb-2">
+              <strong>Automatic Processing:</strong> The system automatically processes signing bonuses for new hires. When you click "Process Signing Bonuses", the system will:
+            </p>
+            <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
+              <li>Automatically detect all employees hired within the last 30 days</li>
+              <li>Match them with approved signing bonus configurations by position</li>
+              <li>Check contract eligibility for signing bonuses</li>
+              <li>Create signing bonus records with PENDING status for review</li>
+            </ul>
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> After processing, signing bonuses will be
-              created in PENDING status. You will need to review and approve
-              them before they can be included in payroll runs.
+              <strong>Note:</strong> After processing, signing bonuses will be created in PENDING status. You will need to review and approve them before they can be included in payroll runs.
             </p>
           </div>
 

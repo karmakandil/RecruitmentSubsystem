@@ -356,7 +356,7 @@ export default function ProcessInitiationPage() {
               ) : (
                 <>
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Process Initiation
+                  Create Payroll Run
                 </>
               )}
             </Button>

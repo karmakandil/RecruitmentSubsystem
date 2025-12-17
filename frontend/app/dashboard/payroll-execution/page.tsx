@@ -177,7 +177,7 @@ export default function PayrollExecutionPage() {
                 <CardTitle>Apply Statutory Rules</CardTitle>
               </div>
               <CardDescription>
-                Auto-apply tax, pension, insurance, and labor law deductions
+                Auto-apply statutory rules (income tax, pension, insurance, labor law deductions) to ensure compliance without manual intervention. Taxes = % of Base Salary, Insurance. Net Salary = Base Salary - Deductions.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -197,7 +197,7 @@ export default function PayrollExecutionPage() {
                 <CardTitle>Generate Draft</CardTitle>
               </div>
               <CardDescription>
-                Automatically calculate salaries, allowances, deductions, and contributions based on configured rules - no manual calculations needed
+                System automatically generates draft payroll runs at the end of each cycle. You only need to review. All calculations are automatic - no manual calculations needed.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -305,7 +305,7 @@ export default function PayrollExecutionPage() {
           Payslip Generation
         </h2>
         <p className="text-gray-600 mb-4">
-          Generate and distribute employee payslips after payroll approval
+          Payslips are automatically generated and distributed after Finance approval (REQ-PY-15) and Payroll Manager lock (REQ-PY-7). Payment status is set to "Paid" since we don't handle bank system integration. Payroll Specialists can view all generated payslips.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="hover:shadow-lg transition-shadow border-2 border-indigo-200">

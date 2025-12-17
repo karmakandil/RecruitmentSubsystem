@@ -159,7 +159,7 @@ export default function LeaveEncashmentPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Leave Encashment</h1>
           <p className="text-gray-600 mt-1">
-            View compensation for unused or encashed leave days
+            As an Employee, view compensation for unused or encashed leave days so you understand how your remaining leave converts into pay.
           </p>
         </div>
         <Button variant="outline" onClick={() => router.push("/dashboard/payroll-tracking")}>
@@ -171,7 +171,7 @@ export default function LeaveEncashmentPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Salary Information</CardTitle>
-          <CardDescription>Base salary used for leave encashment calculations</CardDescription>
+          <CardDescription>Base salary used for leave encashment calculations - understand how your remaining leave converts into pay</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -189,6 +189,9 @@ export default function LeaveEncashmentPage() {
               <p className="text-xs text-gray-500 mt-1">
                 Calculated as monthly salary ÷ 30 days
               </p>
+              <p className="text-xs text-blue-600 mt-1 font-medium">
+                Used to calculate leave encashment
+              </p>
             </div>
             {leaveEncashmentData.payrollPeriod && (
               <div>
@@ -202,6 +205,27 @@ export default function LeaveEncashmentPage() {
               </div>
             )}
           </div>
+          {leaveEncashmentData.encashableLeaves.length > 0 && (
+            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm font-semibold text-green-900 mb-1">
+                Total Potential Encashment Value
+              </p>
+              <p className="text-2xl font-bold text-green-700">
+                {formatCurrency(
+                  leaveEncashmentData.encashableLeaves.reduce(
+                    (sum, leave) => sum + leave.potentialEncashmentAmount,
+                    0
+                  )
+                )}
+              </p>
+              <p className="text-xs text-green-700 mt-1">
+                Based on {leaveEncashmentData.encashableLeaves.reduce(
+                  (sum, leave) => sum + leave.remainingDays,
+                  0
+                )} unused leave days × {formatCurrency(leaveEncashmentData.dailySalary)} per day
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -439,25 +463,32 @@ export default function LeaveEncashmentPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Leave Encashment</p>
+              <p className="font-semibold text-blue-900 mb-1">How Leave Encashment Works</p>
               <p className="text-sm text-blue-800 mb-2">
                 Leave encashment allows you to convert unused leave days into monetary compensation.
                 The calculation is based on your daily salary (monthly base salary ÷ 30 days).
               </p>
-              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+              <p className="text-sm text-blue-800 mb-2">
+                <strong>Calculation Formula:</strong> Remaining Leave Days × Daily Salary = Encashment Amount
+              </p>
+              <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-2">
                 <li>
                   <strong>Potential Encashment:</strong> Shows unused leave days that can be
-                  encashed and their estimated value.
+                  encashed and their estimated value. This helps you understand how your remaining leave converts into pay.
                 </li>
                 <li>
                   <strong>Encashment in Payslip:</strong> Shows leave encashment amounts that have
                   already been included in your payslip.
                 </li>
                 <li>
-                  Not all leave types are encashable. Only leave types marked as encashable can be
-                  converted to compensation.
+                  <strong>Encashable Leave Types:</strong> Not all leave types are encashable. Only leave types marked as encashable can be
+                  converted to compensation. Check the "Encashable" badge to see which leave types qualify.
                 </li>
               </ul>
+              <p className="text-sm text-blue-800 mt-2">
+                <strong>Example:</strong> If you have 5 unused annual leave days and your daily salary is $100, 
+                your potential encashment would be 5 × $100 = $500.
+              </p>
             </div>
           </div>
         </CardContent>

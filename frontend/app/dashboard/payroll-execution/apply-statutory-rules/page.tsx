@@ -108,7 +108,7 @@ export default function ApplyStatutoryRulesPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Apply Statutory Rules</h1>
         <p className="text-gray-600 mt-1">
-          Automatically apply income tax, pension, insurance, and labor law deductions based on configured rules
+          As a Payroll Specialist, auto-apply statutory rules (income tax, pension, insurance, labor law deductions) so that compliance is ensured without manual intervention. Deductions: Taxes = % of Base Salary, Insurance. Net Salary = Base Salary - Deductions.
         </p>
       </div>
 
@@ -117,7 +117,7 @@ export default function ApplyStatutoryRulesPage() {
         <CardHeader>
           <CardTitle>Statutory Rules Application</CardTitle>
           <CardDescription>
-            Select an employee and enter base salary to automatically calculate statutory deductions
+            Select an employee and enter base salary. The system will automatically apply statutory rules (income tax, pension, insurance, labor law deductions) to ensure compliance without manual intervention.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -165,7 +165,7 @@ export default function ApplyStatutoryRulesPage() {
               />
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Base salary is used to calculate taxes and insurance deductions (per BR 35: Taxes = % of Base Salary)
+              Base salary is used to calculate deductions: <strong>Taxes = % of Base Salary</strong>, Insurance based on salary brackets. Net Salary = Base Salary - Deductions (Taxes + Insurance).
             </p>
           </div>
 
@@ -237,7 +237,7 @@ export default function ApplyStatutoryRulesPage() {
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    Calculated as percentage of base salary from approved tax rules (BR 35)
+                    <strong>Tax = % of Base Salary</strong> - Calculated as percentage of base salary from approved tax rules (BR 35)
                   </p>
                 </div>
               </div>
@@ -307,16 +307,21 @@ export default function ApplyStatutoryRulesPage() {
                 <div>
                   <p className="font-semibold text-blue-900 mb-1">Automatic Statutory Rules Application</p>
                   <p className="text-sm text-blue-800 mb-2">
-                    The system automatically applies statutory rules based on configured tax and insurance rules:
+                    The system automatically applies statutory rules to ensure compliance without manual intervention:
                   </p>
                   <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                    <li><strong>Income Tax:</strong> Calculated as a percentage of base salary from approved tax rules</li>
+                    <li><strong>Income Tax:</strong> Tax = % of Base Salary - Calculated as percentage of base salary from approved tax rules</li>
+                    <li><strong>Pension:</strong> Automatically calculated based on approved pension rules and regulations</li>
                     <li><strong>Social/Health Insurance:</strong> Calculated from approved insurance brackets based on base salary range</li>
-                    <li><strong>Compliance:</strong> Only approved tax and insurance rules are applied (BR 35)</li>
+                    <li><strong>Labor Law Deductions:</strong> Automatically applied according to labor law requirements</li>
+                    <li><strong>Compliance:</strong> Only approved tax, insurance, pension, and labor law rules are applied</li>
                     <li><strong>Automatic:</strong> No manual intervention required - all calculations follow configured rules</li>
                   </ul>
                   <p className="text-sm text-blue-800 mt-3">
-                    <strong>Business Rule 35:</strong> Taxes = % of Base Salary, Social/Health Insurance = % of Base Salary (within applicable brackets)
+                    <strong>Deductions Calculation:</strong> Taxes (Tax = % of Base Salary) + Insurance = Total Deductions
+                  </p>
+                  <p className="text-sm text-blue-800 mt-2">
+                    <strong>Net Salary Formula:</strong> Net Salary = Base Salary - Deductions (Taxes + Insurance)
                   </p>
                 </div>
               </div>

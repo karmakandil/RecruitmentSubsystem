@@ -85,7 +85,7 @@ export default function NewClaimPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Submit Expense Claim</h1>
         <p className="text-gray-600 mt-1">
-          Submit a reimbursement claim for business expenses
+          As an Employee, submit expense reimbursement claims, so that you can recover money you spent on business purposes.
         </p>
       </div>
 
@@ -191,24 +191,43 @@ export default function NewClaimPage() {
           <div className="flex items-start gap-3">
             <span className="text-xl">ℹ️</span>
             <div>
-              <p className="font-semibold text-blue-900 mb-1">About Expense Claims</p>
+              <p className="font-semibold text-blue-900 mb-1">Submitting Expense Reimbursement Claims</p>
               <p className="text-sm text-blue-800 mb-3">
-                You can submit claims for business expenses such as:
+                Submit expense reimbursement claims to recover money you spent on business purposes. You can submit claims for:
               </p>
               <ul className="text-sm text-blue-800 list-disc list-inside space-y-1 mb-3">
-                <li><strong>Travel:</strong> Business trips, flights, hotels, car rentals</li>
-                <li><strong>Meals:</strong> Business meals and client entertainment</li>
-                <li><strong>Accommodation:</strong> Hotel stays for business travel</li>
-                <li><strong>Transportation:</strong> Taxis, parking, public transport for business</li>
-                <li><strong>Office Supplies:</strong> Equipment and supplies needed for work</li>
-                <li><strong>Training:</strong> Professional development courses and certifications</li>
-                <li><strong>Medical:</strong> Business-related medical expenses</li>
-                <li><strong>Communication:</strong> Phone bills, internet for business use</li>
-                <li><strong>Other:</strong> Any other legitimate business expenses</li>
+                <li>
+                  <strong>Travel:</strong> Business trips, flights, hotels, car rentals, and other travel expenses incurred for business purposes.
+                </li>
+                <li>
+                  <strong>Meals:</strong> Business meals and client entertainment expenses that are necessary for business operations.
+                </li>
+                <li>
+                  <strong>Accommodation:</strong> Hotel stays and other accommodation expenses for business travel.
+                </li>
+                <li>
+                  <strong>Transportation:</strong> Taxis, parking, public transport, and other transportation costs for business purposes.
+                </li>
+                <li>
+                  <strong>Office Supplies:</strong> Equipment, supplies, and materials needed for work and business operations.
+                </li>
+                <li>
+                  <strong>Training:</strong> Professional development courses, certifications, and training expenses that benefit the business.
+                </li>
+                <li>
+                  <strong>Medical:</strong> Business-related medical expenses (if applicable to your company policy).
+                </li>
+                <li>
+                  <strong>Communication:</strong> Phone bills, internet, and other communication expenses for business use.
+                </li>
+                <li>
+                  <strong>Other:</strong> Any other legitimate business expenses that you need to be reimbursed for.
+                </li>
               </ul>
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Your claim will be reviewed by the payroll team. You'll be notified
-                of the status and any approved amount. Keep receipts and documentation for your records.
+                <strong>Important:</strong> Only expenses incurred for business purposes are eligible for reimbursement. 
+                Your claim will be reviewed by the payroll team, and you'll be notified of the status and any approved amount. 
+                Keep receipts and documentation for your records to support your claim.
               </p>
             </div>
           </div>
