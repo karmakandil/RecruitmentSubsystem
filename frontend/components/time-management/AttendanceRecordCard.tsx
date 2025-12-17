@@ -55,6 +55,8 @@ export function AttendanceRecordCard({ record, onRequestCorrection }: Attendance
         }
     };
 
+    const hasMissedPunch = record.hasMissedPunch || record.status === "INCOMPLETE";
+
     return (
         <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-3">
@@ -64,9 +66,16 @@ export function AttendanceRecordCard({ record, onRequestCorrection }: Attendance
                         {formatWorkHours(record.totalWorkMinutes)} worked
                     </p>
                 </div>
-                <span className={`px-2 py-1 text-xs font-medium rounded border ${getStatusColor(record.status)}`}>
-                    {getStatusLabel(record.status)}
-                </span>
+                <div className="flex items-center gap-2">
+                    {hasMissedPunch && (
+                        <span className="px-2 py-1 text-xs font-medium rounded border border-red-200 bg-red-50 text-red-700">
+                            Missed Punch
+                        </span>
+                    )}
+                    <span className={`px-2 py-1 text-xs font-medium rounded border ${getStatusColor(record.status)}`}>
+                        {getStatusLabel(record.status)}
+                    </span>
+                </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-3">
@@ -80,7 +89,7 @@ export function AttendanceRecordCard({ record, onRequestCorrection }: Attendance
                 </div>
             </div>
 
-            {record.status === "INCOMPLETE" && onRequestCorrection && (
+            {hasMissedPunch && onRequestCorrection && (
                 <button
                     onClick={() => onRequestCorrection(record._id || record.id || "")}
                     className="w-full mt-2 px-3 py-2 text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 rounded border border-blue-200 transition-colors"

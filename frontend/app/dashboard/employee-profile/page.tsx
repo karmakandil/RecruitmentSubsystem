@@ -61,11 +61,11 @@ export default function EmployeeProfileDashboardPage() {
       <div className="container mx-auto px-6 py-8">
         {/* Top Context Section - Enhanced for HR Workspace */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-white-900">
             {isHRWorkspace ? "HR Workspace" : "Employee Profile Dashboard"}
           </h1>
           <div className="mt-2 flex items-center gap-3">
-            <p className="text-gray-600">
+            <p className="text-white-600">
               Welcome, {user?.fullName || "User"}
             </p>
             {isHR && (
@@ -139,26 +139,92 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
-          {/* Time Management Approvals - Show for Department Heads and HR Managers */}
+          {/* Time Management Section - Show for Department Heads and HR Managers */}
           {(isDepartmentHead || isHRManager) && (
-            <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
-              <CardHeader>
-                <CardTitle>Time Management</CardTitle>
-                <CardDescription>
-                  {isDepartmentHead
-                    ? "Review and approve team time exceptions and view team reports"
-                    : "Review and approve time exceptions, view reports, and manage notifications"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Link
-                  href="/dashboard/time-management/approvals"
-                  className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
-                >
-                  Approvals & Reports
-                </Link>
-              </CardContent>
-            </Card>
+            <>
+              {/* Time Management Approvals & Reports - Primary Card */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
+                <CardHeader>
+                  <CardTitle>Time Management</CardTitle>
+                  <CardDescription>
+                    {isDepartmentHead
+                      ? "Manage team attendance, approve requests, and view reports"
+                      : "Review and approve time exceptions, view reports, and manage notifications"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Link
+                    href="/dashboard/time-management/approvals"
+                    className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
+                  >
+                    Approvals & Reports
+                  </Link>
+                  {isDepartmentHead && (
+                    <>
+                      <Link
+                        href="/dashboard/time-management/attendance/corrections"
+                        className="block w-full text-center border border-blue-600 text-blue-600 py-2 px-4 rounded-md hover:bg-blue-50 transition"
+                      >
+                        Review Correction Requests
+                      </Link>
+                      <Link
+                        href="/dashboard/time-management/approvals?tab=missed-punches"
+                        className="block w-full text-center border border-blue-600 text-blue-600 py-2 px-4 rounded-md hover:bg-blue-50 transition"
+                      >
+                        View Missed Punch Alerts
+                      </Link>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Department Head Specific Time Management Cards */}
+              {isDepartmentHead && (
+                <>
+                  {/* Manual Attendance Recording */}
+                  <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
+                    <CardHeader>
+                      <CardTitle>Manual Attendance</CardTitle>
+                      <CardDescription>
+                        Record or correct attendance manually for team members
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Link
+                        href="/dashboard/time-management/attendance/corrections?action=manual"
+                        className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
+                      >
+                        Record/Correct Attendance →
+                      </Link>
+                    </CardContent>
+                  </Card>
+
+                  {/* Team Attendance Summary */}
+                  <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200">
+                    <CardHeader>
+                      <CardTitle>Team Attendance</CardTitle>
+                      <CardDescription>
+                        View team attendance summaries and lateness logs
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Link
+                        href="/dashboard/time-management/approvals?tab=lateness"
+                        className="block w-full text-center bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition font-medium"
+                      >
+                        View Lateness Logs →
+                      </Link>
+                      <Link
+                        href="/dashboard/time-management/approvals?tab=overtime"
+                        className="block w-full text-center border border-purple-600 text-purple-600 py-2 px-4 rounded-md hover:bg-purple-50 transition"
+                      >
+                        View Overtime Reports →
+                      </Link>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </>
           )}
 
           {/* My Profile - Show for all employees */}
@@ -215,6 +281,87 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
+          {/* ADMIN/SYSTEM TOOLS - Only for HR Admin */}
+          {isHRAdmin && (
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>Admin</CardTitle>
+                <CardDescription>
+                  System administration and configuration
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/dashboard/admin"
+                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+                >
+                  Admin Console
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* HR Admin/Manager Features */}
+          {canManageAll && (
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>Employee Management</CardTitle>
+                <p className="text-sm text-gray-500">
+                  {isHRAdmin ? "HR Admin" : "HR Manager"} Access
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Link
+                  href="/dashboard/employee-profile/admin/search"
+                  className="block w-full text-center bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 transition"
+                >
+                  Search Employees
+                </Link>
+                {canApprove && (
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className="block w-full text-center border border-purple-600 text-purple-600 py-2 px-4 rounded hover:bg-purple-50 transition"
+                  >
+                    Approval Queue ({isHRAdmin ? "Admin" : "Manager"})
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ============================================================
+              CHANGED: Fixed JSX syntax errors
+              Issue: Missing closing tags for Link, CardContent, and Card
+              - Link tag starting at line 345 was never closed
+              - CardContent was never closed
+              - Card (Recruitment) was never closed
+              - Performance Card was incorrectly nested inside Link tag
+              Fix: Properly closed all tags and separated Performance Card
+              Date: Recent fix for React/JSX compilation errors
+              ============================================================ */}
+          {/* Recruitment - Show for all employees and department heads */}
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Recruitment</CardTitle>
+              <CardDescription>
+                {isDepartmentHead
+                  ? "Manage department interviews and clearance"
+                  : isEmployee
+                  ? "View referrals and manage resignation"
+                  : "Recruitment management"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/recruitment"
+                className="block w-full text-center bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 transition"
+              >
+                Open Recruitment
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Performance - Show for all employees */}
           <Card>
             <CardHeader>
               <CardTitle>Performance</CardTitle>

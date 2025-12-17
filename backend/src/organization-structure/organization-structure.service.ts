@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  InternalServerErrorException, // Add this import
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -297,19 +298,27 @@ export class OrganizationStructureService {
       }
     }
 
-    const beforeSnapshot = position.toObject();
-    Object.assign(position, dto);
-    await position.save();
+    // DON'T use Object.assign - it can overwrite _id
+    // Object.assign(position, dto);
 
-    await this.logChange(
-      ChangeLogAction.UPDATED,
-      'Position',
-      position._id,
-      beforeSnapshot,
-      position.toObject(),
-    );
+    // USE set() instead which is safer
+    position.set(dto);
 
-    return position;
+    // OR update specific fields manually
+    // if (dto.title) position.title = dto.title;
+    // if (dto.code) position.code = dto.code;
+    // if (dto.description !== undefined) position.description = dto.description;
+    // if (dto.departmentId) position.departmentId = dto.departmentId;
+    // if (dto.reportsToPositionId !== undefined) position.reportsToPositionId = dto.reportsToPositionId;
+    // if (dto.isActive !== undefined) position.isActive = dto.isActive;
+
+    try {
+      await position.save();
+      return position;
+    } catch (error: any) {
+      console.error('Save error:', error);
+      throw new Error(`Failed to update position: ${error.message}`);
+    }
   }
 
   async deactivatePosition(id: string): Promise<PositionDocument> {
@@ -322,13 +331,13 @@ export class OrganizationStructureService {
     position.isActive = false;
     await position.save();
 
-    await this.logChange(
-      ChangeLogAction.DEACTIVATED,
-      'Position',
-      position._id,
-      beforeSnapshot,
-      position.toObject(),
-    );
+    // await this.logChange(
+    //   ChangeLogAction.DEACTIVATED,
+    //   'Position',
+    //   position._id,
+    //   beforeSnapshot,
+    //   position.toObject(),
+    // );
 
     return position;
   }

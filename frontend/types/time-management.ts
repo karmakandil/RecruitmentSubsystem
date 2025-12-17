@@ -44,6 +44,7 @@ export interface AssignShiftToDepartmentDto {
   includePositions?: string[];
   startDate?: Date;
   endDate?: Date;
+  status?: ShiftAssignmentStatus;
 }
 
 export interface AssignShiftToPositionDto {
@@ -51,6 +52,7 @@ export interface AssignShiftToPositionDto {
   shiftId: string;
   startDate?: Date;
   endDate?: Date;
+  status?: ShiftAssignmentStatus;
 }
 
 export interface UpdateShiftAssignmentDto {
@@ -542,6 +544,7 @@ export interface AttendanceRecord {
   clockIn?: Date | string;
   clockOut?: Date | string;
   totalWorkMinutes?: number;
+  hasMissedPunch?: boolean;
   status: 'COMPLETE' | 'INCOMPLETE' | 'CORRECTION_PENDING';
   punches?: Array<{
     time: Date | string;
@@ -562,6 +565,12 @@ export interface AttendanceStatus {
   clockInTime?: Date | string;
   elapsedMinutes?: number;
   message?: string;
+  // BR-TM-11: Punch policy information
+  punchPolicy?: 'MULTIPLE' | 'FIRST_LAST' | 'ONLY_FIRST';
+  shiftName?: string;
+  canClockInMultiple?: boolean;
+  hasClockInToday?: boolean;
+  canClockIn?: boolean;
 }
 
 export interface ClockInRequest {

@@ -313,5 +313,36 @@ export const timeManagementApi = {
   getSyncStatus: async (): Promise<any> => {
     return await api.get("/time-management/sync-status");
   },
+
+  // ===== Attendance CSV Import (for HR/System Admin) =====
+
+  importAttendanceFromCsv: async (csv: string): Promise<any> => {
+    return await api.post("/time-management/attendance/import-csv", { csv });
+  },
+
+  // ===== Manual Attendance Recording (Department Head) =====
+  
+  // Create attendance record manually
+  createAttendanceRecord: async (data: {
+    employeeId: string;
+    punches: Array<{ type: 'IN' | 'OUT'; time: Date }>;
+    totalWorkMinutes: number;
+    hasMissedPunch: boolean;
+    exceptionIds: string[];
+    finalisedForPayroll: boolean;
+  }): Promise<any> => {
+    return await api.post('/time-management/attendance', data);
+  },
+
+  // Update attendance record manually
+  updateAttendanceRecord: async (recordId: string, data: {
+    punches: Array<{ type: 'IN' | 'OUT'; time: Date }>;
+    totalWorkMinutes: number;
+    hasMissedPunch: boolean;
+    exceptionIds: string[];
+    finalisedForPayroll: boolean;
+  }): Promise<any> => {
+    return await api.put(`/time-management/attendance/${recordId}`, data);
+  },
 };
 

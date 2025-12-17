@@ -253,8 +253,8 @@ export default function AttendanceCorrectionsPage() {
               <h1 className="text-3xl font-bold text-gray-900">My Correction Requests</h1>
               <p className="text-gray-600 mt-1">
                 Submit and track your own attendance correction requests
-              </p>
-            </div>
+          </p>
+        </div>
             <Link
               href="/dashboard/employee-profile/time-management"
               className="text-blue-600 hover:underline font-medium"

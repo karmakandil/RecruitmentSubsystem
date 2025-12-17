@@ -28,7 +28,8 @@ import {
   ExportReportDto,
 } from '../DTOs/reporting.dtos';
 import { LeavesService } from '../../leaves/leaves.service';
-import { Inject, forwardRef } from '@nestjs/common';
+import { NotificationService } from './notification.service';
+import { Inject, forwardRef, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class TimeManagementService {
@@ -50,6 +51,8 @@ export class TimeManagementService {
     private shiftAssignmentModel: Model<ShiftAssignment>,
     @Inject(forwardRef(() => LeavesService))
     private leavesService: LeavesService,
+    @Inject(forwardRef(() => NotificationService))
+    private notificationService: NotificationService,
   ) {}
 
   // ===== US5: CLOCK-IN/OUT ATTENDANCE SERVICE METHODS =====
@@ -61,13 +64,84 @@ export class TimeManagementService {
   /**
    * Clock in with employee ID
    * BR-TM-06: Creates audit trail for clock-in
+   * BR-TM-11: Enforces punch policy (Multiple punches or First-In/Last-Out)
    * BR-TM-12: Tags with source type (defaults to manual)
    */
   async clockInWithID(employeeId: string, currentUserId: string) {
     const now = new Date();
     const { Types } = require('mongoose');
+    const todayStart = this.convertDateToUTCStart(now);
+    const todayEnd = this.convertDateToUTCEnd(now);
 
     console.log('⏰ CLOCK IN called for employee:', employeeId);
+
+    // BR-TM-11: Get employee's assigned shift and check punch policy
+    const shiftAssignments = await this.shiftAssignmentModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'APPROVED',
+        startDate: { $lte: now },
+        $or: [
+          { endDate: { $gte: now } },
+          { endDate: null }, // Ongoing assignments
+        ],
+      })
+      .populate('shiftId')
+      .exec();
+
+    let punchPolicy = 'MULTIPLE'; // Default to allow multiple if no shift assigned
+    let shiftName = 'No Shift Assigned';
+
+    if (shiftAssignments.length > 0) {
+      const assignment = shiftAssignments[0] as any;
+      const shift = assignment.shiftId;
+      if (shift && shift.punchPolicy) {
+        punchPolicy = shift.punchPolicy;
+        shiftName = shift.name || 'Unknown Shift';
+      }
+    }
+
+    // BR-TM-11: If FIRST_LAST policy, check if employee already clocked in today
+    if (punchPolicy === 'FIRST_LAST') {
+      const todayRecords = await this.attendanceRecordModel
+        .find({
+          employeeId: new Types.ObjectId(employeeId),
+          createdAt: { $gte: todayStart, $lte: todayEnd },
+        })
+        .exec();
+
+      // Check if there's any record with an IN punch today
+      let hasInPunchToday = false;
+      let hasActiveClockIn = false;
+
+      for (const record of todayRecords) {
+        if (record.punches && record.punches.length > 0) {
+          // Check if there's an IN punch in this record
+          const inPunches = record.punches.filter((p: any) => p.type === PunchType.IN);
+          if (inPunches.length > 0) {
+            hasInPunchToday = true;
+            // Check if the last punch is IN (meaning they're still clocked in)
+            const lastPunch = record.punches[record.punches.length - 1];
+            if (lastPunch.type === PunchType.IN) {
+              hasActiveClockIn = true;
+            }
+          }
+        }
+      }
+
+      if (hasActiveClockIn) {
+        throw new Error(
+          `You have already clocked in today. Your shift "${shiftName}" uses First-In/Last-Out policy, which allows only one clock-in per day. Please clock out first.`
+        );
+      }
+
+      if (hasInPunchToday) {
+        // Employee already clocked in and out today - FIRST_LAST doesn't allow another clock-in
+        throw new Error(
+          `You have already clocked in and out today. Your shift "${shiftName}" uses First-In/Last-Out policy, which allows only one clock-in and one clock-out per day.`
+        );
+      }
+    }
 
     // Create new attendance record with clock-in punch
     const attendanceRecord = new this.attendanceRecordModel({
@@ -96,6 +170,8 @@ export class TimeManagementService {
       {
         attendanceRecordId: saved._id,
         source: 'ID_CARD',
+        punchPolicy,
+        shiftName,
         timestamp: now.toISOString(),
       },
       currentUserId,
@@ -469,6 +545,34 @@ export class TimeManagementService {
     const todayEnd = this.convertDateToUTCEnd(now);
     const { Types } = require('mongoose');
 
+    // BR-TM-11: Get employee's assigned shift and punch policy
+    const shiftAssignments = await this.shiftAssignmentModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'APPROVED',
+        startDate: { $lte: now },
+        $or: [
+          { endDate: { $gte: now } },
+          { endDate: null }, // Ongoing assignments
+        ],
+      })
+      .populate('shiftId')
+      .exec();
+
+    let punchPolicy = 'MULTIPLE'; // Default to allow multiple if no shift assigned
+    let shiftName = 'No Shift Assigned';
+    let canClockInMultiple = true;
+
+    if (shiftAssignments.length > 0) {
+      const assignment = shiftAssignments[0] as any;
+      const shift = assignment.shiftId;
+      if (shift && shift.punchPolicy) {
+        punchPolicy = shift.punchPolicy;
+        shiftName = shift.name || 'Unknown Shift';
+        canClockInMultiple = punchPolicy === 'MULTIPLE';
+      }
+    }
+
     // Get today's records (for daily totals)
     const todayRecords = await this.attendanceRecordModel
       .find({
@@ -489,11 +593,28 @@ export class TimeManagementService {
         status: 'NOT_CLOCKED_IN',
         message: 'No attendance record found',
         records: [],
+        punchPolicy,
+        shiftName,
+        canClockInMultiple,
       };
     }
 
     const lastPunch = latestRecord.punches[latestRecord.punches.length - 1];
     const isClockedIn = lastPunch?.type === PunchType.IN;
+
+    // BR-TM-11: Check if employee already clocked in today (for FIRST_LAST policy)
+    let hasClockInToday = false;
+    if (!canClockInMultiple) {
+      for (const record of todayRecords) {
+        if (record.punches && record.punches.length > 0) {
+          const hasInPunch = record.punches.some((p: any) => p.type === PunchType.IN);
+          if (hasInPunch) {
+            hasClockInToday = true;
+            break;
+          }
+        }
+      }
+    }
 
     // Calculate total work time for today (if any records exist)
     let totalMinutesToday = 0;
@@ -522,6 +643,12 @@ export class TimeManagementService {
         totalWorkMinutes: r.totalWorkMinutes,
         hasMissedPunch: r.hasMissedPunch,
       })),
+      // BR-TM-11: Return punch policy information
+      punchPolicy,
+      shiftName,
+      canClockInMultiple,
+      hasClockInToday,
+      canClockIn: canClockInMultiple || !hasClockInToday,
     };
   }
 
@@ -825,11 +952,14 @@ export class TimeManagementService {
       employeeId,
       summary,
       requests: requests.map(req => ({
+        _id: (req as any)._id,
         id: (req as any)._id,
+        employeeId: req.employeeId,
         status: req.status,
         reason: req.reason,
         attendanceRecord: req.attendanceRecord,
         createdAt: (req as any).createdAt,
+        updatedAt: (req as any).updatedAt,
       })),
     };
   }
@@ -5536,5 +5666,280 @@ export class TimeManagementService {
       restDays: restDayDates,
       totalNonWorkingDays: holidays.length + restDayDates.length,
     };
+  }
+
+  // ===== ATTENDANCE IMPORT (CSV) =====
+
+  /**
+   * Import attendance punches from a CSV string.
+   * The CSV is expected to have a header row with at least:
+   * employeeId, clockInTime, clockOutTime (optional), deviceId, source
+   *
+   * We intentionally keep this logic self-contained and only use existing
+   * models/enums. No new schemas or enums are introduced.
+   */
+  async importAttendanceFromCsv(
+    csv: string,
+    currentUserId: string,
+  ) {
+    if (!csv || typeof csv !== 'string') {
+      throw new BadRequestException('CSV content is required');
+    }
+
+    const lines = csv
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length < 2) {
+      throw new BadRequestException('CSV must include a header and at least one data row');
+    }
+
+    const header = lines[0].split(',').map((h) => h.trim());
+    const getIndex = (name: string) =>
+      header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
+
+    const idxEmployeeId = getIndex('employeeId');
+    const idxClockIn = getIndex('clockInTime');
+    const idxClockOut = getIndex('clockOutTime');
+    const idxDeviceId = getIndex('deviceId');
+    const idxSource = getIndex('source');
+
+    if (idxEmployeeId === -1 || idxClockIn === -1) {
+      throw new BadRequestException(
+        'CSV header must include at least employeeId and clockInTime columns',
+      );
+    }
+
+    const { Types } = require('mongoose');
+
+    let processed = 0;
+    let created = 0;
+    let updated = 0;
+    let missedPunches = 0;
+    const errors: Array<{ line: number; error: string }> = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const raw = lines[i];
+      if (!raw) continue;
+      processed++;
+
+      const cols = raw.split(',').map((c) => c.trim());
+      const employeeId = cols[idxEmployeeId];
+      const clockInRaw = cols[idxClockIn];
+      const clockOutRaw = idxClockOut !== -1 ? cols[idxClockOut] || '' : '';
+      const deviceId = idxDeviceId !== -1 ? cols[idxDeviceId] || undefined : undefined;
+      const source = idxSource !== -1 ? cols[idxSource] || 'BIOMETRIC' : 'BIOMETRIC';
+
+      try {
+        if (!employeeId || !clockInRaw) {
+          throw new Error('Missing employeeId or clockInTime');
+        }
+
+        if (!Types.ObjectId.isValid(employeeId)) {
+          throw new Error('Invalid employeeId format (expected MongoDB ObjectId)');
+        }
+
+        const clockIn = new Date(clockInRaw);
+        if (isNaN(clockIn.getTime())) {
+          throw new Error(`Invalid clockInTime: ${clockInRaw}`);
+        }
+
+        let clockOut: Date | null = null;
+        if (clockOutRaw) {
+          const parsed = new Date(clockOutRaw);
+          if (isNaN(parsed.getTime())) {
+            throw new Error(`Invalid clockOutTime: ${clockOutRaw}`);
+          }
+          clockOut = parsed;
+        }
+
+        const punches: Array<{ type: PunchType; time: Date; source?: string; deviceId?: string }> = [];
+        punches.push({
+          type: PunchType.IN,
+          time: clockIn,
+          source,
+          deviceId,
+        } as any);
+
+        if (clockOut) {
+          punches.push({
+            type: PunchType.OUT,
+            time: clockOut,
+            source,
+            deviceId,
+          } as any);
+        }
+
+        let totalWorkMinutes = 0;
+        if (clockIn && clockOut) {
+          totalWorkMinutes = Math.max(
+            0,
+            Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)),
+          );
+        }
+
+        const hasMissedPunch = !clockOut;
+        if (hasMissedPunch) {
+          missedPunches++;
+        }
+
+        // For now, create a new attendance record per CSV row.
+        // This avoids changing existing models or adding complex merging rules.
+        const record = new this.attendanceRecordModel({
+          employeeId: new Types.ObjectId(employeeId),
+          punches: punches.map((p) => ({ type: p.type, time: p.time })),
+          totalWorkMinutes,
+          hasMissedPunch,
+          exceptionIds: [],
+          finalisedForPayroll: false,
+        });
+
+        await record.save();
+        created++;
+      } catch (error: any) {
+        errors.push({
+          line: i + 1,
+          error: error.message || 'Unknown error',
+        });
+      }
+    }
+
+    await this.logTimeManagementChange(
+      'ATTENDANCE_CSV_IMPORTED',
+      {
+        processed,
+        created,
+        updated,
+        missedPunches,
+        errorCount: errors.length,
+      },
+      currentUserId,
+    );
+
+    return {
+      summary: {
+        processed,
+        created,
+        updated,
+        missedPunches,
+        errorCount: errors.length,
+      },
+      errors,
+    };
+  }
+
+  // ===== DATA SYNCHRONIZATION (BR-TM-22) =====
+
+  /**
+   * Sync time management data with payroll, leaves, and benefits modules
+   * BR-TM-22: All time management data must sync daily with payroll, benefits, and leave modules
+   */
+  async syncTimeManagementData(
+    params: {
+      syncDate: Date;
+      modules: ('payroll' | 'leaves' | 'benefits')[];
+    },
+    currentUserId: string,
+  ) {
+    return this.notificationService.runFullCrossModuleSync(
+      {
+        syncDate: params.syncDate,
+        modules: params.modules,
+      },
+      currentUserId,
+    );
+  }
+
+  /**
+   * Get sync status across modules
+   * BR-TM-22: Check sync status
+   */
+  async getSyncStatus(
+    params: {
+      startDate?: Date;
+      endDate?: Date;
+    },
+    currentUserId: string,
+  ) {
+    return this.notificationService.getCrossModuleSyncStatus(
+      {
+        startDate: params.startDate,
+        endDate: params.endDate,
+      },
+      currentUserId,
+    );
+  }
+
+  /**
+   * Sync device data when device reconnects
+   * BR-TM-13: Attendance devices must sync automatically once reconnected online
+   */
+  async syncDeviceData(
+    params: {
+      deviceId: string;
+      employeeId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    },
+    currentUserId: string,
+  ) {
+    const { deviceId, employeeId, startDate, endDate } = params;
+    
+    // Find attendance records from the device that haven't been synced
+    const query: any = {
+      'punches.source': 'BIOMETRIC',
+      'punches.deviceId': deviceId,
+    };
+
+    if (employeeId) {
+      query.employeeId = new Types.ObjectId(employeeId);
+    }
+
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.createdAt.$lte = new Date(endDate);
+      }
+    }
+
+    const deviceRecords = await this.attendanceRecordModel
+      .find(query)
+      .populate('employeeId', 'firstName lastName email employeeNumber')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    // Mark records as synced (you might want to add a syncedAt field)
+    const syncResults = {
+      deviceId,
+      syncedAt: new Date(),
+      syncedBy: currentUserId,
+      recordsFound: deviceRecords.length,
+      records: deviceRecords.map((r: any) => ({
+        recordId: r._id,
+        employeeId: r.employeeId?._id || r.employeeId,
+        employeeName: r.employeeId 
+          ? `${r.employeeId.firstName || ''} ${r.employeeId.lastName || ''}`.trim() 
+          : 'Unknown',
+        date: r.createdAt,
+        punches: r.punches?.filter((p: any) => p.deviceId === deviceId) || [],
+      })),
+    };
+
+    // Log the sync
+    this.auditLogs.push({
+      entity: 'DEVICE_SYNC',
+      changeSet: {
+        deviceId,
+        recordsSynced: deviceRecords.length,
+      },
+      actorId: currentUserId,
+      timestamp: new Date(),
+    });
+
+    return syncResults;
   }
 }
