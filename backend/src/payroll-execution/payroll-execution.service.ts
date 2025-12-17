@@ -4541,6 +4541,30 @@ export class PayrollExecutionService {
         }
       }
 
+      // Calculate total gross salary (needed for insurance calculations)
+      const totalAllowancesAmount = applicableAllowances.reduce(
+        (sum: number, allowance: any) => sum + (allowance.amount || 0),
+        0,
+      );
+      const totalBonusesAmount = approvedSigningBonuses.reduce(
+        (sum: number, bonus: any) => sum + (bonus.givenAmount || 0),
+        0,
+      );
+      const totalBenefitsAmount = approvedBenefits.reduce(
+        (sum: number, benefit: any) => sum + (benefit.givenAmount || 0),
+        0,
+      );
+      const totalRefundsAmount = refundDetailsList.reduce(
+        (sum: number, refund: any) => sum + (refund.amount || 0),
+        0,
+      );
+      const totalGrossSalary =
+        baseSalary +
+        totalAllowancesAmount +
+        totalBonusesAmount +
+        totalBenefitsAmount +
+        totalRefundsAmount;
+
       // Get applicable tax rules
       // BR 5: Payroll income taxes' brackets identified and enforced through Local Tax Law
       // Egyptian Tax Law 2025: Tax brackets (tax rules) must be identified and enforced
@@ -4664,30 +4688,6 @@ export class PayrollExecutionService {
           // Would filter by payroll period if available
         })
         .exec();
-
-      // Calculate total gross salary
-      const totalAllowancesAmount = applicableAllowances.reduce(
-        (sum: number, allowance: any) => sum + (allowance.amount || 0),
-        0,
-      );
-      const totalBonusesAmount = approvedSigningBonuses.reduce(
-        (sum: number, bonus: any) => sum + (bonus.givenAmount || 0),
-        0,
-      );
-      const totalBenefitsAmount = approvedBenefits.reduce(
-        (sum: number, benefit: any) => sum + (benefit.givenAmount || 0),
-        0,
-      );
-      const totalRefundsAmount = refundDetailsList.reduce(
-        (sum: number, refund: any) => sum + (refund.amount || 0),
-        0,
-      );
-      const totalGrossSalary =
-        baseSalary +
-        totalAllowancesAmount +
-        totalBonusesAmount +
-        totalBenefitsAmount +
-        totalRefundsAmount;
 
       // Calculate total deductions
       const totalTaxAmount = applicableTaxRules.reduce(

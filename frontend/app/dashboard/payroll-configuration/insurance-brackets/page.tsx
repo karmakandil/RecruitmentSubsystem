@@ -43,7 +43,7 @@ export default function InsuranceBracketsPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Insurance Bracket Name',
+      label: 'Insurance Bracket Name',
       render: (item: InsuranceBracket) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -53,7 +53,7 @@ export default function InsuranceBracketsPage() {
     },
     { 
       key: 'salaryRange', 
-      header: 'Salary Range',
+      label: 'Salary Range',
       render: (item: InsuranceBracket) => (
         <div className="text-sm text-gray-900">
           <div>
@@ -70,7 +70,7 @@ export default function InsuranceBracketsPage() {
     },
     { 
       key: 'rates', 
-      header: 'Contribution Rates',
+      label: 'Contribution Rates',
       render: (item: InsuranceBracket) => (
         <div className="text-sm text-gray-900">
           <div>Employee: {item.employeeRate.toFixed(2)}%</div>
@@ -80,7 +80,7 @@ export default function InsuranceBracketsPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: InsuranceBracket) => (
         <div className="text-sm text-gray-900">{item.createdBy || 'N/A'}</div>
       )

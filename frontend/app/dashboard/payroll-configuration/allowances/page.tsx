@@ -41,7 +41,7 @@ export default function AllowancesPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Allowance Name',
+      label: 'Allowance Name',
       render: (item: any) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -51,7 +51,7 @@ export default function AllowancesPage() {
     },
     { 
       key: 'type', 
-      header: 'Type',
+      label: 'Type',
       render: (item: any) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
           item.allowanceType === 'housing' ? 'bg-blue-100 text-blue-800' :
@@ -65,7 +65,7 @@ export default function AllowancesPage() {
     },
     { 
       key: 'amount', 
-      header: 'Amount',
+      label: 'Amount',
       render: (item: any) => (
         <div>
           <div className="font-medium text-gray-900">
@@ -82,7 +82,7 @@ export default function AllowancesPage() {
     },
     { 
       key: 'recurring', 
-      header: 'Recurring',
+      label: 'Recurring',
       render: (item: any) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
           item.isRecurring ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'

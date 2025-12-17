@@ -341,7 +341,7 @@ export default function EditPayGradePage() {
             </button>
             <button
               type="submit"
-              disabled={isLoading || (formData.minSalary && formData.maxSalary && parseFloat(formData.maxSalary) < parseFloat(formData.minSalary))}
+              disabled={isLoading || !!(formData.minSalary && formData.maxSalary && parseFloat(formData.maxSalary) < parseFloat(formData.minSalary))}
               className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
             >
               {isLoading ? 'Saving...' : 'Save Changes'}

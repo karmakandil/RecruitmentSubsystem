@@ -108,10 +108,10 @@ export default function ManageProfilePage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white-900">
+          <h1 className="text-2xl font-bold text-gray-900">
             Manage Employee Profile
           </h1>
-          <p className="text-white-600 mt-1">Employee ID: {id}</p>
+          <p className="text-gray-600 mt-1">Employee ID: {id}</p>
         </div>
         <div className="flex gap-3 mt-4 md:mt-0">
           <Button

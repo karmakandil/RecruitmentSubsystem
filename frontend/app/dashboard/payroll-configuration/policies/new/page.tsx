@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
 import { policiesApi } from '@/lib/api/payroll-configuration/policies';
 
 export default function NewPolicyPage() {
   // Only Payroll Specialist can create new policies
+  const { user } = useAuth();
   useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +55,9 @@ export default function NewPolicyPage() {
       const policyData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        policyType: formData.policyType,
+        status: 'draft' as const,
+        createdBy: user?.fullName || user?.firstName || (user as any)?.email || 'Unknown',
+        policyType: formData.policyType as 'attendance' | 'overtime' | 'bonus' | 'deduction' | 'other',
         effectiveDate: formData.effectiveDate ? new Date(formData.effectiveDate).toISOString() : new Date().toISOString(),
         department: formData.department?.trim() || undefined,
         location: formData.location?.trim() || undefined,

@@ -59,8 +59,8 @@ export default function InsuranceOversightPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const filters = statusFilter !== 'all' ? { status: statusFilter } : undefined;
-      const data = await insuranceBracketsApi.getAll(filters);
+      const status = statusFilter !== 'all' ? statusFilter as 'draft' | 'approved' | 'rejected' : undefined;
+      const data = await insuranceBracketsApi.getAll(status);
       // Ensure data is always an array
       if (Array.isArray(data)) {
         setInsuranceBrackets(data);
@@ -86,7 +86,7 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
-      const id = approvalModal.item._id || approvalModal.item.id;
+      const id = approvalModal.item.id;
       await insuranceBracketsApi.approve(
         id,
         comment ? { comment } : undefined
@@ -107,7 +107,7 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
-      const id = rejectionModal.item._id || rejectionModal.item.id;
+      const id = rejectionModal.item.id;
       await insuranceBracketsApi.reject(id, { comment: reason });
       setSuccess('Insurance bracket rejected successfully');
       setRejectionModal({ isOpen: false, item: null });
@@ -127,7 +127,7 @@ export default function InsuranceOversightPage() {
     try {
       setIsProcessing(true);
       setError(null);
-      const id = item._id || item.id;
+      const id = item.id;
       await insuranceBracketsApi.delete(id);
       setSuccess('Insurance bracket deleted successfully');
       await loadInsuranceBrackets();
@@ -141,7 +141,7 @@ export default function InsuranceOversightPage() {
   const handleView = async (item: InsuranceBracket) => {
     try {
       setIsLoadingDetails(true);
-      const id = item._id || item.id;
+      const id = item.id;
       const details = await insuranceBracketsApi.getById(id);
       setViewModal({
         isOpen: true,
@@ -163,7 +163,7 @@ export default function InsuranceOversightPage() {
   const handleEdit = (item: InsuranceBracket) => {
     // Navigate to edit page - HR Managers can edit insurance brackets
     // Pattern: /dashboard/payroll-configuration/insurance-brackets/{id}/edit
-    const editUrl = `/dashboard/payroll-configuration/insurance-brackets/${item._id || item.id}/edit`;
+    const editUrl = `/dashboard/payroll-configuration/insurance-brackets/${item.id}/edit`;
     router.push(editUrl);
   };
 
@@ -176,9 +176,8 @@ export default function InsuranceOversightPage() {
 
   // Transform to table format
   const tableData: ConfigurationItem[] = filteredBrackets.map((item) => ({
-    _id: item._id,
-    status: item.status,
-    ...item,
+    _id: item.id, // Map id to _id for table compatibility
+    ...item, // This already includes id and status
   }));
 
   const columns = [
@@ -280,27 +279,27 @@ export default function InsuranceOversightPage() {
             columns={columns}
             isLoading={isLoading}
             onView={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
+              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
               if (found) handleView(found);
             }}
             onEdit={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
+              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
               if (found) handleEdit(found);
             }}
             onApprove={(item) =>
               setApprovalModal({
                 isOpen: true,
-                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null) || null,
+                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
               })
             }
             onReject={(item) =>
               setRejectionModal({
                 isOpen: true,
-                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null) || null,
+                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
               })
             }
             onDelete={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b._id === item._id) : null;
+              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
               if (found) handleDelete(found);
             }}
             canApprove={(item) => item.status === 'draft'}

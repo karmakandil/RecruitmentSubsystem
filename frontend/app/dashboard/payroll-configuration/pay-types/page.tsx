@@ -41,7 +41,7 @@ export default function PayTypesPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Pay Type Name',
+      label: 'Pay Type Name',
       render: (item: any) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -51,7 +51,7 @@ export default function PayTypesPage() {
     },
     { 
       key: 'type', 
-      header: 'Type',
+      label: 'Type',
       render: (item: any) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
           item.type === 'salary' ? 'bg-purple-100 text-purple-800' :
@@ -65,7 +65,7 @@ export default function PayTypesPage() {
     },
     { 
       key: 'calculationMethod', 
-      header: 'Calculation Method',
+      label: 'Calculation Method',
       render: (item: any) => (
         <div className="text-sm text-gray-900">
           {item.calculationMethod}
@@ -77,7 +77,7 @@ export default function PayTypesPage() {
     },
     { 
       key: 'taxStatus', 
-      header: 'Tax Status',
+      label: 'Tax Status',
       render: (item: any) => (
         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
           item.isTaxable ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'

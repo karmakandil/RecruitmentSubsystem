@@ -43,7 +43,7 @@ export default function SigningBonusesPage() {
   const columns = [
     { 
       key: 'positionName', 
-      header: 'Position Name',
+      label: 'Position Name',
       render: (item: SigningBonus) => (
         <div>
           <div className="font-medium text-gray-900">{item.positionName}</div>
@@ -53,7 +53,7 @@ export default function SigningBonusesPage() {
     },
     { 
       key: 'amount', 
-      header: 'Bonus Amount',
+      label: 'Bonus Amount',
       render: (item: SigningBonus) => (
         <div className="font-medium text-gray-900">
           {new Intl.NumberFormat('en-US', {
@@ -65,7 +65,7 @@ export default function SigningBonusesPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: SigningBonus) => (
         <div className="text-sm text-gray-900">{item.createdBy || 'N/A'}</div>
       )

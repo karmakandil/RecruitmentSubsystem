@@ -49,7 +49,7 @@ export default function PayGradeDetailsPage() {
           jobBand: data.jobBand,
           benefits: data.benefits,
           isActive: data.isActive,
-          createdBy: data.createdByName || data.createdBy,
+          createdBy: (data as any).createdByName || data.createdBy,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });

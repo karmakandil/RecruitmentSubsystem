@@ -91,7 +91,7 @@ export default function FinanceApprovalPage() {
 
   // Use useMemo to filter runs based on view and user, avoiding dependency array issues
   const filteredRuns = useMemo(() => {
-    const currentUserId = (user?.userId?.toString() || user?.id?.toString() || user?._id?.toString() || "").trim();
+    const currentUserId = (user?.userId?.toString() || user?.id?.toString() || "").trim();
     
     if (view === "history") {
       // Show history: approved runs with paid status, locked, unlocked, or rejected by finance
@@ -128,9 +128,10 @@ export default function FinanceApprovalPage() {
             // Handle ObjectId or populated object
             financeIdToCompare = (run.financeStaffId as any)?._id?.toString()?.trim() || 
                                  (run.financeStaffId as any)?.id?.toString()?.trim() || 
-                                 run.financeStaffId.toString().trim();
+                                 String(run.financeStaffId).trim();
           } else {
-            financeIdToCompare = run.financeStaffId.toString().trim();
+            // Handle string case
+            financeIdToCompare = String(run.financeStaffId).trim();
           }
           
           return financeIdToCompare === currentUserId;

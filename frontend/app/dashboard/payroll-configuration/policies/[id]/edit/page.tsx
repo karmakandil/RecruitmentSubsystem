@@ -86,7 +86,7 @@ export default function EditPolicyPage() {
       const policyData = {
         name: formData.name.trim(),
         description: formData.description.trim(),
-        policyType: formData.policyType,
+        policyType: formData.policyType as 'attendance' | 'overtime' | 'bonus' | 'deduction' | 'other',
         effectiveDate: formData.effectiveDate ? new Date(formData.effectiveDate).toISOString() : new Date().toISOString(),
         department: formData.department?.trim() || undefined,
         location: formData.location?.trim() || undefined,

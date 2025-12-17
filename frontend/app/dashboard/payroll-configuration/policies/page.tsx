@@ -52,7 +52,7 @@ export default function PoliciesPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Policy Name',
+      label: 'Policy Name',
       render: (item: PayrollPolicy) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -64,7 +64,7 @@ export default function PoliciesPage() {
     },
     { 
       key: 'policyType', 
-      header: 'Type',
+      label: 'Type',
       render: (item: PayrollPolicy) => (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
           {item.policyType}
@@ -73,7 +73,7 @@ export default function PoliciesPage() {
     },
     { 
       key: 'effectiveDate', 
-      header: 'Effective Date',
+      label: 'Effective Date',
       render: (item: PayrollPolicy) => (
         <div className="text-sm text-gray-900">
           {new Date(item.effectiveDate).toLocaleDateString('en-US', {
@@ -86,17 +86,18 @@ export default function PoliciesPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: PayrollPolicy) => {
         // Safety check: handle if createdBy is still an object
-        let createdByDisplay = item.createdBy;
+        let createdByDisplay: string = item.createdBy || '';
         if (createdByDisplay && typeof createdByDisplay === 'object') {
-          if (createdByDisplay.firstName && createdByDisplay.lastName) {
-            createdByDisplay = `${createdByDisplay.firstName} ${createdByDisplay.lastName}`;
-          } else if (createdByDisplay.fullName) {
-            createdByDisplay = createdByDisplay.fullName;
-          } else if (createdByDisplay.email) {
-            createdByDisplay = createdByDisplay.email;
+          const createdByObj = createdByDisplay as any;
+          if (createdByObj.firstName && createdByObj.lastName) {
+            createdByDisplay = `${createdByObj.firstName} ${createdByObj.lastName}`;
+          } else if (createdByObj.fullName) {
+            createdByDisplay = createdByObj.fullName;
+          } else if (createdByObj.email) {
+            createdByDisplay = createdByObj.email;
           } else {
             createdByDisplay = 'Unknown';
           }

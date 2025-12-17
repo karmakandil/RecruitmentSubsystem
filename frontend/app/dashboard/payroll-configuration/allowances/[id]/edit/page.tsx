@@ -69,11 +69,11 @@ export default function EditAllowancePage() {
       const allowanceData = {
         name: formData.name,
         description: formData.description || '',
-        allowanceType: formData.allowanceType,
+        allowanceType: formData.allowanceType as 'housing' | 'transportation' | 'meal' | 'education' | 'medical' | 'other',
         amount: parseFloat(formData.amount),
         currency: formData.currency,
         isRecurring: formData.isRecurring,
-        frequency: formData.frequency,
+        frequency: formData.frequency as 'monthly' | 'quarterly' | 'yearly' | 'one-time' | undefined,
         taxable: formData.taxable,
         effectiveDate: formData.effectiveDate || undefined,
       };

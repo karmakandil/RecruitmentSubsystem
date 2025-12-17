@@ -43,7 +43,7 @@ export default function TerminationBenefitsPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Benefit Name',
+      label: 'Benefit Name',
       render: (item: TerminationBenefit) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -55,7 +55,7 @@ export default function TerminationBenefitsPage() {
     },
     { 
       key: 'amount', 
-      header: 'Benefit Amount',
+      label: 'Benefit Amount',
       render: (item: TerminationBenefit) => (
         <div className="font-medium text-gray-900">
           {new Intl.NumberFormat('en-US', {
@@ -67,7 +67,7 @@ export default function TerminationBenefitsPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: TerminationBenefit) => (
         <div className="text-sm text-gray-900">{item.createdBy || 'N/A'}</div>
       )

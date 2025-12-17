@@ -40,7 +40,7 @@ export default function PayGradesPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Pay Grade Name',
+      label: 'Pay Grade Name',
       render: (item: any) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -50,7 +50,7 @@ export default function PayGradesPage() {
     },
     { 
       key: 'salary', 
-      header: 'Salary Range',
+      label: 'Salary Range',
       render: (item: any) => (
         <div>
           <div className="font-medium text-gray-900">
@@ -68,7 +68,7 @@ export default function PayGradesPage() {
     },
     { 
       key: 'benefits', 
-      header: 'Benefits',
+      label: 'Benefits',
       render: (item: any) => (
         <div className="text-sm text-gray-900">
           {item.benefits?.slice(0, 2).join(', ')}
@@ -78,7 +78,7 @@ export default function PayGradesPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: any) => (
         <div className="text-sm text-gray-900">{item.createdBy}</div>
       )

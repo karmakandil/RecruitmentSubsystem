@@ -43,7 +43,7 @@ export default function TaxRulesPage() {
   const columns = [
     { 
       key: 'name', 
-      header: 'Tax Rule Name',
+      label: 'Tax Rule Name',
       render: (item: TaxRule) => (
         <div>
           <div className="font-medium text-gray-900">{item.name}</div>
@@ -55,7 +55,7 @@ export default function TaxRulesPage() {
     },
     { 
       key: 'rate', 
-      header: 'Tax Rate',
+      label: 'Tax Rate',
       render: (item: TaxRule) => (
         <div>
           <div className="font-medium text-gray-900">
@@ -69,7 +69,7 @@ export default function TaxRulesPage() {
     },
     { 
       key: 'thresholds', 
-      header: 'Thresholds',
+      label: 'Thresholds',
       render: (item: TaxRule) => {
         if (item.thresholds && (item.thresholds.minAmount || item.thresholds.maxAmount)) {
           return (
@@ -88,7 +88,7 @@ export default function TaxRulesPage() {
     },
     { 
       key: 'exemptions', 
-      header: 'Exemptions',
+      label: 'Exemptions',
       render: (item: TaxRule) => (
         <div className="text-sm text-gray-900">
           {item.exemptions && item.exemptions.length > 0 ? (
@@ -103,7 +103,7 @@ export default function TaxRulesPage() {
     },
     { 
       key: 'createdBy', 
-      header: 'Created By',
+      label: 'Created By',
       render: (item: TaxRule) => (
         <div className="text-sm text-gray-900">{item.createdBy || 'N/A'}</div>
       )
