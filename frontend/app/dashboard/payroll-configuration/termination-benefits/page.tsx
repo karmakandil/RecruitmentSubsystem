@@ -8,7 +8,6 @@ import ConfigurationTable from '@/components/payroll-configuration/Configuration
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { terminationBenefitsApi } from '@/lib/api/payroll-configuration/termination-benefits';
 import { TerminationBenefit } from '@/lib/api/payroll-configuration/types';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/shared/ui/Card';
 
 export default function TerminationBenefitsPage() {
   // Only Payroll Specialist can create/edit termination benefits
@@ -45,32 +44,79 @@ export default function TerminationBenefitsPage() {
       key: 'name', 
       label: 'Benefit Name',
       render: (item: TerminationBenefit) => (
-        <div>
-          <div className="font-medium text-gray-900">{item.name}</div>
-          {item.terms && (
-            <div className="text-sm text-gray-500 truncate max-w-xs">{item.terms.substring(0, 60)}{item.terms.length > 60 ? '...' : ''}</div>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-rose-100 to-orange-100 rounded-lg">
+            <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <div>
+            <div className="font-semibold text-gray-900">{item.name}</div>
+            <div className="text-xs text-gray-500 mt-0.5">Termination benefit</div>
+          </div>
         </div>
       )
     },
     { 
       key: 'amount', 
-      label: 'Benefit Amount',
+      label: 'Amount',
       render: (item: TerminationBenefit) => (
-        <div className="font-medium text-gray-900">
-          {new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'EGP'
-          }).format(item.amount)}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span className="text-lg font-bold text-gray-900">
+              {new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'EGP',
+                minimumFractionDigits: 0
+              }).format(item.amount || 0)}
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">Benefit amount</div>
         </div>
+      )
+    },
+    { 
+      key: 'terms', 
+      label: 'Terms',
+      render: (item: TerminationBenefit) => (
+        <div className="text-sm font-medium text-gray-700 max-w-xs truncate">{(item as any).terms || 'N/A'}</div>
       )
     },
     { 
       key: 'createdBy', 
       label: 'Created By',
-      render: (item: TerminationBenefit) => (
-        <div className="text-sm text-gray-900">{item.createdBy || 'N/A'}</div>
-      )
+      render: (item: TerminationBenefit) => {
+        // Safety check: handle if createdBy is still an object
+        let createdByDisplay: string = typeof item.createdBy === 'string' ? item.createdBy : '';
+        if (item.createdBy && typeof item.createdBy === 'object') {
+          const createdByObj = item.createdBy as any;
+          if (createdByObj.firstName && createdByObj.lastName) {
+            createdByDisplay = `${createdByObj.firstName} ${createdByObj.lastName}`;
+          } else if (createdByObj.fullName) {
+            createdByDisplay = createdByObj.fullName;
+          } else if (createdByObj.email) {
+            createdByDisplay = createdByObj.email;
+          } else {
+            createdByDisplay = 'Unknown';
+          }
+        }
+        return (
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-rose-400 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+              {createdByDisplay ? createdByDisplay.charAt(0).toUpperCase() : '?'}
+            </div>
+            <span className="text-sm font-medium text-gray-700">{createdByDisplay || 'N/A'}</span>
+          </div>
+        );
+      }
+    },
+    { 
+      key: 'status', 
+      label: 'Status',
+      render: (item: TerminationBenefit) => <StatusBadge status={item.status} />
     },
   ];
 
@@ -79,12 +125,12 @@ export default function TerminationBenefitsPage() {
   };
 
   const handleView = (item: TerminationBenefit) => {
-    router.push(`/dashboard/payroll-configuration/termination-benefits/${item.id}`);
+    router.push(`/dashboard/payroll-configuration/termination-benefits/${item._id}`);
   };
 
   const handleEdit = (item: TerminationBenefit) => {
     if (item.status === 'draft') {
-      router.push(`/dashboard/payroll-configuration/termination-benefits/${item.id}/edit`);
+      router.push(`/dashboard/payroll-configuration/termination-benefits/${item._id}/edit`);
     } else {
       alert('Only draft termination benefits can be edited.');
     }
@@ -101,7 +147,7 @@ export default function TerminationBenefitsPage() {
     }
 
     try {
-      await terminationBenefitsApi.delete(item.id);
+      await terminationBenefitsApi.delete(item._id);
       loadTerminationBenefits(); // Refresh
     } catch (error) {
       console.error('Error deleting termination benefit:', error);
@@ -117,92 +163,89 @@ export default function TerminationBenefitsPage() {
   };
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Termination Benefits</h1>
-            <p className="text-gray-600 mt-1">Configure resignation and termination benefits and their terms so that the offboarding process for employees is seamless and legally compliant</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-br from-rose-500 to-orange-600 rounded-xl shadow-lg">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-600 to-orange-600 bg-clip-text text-transparent">Termination Benefits</h1>
+                <p className="text-gray-600 mt-1 text-sm">Manage termination and resignation benefits</p>
+              </div>
+            </div>
           </div>
           <button
             onClick={handleCreateNew}
-            className="px-6 py-3 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200 flex items-center shadow-md hover:shadow-lg"
+            className="group relative px-6 py-3 bg-gradient-to-r from-rose-600 to-orange-600 text-white text-sm font-semibold rounded-xl shadow-lg hover:shadow-xl hover:from-rose-700 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-all duration-200 flex items-center transform hover:scale-105"
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
             </svg>
             Create New Termination Benefit
           </button>
         </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          {(['draft', 'approved', 'rejected'] as const).map((status) => {
+            const statusConfig = {
+              draft: { border: 'border-amber-100', bg: 'bg-amber-100', icon: 'text-amber-600', bgIcon: 'bg-amber-100' },
+              approved: { border: 'border-green-100', bg: 'bg-green-100', icon: 'text-green-600', bgIcon: 'bg-green-100' },
+              rejected: { border: 'border-red-100', bg: 'bg-red-100', icon: 'text-red-600', bgIcon: 'bg-red-100' }
+            };
+            const config = statusConfig[status];
+            return (
+              <div key={status} className={`bg-white p-6 rounded-2xl shadow-lg border ${config.border} hover:shadow-xl transition-shadow duration-200 relative overflow-hidden`}>
+                <div className={`absolute top-0 right-0 w-32 h-32 ${config.bg} rounded-full -mr-16 -mt-16 opacity-50`}></div>
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-3 ${config.bgIcon} rounded-xl`}>
+                      {status === 'draft' && (
+                        <svg className={`w-6 h-6 ${config.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                      )}
+                      {status === 'approved' && (
+                        <svg className={`w-6 h-6 ${config.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                      )}
+                      {status === 'rejected' && (
+                        <svg className={`w-6 h-6 ${config.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500 mb-1">{status.charAt(0).toUpperCase() + status.slice(1)}</p>
+                      <p className="text-3xl font-bold text-gray-900">{getStatusCount(status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-        <Card className="hover:shadow-lg transition-shadow border-2 border-yellow-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-yellow-100 mr-4">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Draft Termination Benefits</p>
-                <p className="text-3xl font-bold text-gray-900">{getStatusCount('draft')}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-green-100 mr-4">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Approved Termination Benefits</p>
-                <p className="text-3xl font-bold text-gray-900">{getStatusCount('approved')}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="hover:shadow-lg transition-shadow border-2 border-red-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center">
-              <div className="p-3 rounded-full bg-red-100 mr-4">
-                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Rejected Termination Benefits</p>
-                <p className="text-3xl font-bold text-gray-900">{getStatusCount('rejected')}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter and Table Section */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>All Termination Benefits</CardTitle>
-          <CardDescription>View, edit, and manage all termination and resignation benefit policies</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 pb-4 border-b">
+      <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
+        <div className="px-6 py-6 sm:px-8 sm:py-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
             <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">Filter by status:</label>
+              <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+              </svg>
+              <label className="text-sm font-semibold text-gray-700">Filter by status:</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-sm border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 rounded-md transition"
+                className="px-4 py-2 text-sm font-medium border-2 border-rose-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 bg-white text-gray-700 transition-all duration-200 hover:border-rose-300"
               >
                 <option value="all">All Statuses</option>
                 <option value="draft">Draft</option>
@@ -210,40 +253,20 @@ export default function TerminationBenefitsPage() {
                 <option value="rejected">Rejected</option>
               </select>
             </div>
-            
-            <button
-              onClick={loadTerminationBenefits}
-              className="px-4 py-2 border-2 border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 flex items-center transition"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-              </svg>
-              Refresh
-            </button>
           </div>
 
-          {/* Table */}
           <ConfigurationTable
             data={terminationBenefits}
             columns={columns}
             onView={handleView}
             onEdit={handleEdit}
-            onDelete={handleDelete}
+            onDelete={undefined}
+            canDelete={() => false}
             isLoading={isLoading}
-            emptyMessage={statusFilter !== 'all' ? `No ${statusFilter} termination benefits found.` : 'No termination benefits created yet. Start by creating your first termination benefit policy.'}
+            emptyMessage="No termination benefits found. Create your first termination benefit to get started."
           />
-
-          {/* Table Info */}
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Only termination benefits with <StatusBadge status="draft" size="sm" /> status can be edited or deleted. 
-                Termination benefits with <StatusBadge status="approved" size="sm" /> or <StatusBadge status="rejected" size="sm" /> status are read-only.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

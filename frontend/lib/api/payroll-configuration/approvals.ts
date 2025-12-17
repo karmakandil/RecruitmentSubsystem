@@ -19,8 +19,6 @@ export const approvalsApi = {
       const pendingApprovals: PendingApproval[] = [];
       
       // Map each type to the flat array format
-      // Note: insurance-brackets and company-settings are included for approval/rejection
-      // but deletion is restricted in the UI
       const typeMappings = [
         { key: 'payGrades', type: 'pay-grades' },
         { key: 'allowances', type: 'allowances' },
@@ -30,7 +28,6 @@ export const approvalsApi = {
         { key: 'signingBonuses', type: 'signing-bonuses' },
         { key: 'terminationBenefits', type: 'termination-benefits' },
         { key: 'policies', type: 'policies' },
-        // Note: company-settings might come from backend, but we'll handle it in the UI
       ];
       
       typeMappings.forEach(({ key, type }) => {

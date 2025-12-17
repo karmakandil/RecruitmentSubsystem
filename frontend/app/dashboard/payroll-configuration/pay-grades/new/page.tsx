@@ -12,17 +12,11 @@ export default function NewPayGradePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [benefits, setBenefits] = useState<string[]>([]);
-  const [newBenefit, setNewBenefit] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
     minSalary: '',
     maxSalary: '',
-    currency: 'EGP',
-    jobGrade: '',
-    jobBand: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,30 +29,21 @@ export default function NewPayGradePage() {
       if (!formData.name.trim()) {
         throw new Error('Pay grade name is required');
       }
-      if (!formData.jobGrade.trim()) {
-        throw new Error('Job grade is required');
-      }
       if (!formData.minSalary || parseFloat(formData.minSalary) < 6000) {
-        throw new Error('Minimum salary must be at least 6000');
+        throw new Error('Base salary must be at least 6000');
       }
       if (!formData.maxSalary || parseFloat(formData.maxSalary) < 6000) {
-        throw new Error('Maximum salary must be at least 6000');
+        throw new Error('Gross salary must be at least 6000');
       }
       if (parseFloat(formData.maxSalary) < parseFloat(formData.minSalary)) {
-        throw new Error('Maximum salary must be greater than or equal to minimum salary');
+        throw new Error('Gross salary must be greater than or equal to base salary');
       }
       
-      // Prepare data for API
+      // Prepare data for API - DTO only accepts: grade, baseSalary, grossSalary
       const payGradeData = {
         name: formData.name,
-        description: formData.description || '',
         minSalary: parseFloat(formData.minSalary),
         maxSalary: parseFloat(formData.maxSalary),
-        currency: formData.currency,
-        jobGrade: formData.jobGrade,
-        jobBand: formData.jobBand,
-        benefits: benefits,
-        isActive: true,
       };
       
       await payGradesApi.create(payGradeData);
@@ -77,16 +62,6 @@ export default function NewPayGradePage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const addBenefit = () => {
-    if (newBenefit.trim() && !benefits.includes(newBenefit.trim())) {
-      setBenefits([...benefits, newBenefit.trim()]);
-      setNewBenefit('');
-    }
-  };
-
-  const removeBenefit = (benefitToRemove: string) => {
-    setBenefits(benefits.filter(b => b !== benefitToRemove));
-  };
 
   // Calculate if the form should be disabled
   const isFormInvalid = () => {
@@ -99,217 +74,194 @@ export default function NewPayGradePage() {
   const isSubmitDisabled = isLoading || isFormInvalid();
 
   return (
-    <div className="p-6">
-      <div className="flex items-center mb-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+      {/* Header */}
+      <div className="max-w-4xl mx-auto mb-8">
         <button
           onClick={() => router.push('/dashboard/payroll-configuration/pay-grades')}
-          className="mr-4 p-2 rounded-md hover:bg-gray-100"
+          className="mb-6 group flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors duration-200"
         >
-          ← Back
+          <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+          <span className="font-medium">Back to Pay Grades</span>
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">Create New Pay Grade</h1>
+        
+        <div className="flex items-center gap-4 mb-2">
+          <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              Create New Pay Grade
+            </h1>
+            <p className="text-gray-600 mt-1 text-sm">Define a new salary grade for your organization</p>
+          </div>
+        </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
+      {/* Form Card */}
+      <div className="max-w-4xl mx-auto">
         {error && (
-          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-700">{error}</p>
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 font-semibold">{error}</p>
           </div>
         )}
-        <form onSubmit={handleSubmit} className="p-6 space-y-8">
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Pay Grade Name *
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="e.g., Senior Developer"
-                />
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Job Grade *
-                </label>
-                <input
-                  type="text"
-                  name="jobGrade"
-                  value={formData.jobGrade}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="e.g., JG-7"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleChange}
-                  rows={3}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Describe this pay grade..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Job Band
-                </label>
-                <select
-                  name="jobBand"
-                  value={formData.jobBand}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="">Select job band</option>
-                  <option value="Entry Level">Entry Level</option>
-                  <option value="Individual Contributor">Individual Contributor</option>
-                  <option value="Senior Individual Contributor">Senior Individual Contributor</option>
-                  <option value="Leadership">Leadership</option>
-                  <option value="Executive">Executive</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Currency *
-                </label>
-                <select
-                  name="currency"
-                  value={formData.currency}
-                  onChange={handleChange}
-                  required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="EGP">EGP - Egyptian Pound</option>
-                  <option value="USD">USD - US Dollar</option>
-                  <option value="EUR">EUR - Euro</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Salary Range</h3>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Minimum Salary *
-                </label>
-                <div className="mt-1 flex rounded-md shadow-sm">
-                  <input
-                    type="number"
-                    name="minSalary"
-                    value={formData.minSalary}
-                    onChange={handleChange}
-                    required
-                    min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="0"
-                  />
-                  <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
-                    {formData.currency}
-                  </span>
+        <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
+          <form onSubmit={handleSubmit} className="p-8 space-y-8">
+            {/* Basic Information Section */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
                 </div>
+                <h2 className="text-xl font-bold text-gray-900">Basic Information</h2>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Maximum Salary *
-                </label>
-                <div className="mt-1 flex rounded-md shadow-sm">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                    </svg>
+                    Pay Grade Name *
+                  </label>
                   <input
-                    type="number"
-                    name="maxSalary"
-                    value={formData.maxSalary}
+                    type="text"
+                    name="name"
+                    value={formData.name}
                     onChange={handleChange}
                     required
-                    min="0"
-                    className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="0"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-blue-300"
+                    placeholder="e.g., Senior Developer"
                   />
-                  <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
-                    {formData.currency}
-                  </span>
                 </div>
               </div>
             </div>
-            {isFormInvalid() && (
-              <p className="mt-2 text-sm text-red-600">Maximum salary must be greater than minimum salary.</p>
-            )}
-          </div>
 
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Benefits</h3>
-            <div className="space-y-4">
-              <div className="flex">
-                <input
-                  type="text"
-                  value={newBenefit}
-                  onChange={(e) => setNewBenefit(e.target.value)}
-                  placeholder="Add a benefit (e.g., Stock Options)"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addBenefit())}
-                />
-                <button
-                  type="button"
-                  onClick={addBenefit}
-                  className="inline-flex items-center px-4 border border-l-0 border-gray-300 bg-gray-50 text-gray-700 rounded-r-md hover:bg-gray-100"
-                >
-                  Add
-                </button>
+            {/* Salary Range Section */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Salary Range</h2>
               </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {benefits.map((benefit) => (
-                  <span
-                    key={benefit}
-                    className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800"
-                  >
-                    {benefit}
-                    <button
-                      type="button"
-                      onClick={() => removeBenefit(benefit)}
-                      className="ml-2 text-indigo-600 hover:text-indigo-900"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Base Salary (EGP) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      name="minSalary"
+                      value={formData.minSalary}
+                      onChange={handleChange}
+                      required
+                      min="6000"
+                      step="0.01"
+                      className="w-full px-4 py-3 pl-12 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-green-300"
+                      placeholder="6000"
+                    />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">EGP</div>
+                  </div>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    Minimum: 6,000 EGP
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Gross Salary (EGP) *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      name="maxSalary"
+                      value={formData.maxSalary}
+                      onChange={handleChange}
+                      required
+                      min="6000"
+                      step="0.01"
+                      className="w-full px-4 py-3 pl-12 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white hover:border-green-300"
+                      placeholder="6000"
+                    />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">EGP</div>
+                  </div>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    Minimum: 6,000 EGP, must be ≥ base salary
+                  </p>
+                </div>
               </div>
+
+              {isFormInvalid() && (
+                <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-3">
+                  <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm font-semibold text-red-800">Gross salary must be greater than or equal to base salary.</p>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="flex justify-end space-x-3 pt-6 border-t">
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/payroll-configuration/pay-grades')}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitDisabled || isLoading}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {isLoading ? 'Creating...' : 'Create Pay Grade'}
-            </button>
-          </div>
-        </form>
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-4 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard/payroll-configuration/pay-grades')}
+                className="px-6 py-3 border-2 border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitDisabled || isLoading}
+                className="group relative px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:transform-none flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    Create Pay Grade
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

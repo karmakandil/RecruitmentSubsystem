@@ -18,7 +18,6 @@ import {
   Database,
   CheckCircle,
   TrendingUp,
-  Building2,
 } from "lucide-react";
 
 export default function PayrollConfigurationPage() {
@@ -363,4 +362,3 @@ export default function PayrollConfigurationPage() {
     </div>
   );
 }
-

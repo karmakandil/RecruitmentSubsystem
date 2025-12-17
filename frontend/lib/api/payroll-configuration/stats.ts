@@ -48,7 +48,7 @@ export const statsApi = {
     typeStats.forEach((stats) => {
       if (stats) {
         total += stats.total ?? 0;
-        pending += stats.draft ?? stats.pending ?? 0;
+        pending += stats.draft ?? 0;
         approved += stats.approved ?? 0;
         rejected += stats.rejected ?? 0;
       }

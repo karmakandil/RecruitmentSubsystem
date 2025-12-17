@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
 import { terminationBenefitsApi } from '@/lib/api/payroll-configuration/termination-benefits';
@@ -10,12 +10,12 @@ import { TerminationBenefit } from '@/lib/api/payroll-configuration/types';
 export default function EditTerminationBenefitPage() {
   // Only Payroll Specialist can edit termination benefits
   useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
-  const router = useRouter();
   const params = useParams();
-  const id = params.id as string;
+  const router = useRouter();
+  const terminationBenefitId = params.id as string;
   
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [terminationBenefit, setTerminationBenefit] = useState<TerminationBenefit | null>(null);
   const [formData, setFormData] = useState({
@@ -26,12 +26,12 @@ export default function EditTerminationBenefitPage() {
 
   useEffect(() => {
     loadTerminationBenefit();
-  }, [id]);
+  }, [terminationBenefitId]);
 
   const loadTerminationBenefit = async () => {
     try {
-      setIsLoading(true);
-      const data = await terminationBenefitsApi.getById(id);
+      setIsLoadingData(true);
+      const data = await terminationBenefitsApi.getById(terminationBenefitId);
       setTerminationBenefit(data);
       
       // Check if termination benefit can be edited
@@ -44,20 +44,20 @@ export default function EditTerminationBenefitPage() {
       setFormData({
         name: data.name || '',
         amount: data.amount?.toString() || '',
-        terms: data.terms || '',
+        terms: (data as any).terms || '',
       });
     } catch (err) {
       console.error('Error loading termination benefit:', err);
       setError(err instanceof Error ? err.message : 'Failed to load termination benefit');
     } finally {
-      setIsLoading(false);
+      setIsLoadingData(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setIsSaving(true);
+    setIsLoading(true);
     
     try {
       // Validate form data
@@ -75,14 +75,14 @@ export default function EditTerminationBenefitPage() {
         terms: formData.terms.trim() || undefined,
       };
       
-      await terminationBenefitsApi.update(id, terminationBenefitData);
+      await terminationBenefitsApi.update(terminationBenefitId, terminationBenefitData);
       
       // Redirect back to list
       router.push('/dashboard/payroll-configuration/termination-benefits');
     } catch (err) {
       console.error('Error updating termination benefit:', err);
       setError(err instanceof Error ? err.message : 'Failed to update termination benefit');
-      setIsSaving(false);
+      setIsLoading(false);
     }
   };
 
@@ -94,11 +94,12 @@ export default function EditTerminationBenefitPage() {
     }));
   };
 
-  if (isLoading) {
+  if (isLoadingData) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading termination benefit...</div>
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-rose-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading termination benefit...</p>
         </div>
       </div>
     );
@@ -106,24 +107,17 @@ export default function EditTerminationBenefitPage() {
 
   if (!terminationBenefit) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-red-700">Termination benefit not found</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (terminationBenefit.status !== 'draft') {
-    return (
-      <div className="p-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <p className="text-yellow-800">
-            This termination benefit cannot be edited because it is not in draft status. Only draft termination benefits can be edited.
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6 flex items-center gap-3">
+            <svg className="w-6 h-6 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 font-semibold">{error || 'Termination benefit not found'}</p>
+          </div>
           <button
             onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700"
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
             Back to Termination Benefits
           </button>
@@ -132,104 +126,160 @@ export default function EditTerminationBenefitPage() {
     );
   }
 
+  if (terminationBenefit.status !== 'draft') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl shadow-lg p-6">
+            <div className="flex items-start gap-3">
+              <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <h3 className="text-sm font-semibold text-yellow-800 mb-1">Cannot Edit</h3>
+                <p className="text-sm text-yellow-700 mb-4">
+                  This termination benefit cannot be edited because it is not in draft status. Only draft termination benefits can be edited.
+                </p>
+                <button
+                  onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                >
+                  Back to Termination Benefits
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6">
-      <div className="flex items-center mb-6">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
+      {/* Header */}
+      <div className="max-w-4xl mx-auto mb-8">
         <button
           onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
-          className="mr-4 p-2 rounded-md hover:bg-gray-100"
+          className="mb-6 group flex items-center gap-2 text-gray-600 hover:text-rose-600 transition-colors duration-200"
         >
-          ← Back
+          <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+          <span className="font-medium">Back to Termination Benefits</span>
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">Edit Termination Benefit</h1>
+        
+        <div className="flex items-center gap-4 mb-2">
+          <div className="p-3 bg-gradient-to-br from-rose-500 to-orange-600 rounded-xl shadow-lg">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-600 to-orange-600 bg-clip-text text-transparent">Edit Termination Benefit</h1>
+            <p className="text-gray-600 mt-1 text-sm">Update termination benefit information and settings</p>
+          </div>
+        </div>
       </div>
 
-      <div className="bg-white shadow rounded-lg max-w-4xl mx-auto">
-        {error && (
-          <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Benefit Name *
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500"
-                placeholder="e.g., End of Service Benefit, Resignation Compensation, Termination Package"
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                Enter a descriptive name for this termination or resignation benefit.
-              </p>
-            </div>
+      {/* Form */}
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
+            {error && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <p className="text-red-800 font-medium text-sm">{error}</p>
+              </div>
+            )}
 
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Benefit Amount (EGP) *
-              </label>
-              <div className="mt-1 flex rounded-md shadow-sm">
+            {/* Basic Information */}
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-3">Basic Information</h2>
+              
+              <div>
+                <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Termination Benefit Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200"
+                  placeholder="Enter termination benefit name"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="amount" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Benefit Amount (EGP) <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="number"
+                  id="amount"
                   name="amount"
                   value={formData.amount}
                   onChange={handleChange}
                   required
                   min="0"
                   step="0.01"
-                  className="block w-full border border-gray-300 rounded-l-md py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200"
                   placeholder="0.00"
                 />
-                <span className="inline-flex items-center px-3 border border-l-0 border-gray-300 bg-gray-50 text-gray-500 rounded-r-md">
-                  EGP
-                </span>
               </div>
-              <p className="mt-1 text-sm text-gray-500">
-                Enter the benefit amount that will be awarded upon employee termination or resignation.
-              </p>
+
+              <div>
+                <label htmlFor="terms" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Terms and Conditions
+                </label>
+                <textarea
+                  id="terms"
+                  name="terms"
+                  value={formData.terms}
+                  onChange={handleChange}
+                  rows={6}
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200 resize-none"
+                  placeholder="Enter terms and conditions for this termination benefit"
+                />
+                <p className="mt-2 text-xs text-gray-500">Describe the terms and conditions under which this benefit applies</p>
+              </div>
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Terms and Conditions (Optional)
-              </label>
-              <textarea
-                name="terms"
-                value={formData.terms}
-                onChange={handleChange}
-                rows={6}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-red-500 focus:border-red-500"
-                placeholder="Enter the terms and conditions for this benefit, including eligibility criteria, payment schedule, legal compliance requirements, etc."
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                Describe the terms, conditions, and eligibility criteria for this termination benefit. Include any legal compliance requirements or payment schedules.
-              </p>
+            {/* Form Actions */}
+            <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
+                className="px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="px-6 py-3 bg-gradient-to-r from-rose-600 to-orange-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl hover:from-rose-700 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <span>Save Changes</span>
+                  </>
+                )}
+              </button>
             </div>
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-6 border-t">
-            <button
-              type="button"
-              onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-            >
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -182,34 +182,39 @@ export default function InsuranceOversightPage() {
 
   const columns = [
     {
-      key: 'name',
-      label: 'Name',
-      render: (item: ConfigurationItem) => (
-        <span className="font-medium">{item.name || 'N/A'}</span>
-      ),
-    },
-    {
       key: 'minSalary',
       label: 'Salary Range',
       render: (item: ConfigurationItem) => (
-        <span className="font-medium">
+        <span className="font-semibold text-gray-900">
           {item.minSalary?.toLocaleString()} - {item.maxSalary?.toLocaleString()} EGP
         </span>
       ),
     },
     {
-      key: 'employeeRate',
-      label: 'Employee Rate',
-      render: (item: ConfigurationItem) => (
-        <span>{item.employeeRate?.toFixed(2) || '0.00'}%</span>
-      ),
+      key: 'employeeContribution',
+      label: 'Employee Contribution',
+      render: (item: ConfigurationItem) => {
+        const employeeRate = (item as any).employeeRate || (item as any).employeeContribution;
+        const value = employeeRate !== undefined && employeeRate !== null ? employeeRate : 'N/A';
+        return (
+          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg font-semibold">
+            {typeof value === 'number' ? value.toFixed(2) : value}%
+          </span>
+        );
+      },
     },
     {
-      key: 'employerRate',
-      label: 'Employer Rate',
-      render: (item: ConfigurationItem) => (
-        <span>{item.employerRate?.toFixed(2) || '0.00'}%</span>
-      ),
+      key: 'employerContribution',
+      label: 'Employer Contribution',
+      render: (item: ConfigurationItem) => {
+        const employerRate = (item as any).employerRate || (item as any).employerContribution;
+        const value = employerRate !== undefined && employerRate !== null ? employerRate : 'N/A';
+        return (
+          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg font-semibold">
+            {typeof value === 'number' ? value.toFixed(2) : value}%
+          </span>
+        );
+      },
     },
     {
       key: 'createdAt',
@@ -222,96 +227,157 @@ export default function InsuranceOversightPage() {
   ];
 
   return (
-    <div className="container mx-auto px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Insurance Oversight</h1>
-        <p className="text-gray-600 mt-1">
-          Review and update insurance bracket configurations when policies or regulations change, so that payroll calculations remain accurate, compliant, and reflect the most current insurance requirements. (Approve/reject, Edit, View, Delete)
-        </p>
-      </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-800">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 p-4 text-green-800">
-          {success}
-        </div>
-      )}
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Insurance Brackets</CardTitle>
-              <CardDescription>
-                {Array.isArray(insuranceBrackets) ? insuranceBrackets.length : 0} insurance bracket(s) configured
-              </CardDescription>
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-indigo-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+              </svg>
             </div>
-            <div className="flex items-center gap-3">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as ConfigStatus | 'all')}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="all">All Statuses</option>
-                <option value="draft">Draft</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadInsuranceBrackets}
-                disabled={isLoading}
-              >
-                Refresh
-              </Button>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
+                Insurance Oversight
+              </h1>
+              <p className="text-gray-600 mt-1 text-sm">
+                Review and update insurance bracket configurations when policies or regulations change, so that payroll calculations remain accurate, compliant, and reflect the most current insurance requirements. (Approve/reject, Edit, View, Delete)
+              </p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <ConfigurationTable
-            data={tableData}
-            columns={columns}
-            isLoading={isLoading}
-            onView={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
-              if (found) handleView(found);
-            }}
-            onEdit={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
-              if (found) handleEdit(found);
-            }}
-            onApprove={(item) =>
-              setApprovalModal({
-                isOpen: true,
-                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
-              })
-            }
-            onReject={(item) =>
-              setRejectionModal({
-                isOpen: true,
-                item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
-              })
-            }
-            onDelete={(item) => {
-              const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
-              if (found) handleDelete(found);
-            }}
-            canApprove={(item) => item.status === 'draft'}
-            canReject={(item) => item.status === 'draft'}
-            canEdit={(item) => {
-              // HR Managers can edit draft or approved items (approved items will revert to draft when edited)
-              return item.status === 'draft' || item.status === 'approved';
-            }}
-            canDelete={(item) => item.status === 'draft'}
-          />
-        </CardContent>
-      </Card>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 font-semibold">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl shadow-lg flex items-center gap-3">
+            <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <p className="text-green-800 font-semibold">{success}</p>
+          </div>
+        )}
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+          {(['draft', 'approved', 'rejected'] as const).map((status) => {
+            const statusConfig = {
+              draft: { border: 'border-amber-200', bg: 'bg-amber-100', icon: 'text-amber-600', bgIcon: 'bg-amber-100', gradient: 'from-amber-50 to-yellow-50', label: 'Draft' },
+              approved: { border: 'border-green-200', bg: 'bg-green-100', icon: 'text-green-600', bgIcon: 'bg-green-100', gradient: 'from-green-50 to-emerald-50', label: 'Approved' },
+              rejected: { border: 'border-red-200', bg: 'bg-red-100', icon: 'text-red-600', bgIcon: 'bg-red-100', gradient: 'from-red-50 to-rose-50', label: 'Rejected' }
+            };
+            const config = statusConfig[status];
+            const count = Array.isArray(insuranceBrackets) 
+              ? insuranceBrackets.filter(b => String(b.status || '').toLowerCase() === status).length 
+              : 0;
+            return (
+              <div key={status} className={`p-6 bg-gradient-to-br ${config.gradient} rounded-2xl border-2 ${config.border} shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">{config.label}</p>
+                    <p className="text-3xl font-bold text-gray-900">{count}</p>
+                  </div>
+                  <div className={`p-3 ${config.bgIcon} rounded-xl`}>
+                    <svg className={`w-6 h-6 ${config.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {status === 'draft' && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>}
+                      {status === 'approved' && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>}
+                      {status === 'rejected' && <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>}
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
+          <div className="p-8">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-cyan-100 rounded-lg">
+                  <svg className="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Insurance Brackets</h2>
+                  <p className="text-gray-600 mt-1 text-sm">
+                    {Array.isArray(insuranceBrackets) ? insuranceBrackets.length : 0} insurance bracket(s) configured
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as ConfigStatus | 'all')}
+                  className="px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white hover:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="draft">Draft</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <button
+                  onClick={loadInsuranceBrackets}
+                  disabled={isLoading}
+                  className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl hover:from-cyan-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:transform-none flex items-center gap-2"
+                >
+                  <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div>
+              <ConfigurationTable
+                data={tableData}
+                columns={columns}
+                isLoading={isLoading}
+                onView={(item) => {
+                  const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
+                  if (found) handleView(found);
+                }}
+                onEdit={(item) => {
+                  const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
+                  if (found) handleEdit(found);
+                }}
+                onApprove={(item) =>
+                  setApprovalModal({
+                    isOpen: true,
+                    item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
+                  })
+                }
+                onReject={(item) =>
+                  setRejectionModal({
+                    isOpen: true,
+                    item: (Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null) || null,
+                  })
+                }
+                onDelete={(item) => {
+                  const found = Array.isArray(insuranceBrackets) ? insuranceBrackets.find((b) => b.id === (item._id || item.id)) : null;
+                  if (found) handleDelete(found);
+                }}
+                canApprove={(item) => item.status === 'draft'}
+                canReject={(item) => item.status === 'draft'}
+                canEdit={(item) => {
+                  // HR Managers can edit draft or approved items (approved items will revert to draft when edited)
+                  return item.status === 'draft' || item.status === 'approved';
+                }}
+                canDelete={(item) => item.status === 'draft'}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <ApprovalModal
         isOpen={approvalModal.isOpen}

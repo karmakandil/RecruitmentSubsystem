@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
@@ -15,7 +14,6 @@ import { approvalsApi, configDetailsApi, PendingApproval } from '@/lib/api/payro
 
 export default function ApprovalsPage() {
   const { user } = useAuth();
-  const router = useRouter();
   useRequireAuth(SystemRole.PAYROLL_MANAGER);
 
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
@@ -61,18 +59,15 @@ export default function ApprovalsPage() {
       setError(null);
       const data = await approvalsApi.getPendingApprovals();
       // Ensure data is always an array
-      let approvals: PendingApproval[] = [];
       if (Array.isArray(data)) {
-        approvals = data;
+        setPendingApprovals(data);
       } else if (data && typeof data === 'object') {
         // Handle case where API returns { data: [...] } or { pendingApprovals: [...] }
         const arrayData = (data as any).data || (data as any).pendingApprovals || [];
-        approvals = Array.isArray(arrayData) ? arrayData : [];
+        setPendingApprovals(Array.isArray(arrayData) ? arrayData : []);
+      } else {
+        setPendingApprovals([]);
       }
-      
-      // Filter out insurance-brackets and company-settings (cannot be deleted)
-      // They can still be approved/rejected, but not deleted
-      setPendingApprovals(approvals);
     } catch (err: any) {
       setError(err.message || 'Failed to load pending approvals');
       // Use empty array for UI structure when backend is not ready
@@ -125,12 +120,6 @@ export default function ApprovalsPage() {
   };
 
   const handleDelete = async (item: PendingApproval) => {
-    // Cannot delete insurance-brackets or company-settings
-    if (item.type === 'insurance-brackets' || item.type === 'company-settings') {
-      setError('Insurance brackets and company settings cannot be deleted.');
-      return;
-    }
-
     if (!confirm('Are you sure you want to delete this configuration?')) {
       return;
     }
@@ -146,13 +135,6 @@ export default function ApprovalsPage() {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const handleEdit = (item: PendingApproval) => {
-    // Navigate to edit page based on configuration type
-    // Pattern: /dashboard/payroll-configuration/{type}/{id}/edit
-    const editUrl = `/dashboard/payroll-configuration/${item.type}/${item._id}/edit`;
-    router.push(editUrl);
   };
 
   const handleView = async (item: PendingApproval) => {
@@ -204,9 +186,16 @@ export default function ApprovalsPage() {
       key: 'type',
       label: 'Type',
       render: (item: ConfigurationItem) => (
-        <span className="font-medium capitalize">
-          {item.type?.replace(/-/g, ' ') || 'Unknown'}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg">
+            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+          </div>
+          <span className="font-semibold text-gray-900 capitalize">
+            {item.type?.replace(/-/g, ' ') || 'Unknown'}
+          </span>
+        </div>
       ),
     },
     {
@@ -219,7 +208,11 @@ export default function ApprovalsPage() {
         else if (item.name) nameField = item.name;
         else if (item.policyName) nameField = item.policyName;
         else if (item.type) nameField = item.type;
-        return <span className="font-medium">{nameField}</span>;
+        return (
+          <div>
+            <span className="font-semibold text-gray-900">{nameField}</span>
+          </div>
+        );
       },
     },
     {
@@ -235,7 +228,16 @@ export default function ApprovalsPage() {
         if (item.minSalary && item.maxSalary) {
           details.push(`${item.minSalary.toLocaleString()}-${item.maxSalary.toLocaleString()} EGP`);
         }
-        return <span className="text-sm text-gray-600">{details.join(' • ') || '—'}</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {details.map((detail, idx) => (
+              <span key={idx} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-amber-100 text-amber-800">
+                {detail}
+              </span>
+            ))}
+            {details.length === 0 && <span className="text-sm text-gray-400">—</span>}
+          </div>
+        );
       },
     },
     {
@@ -244,11 +246,21 @@ export default function ApprovalsPage() {
       render: (item: ConfigurationItem) => {
         const createdBy = item.createdBy || item.data?.createdBy;
         if (!createdBy) return <span className="text-gray-400">N/A</span>;
+        let displayName = '';
         if (typeof createdBy === 'object') {
           const name = `${createdBy.firstName || ''} ${createdBy.lastName || ''}`.trim();
-          return <span className="text-sm">{name || createdBy.email || 'Unknown'}</span>;
+          displayName = name || createdBy.email || 'Unknown';
+        } else {
+          displayName = createdBy;
         }
-        return <span className="text-sm">{createdBy}</span>;
+        return (
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+              {displayName ? displayName.charAt(0).toUpperCase() : '?'}
+            </div>
+            <span className="text-sm font-medium text-gray-700">{displayName}</span>
+          </div>
+        );
       },
     },
     {
@@ -257,7 +269,12 @@ export default function ApprovalsPage() {
       render: (item: ConfigurationItem) => {
         const date = item.createdAt || item.data?.createdAt;
         return date ? (
-          <span className="text-sm">{new Date(date).toLocaleDateString()}</span>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            <span className="text-sm font-medium text-gray-700">{new Date(date).toLocaleDateString()}</span>
+          </div>
         ) : (
           <span className="text-sm text-gray-400">N/A</span>
         );
@@ -266,63 +283,102 @@ export default function ApprovalsPage() {
   ];
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 p-6">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Approval Dashboard</h1>
-        <p className="text-gray-600 mt-1">
-          Review and approve pending payroll configurations. Edit and approve any configuration, delete except insurance and company settings (Payroll Manager only)
-        </p>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-3 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl shadow-lg">
+            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">Approval Dashboard</h1>
+            <p className="text-gray-600 mt-1 text-sm">
+              Review and approve pending payroll configurations (Payroll Manager only)
+            </p>
+          </div>
+        </div>
+
+        {/* Stats Banner */}
+        <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl shadow-xl p-6 mb-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-amber-100 text-sm font-medium mb-1">Pending Approvals</p>
+              <p className="text-4xl font-bold">{Array.isArray(pendingApprovals) ? pendingApprovals.length : 0}</p>
+              <p className="text-amber-100 text-xs mt-1">Configuration(s) awaiting your review</p>
+            </div>
+            <div className="p-4 bg-white/20 rounded-xl backdrop-blur-sm">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-800">
-          {error}
+        <div className="mb-6 rounded-xl border-2 border-red-300 bg-red-50 p-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 font-semibold">{error}</p>
+          </div>
         </div>
       )}
 
       {success && (
-        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 p-4 text-green-800">
-          {success}
+        <div className="mb-6 rounded-xl border-2 border-green-300 bg-green-50 p-4 shadow-lg">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            <p className="text-green-800 font-semibold">{success}</p>
+          </div>
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
+        <div className="px-6 py-6 sm:px-8 sm:py-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
             <div>
-              <CardTitle>Pending Approvals</CardTitle>
-              <CardDescription>
+              <h2 className="text-xl font-bold text-gray-900 mb-1">Pending Approvals</h2>
+              <p className="text-sm text-gray-600">
                 {Array.isArray(pendingApprovals) ? pendingApprovals.length : 0} configuration(s) awaiting approval
-                <span className="block mt-1 text-xs text-gray-500">
-                  Note: Insurance brackets and company settings cannot be deleted, but can be approved/rejected and edited.
-                </span>
-              </CardDescription>
+              </p>
             </div>
             <div className="flex items-center gap-3">
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="all">All Types</option>
-                {types.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                </svg>
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="px-4 py-2 text-sm font-medium border-2 border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white text-gray-700 transition-all duration-200 hover:border-amber-300"
+                >
+                  <option value="all">All Types</option>
+                  {types.map((type) => (
+                    <option key={type} value={type}>
+                      {type.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
                 onClick={loadPendingApprovals}
                 disabled={isLoading}
+                className="px-4 py-2 border-2 border-amber-200 rounded-lg text-sm font-semibold text-amber-700 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200 flex items-center hover:border-amber-300 disabled:opacity-50"
               >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
                 Refresh
-              </Button>
+              </button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+
           <ConfigurationTable
             data={tableData}
             columns={columns}
@@ -330,10 +386,6 @@ export default function ApprovalsPage() {
             onView={(item) => {
               const found = Array.isArray(pendingApprovals) ? pendingApprovals.find((p) => p._id === item._id) : null;
               if (found) handleView(found);
-            }}
-            onEdit={(item) => {
-              const found = Array.isArray(pendingApprovals) ? pendingApprovals.find((p) => p._id === item._id) : null;
-              if (found) handleEdit(found);
             }}
             onApprove={(item) =>
               setApprovalModal({
@@ -353,20 +405,10 @@ export default function ApprovalsPage() {
             }}
             canApprove={() => true}
             canReject={() => true}
-            canEdit={(item) => {
-              // Can edit draft or approved items (approved items will revert to draft when edited)
-              return item.status === 'draft' || item.status === 'approved';
-            }}
-            canDelete={(item) => {
-              // Can only delete draft items, and NOT insurance-brackets or company-settings
-              const type = item.type || '';
-              return item.status === 'draft' && 
-                     type !== 'insurance-brackets' && 
-                     type !== 'company-settings';
-            }}
+            canDelete={(item) => item.status === 'draft'}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <ApprovalModal
         isOpen={approvalModal.isOpen}

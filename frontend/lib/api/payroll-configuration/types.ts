@@ -38,6 +38,20 @@ export interface RejectionDto {
   comment?: string;
 }
 
+export interface BaseConfiguration {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'draft' | 'approved' | 'rejected';
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+  comments?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+}
+
 export interface InsuranceBracket extends BaseConfiguration {
   name: string; // Insurance bracket name (e.g., social, health insurance)
   minSalary: number; // Minimum salary for bracket
@@ -45,6 +59,24 @@ export interface InsuranceBracket extends BaseConfiguration {
   employeeRate: number; // Employee contribution rate (%)
   employerRate: number; // Employer contribution rate (%)
   amount?: number; // Fixed insurance amount (optional)
+}
+
+export interface CreateInsuranceBracketDto {
+  name: string;
+  minSalary: number;
+  maxSalary: number;
+  employeeRate: number;
+  employerRate: number;
+  amount?: number;
+}
+
+export interface UpdateInsuranceBracketDto {
+  name?: string;
+  minSalary?: number;
+  maxSalary?: number;
+  employeeRate?: number;
+  employerRate?: number;
+  amount?: number;
 }
 
 export interface ConfigurationStats {
@@ -109,20 +141,6 @@ export interface ApiResponse<T = any> {
   error?: string;
 }
 
-export interface BaseConfiguration {
-  id: string;
-  name: string;
-  description?: string;
-  status: 'draft' | 'approved' | 'rejected';
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  version: number;
-  comments?: string;
-  approvedBy?: string;
-  approvedAt?: string;
-}
-
 export interface PayrollPolicy extends BaseConfiguration {
   policyType: 'attendance' | 'overtime' | 'bonus' | 'deduction' | 'other';
   effectiveDate: string;
@@ -174,12 +192,47 @@ export interface TaxRule extends BaseConfiguration {
   isProgressive?: boolean; // Whether this is a progressive tax rate
 }
 
+export interface CreateTaxRuleDto {
+  name: string;
+  rate: number;
+  description?: string;
+}
+
+export interface UpdateTaxRuleDto {
+  name?: string;
+  rate?: number;
+  description?: string;
+}
+
 export interface SigningBonus extends BaseConfiguration {
   positionName: string; // Position name eligible for signing bonus (e.g., Junior TA, Mid TA, Senior TA)
   amount: number; // Signing bonus amount
+}
+
+export interface CreateSigningBonusDto {
+  positionName: string;
+  amount: number;
+}
+
+export interface UpdateSigningBonusDto {
+  positionName?: string;
+  amount?: number;
 }
 
 export interface TerminationBenefit extends BaseConfiguration {
   amount: number; // Termination/resignation benefit amount
   terms?: string; // Terms and conditions for the benefit
 }
+
+export interface CreateTerminationBenefitDto {
+  name: string;
+  amount: number;
+  terms?: string;
+}
+
+export interface UpdateTerminationBenefitDto {
+  name?: string;
+  amount?: number;
+  terms?: string;
+}
+

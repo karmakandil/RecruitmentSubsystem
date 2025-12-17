@@ -1,6 +1,35 @@
 import { InsuranceBracket } from './types';
 import api from '../client';
 
+// Type definitions for DTOs (in case they're not exported)
+type CreateInsuranceBracketDto = {
+  name: string;
+  minSalary: number;
+  maxSalary: number;
+  employeeRate: number;
+  employerRate: number;
+  amount?: number;
+};
+
+type UpdateInsuranceBracketDto = {
+  name?: string;
+  minSalary?: number;
+  maxSalary?: number;
+  employeeRate?: number;
+  employerRate?: number;
+  amount?: number;
+};
+
+type ApprovalDto = {
+  comment?: string;
+};
+
+type RejectionDto = {
+  comment: string;
+};
+
+const BASE_URL = '/payroll-configuration/insurance-brackets';
+
 // Helper function to extract user name from user object
 const extractUserName = (user: any): string => {
   if (!user) return '';
@@ -36,8 +65,8 @@ const mapBackendToFrontend = (backendData: any): InsuranceBracket => {
     version: backendData.version || 1,
     minSalary: backendData.minSalary || 0,
     maxSalary: backendData.maxSalary || 0,
-    employeeRate: backendData.employeeRate || 0,
-    employerRate: backendData.employerRate || 0,
+    employeeRate: backendData.employeeRate || backendData.employeeContribution || 0,
+    employerRate: backendData.employerRate || backendData.employerContribution || 0,
     amount: backendData.amount,
     approvedBy: extractUserName(backendData.approvedBy),
     approvedAt: backendData.approvedAt,
@@ -52,26 +81,26 @@ const mapFrontendToBackend = (frontendData: any) => {
     maxSalary: parseFloat(frontendData.maxSalary) || 0,
     employeeRate: parseFloat(frontendData.employeeRate) || 0,
     employerRate: parseFloat(frontendData.employerRate) || 0,
-    amount: frontendData.amount ? parseFloat(frontendData.amount) : undefined,
+    amount: frontendData.amount ? parseFloat(String(frontendData.amount)) : undefined,
   };
 };
 
 export const insuranceBracketsApi = {
-  getAll: async (status?: 'draft' | 'approved' | 'rejected'): Promise<InsuranceBracket[]> => {
+  getAll: async (statusFilter?: 'draft' | 'approved' | 'rejected'): Promise<InsuranceBracket[]> => {
     try {
       const params: any = {};
-      if (status) {
-        params.status = status;
+      if (statusFilter) {
+        params.status = statusFilter;
       }
       
-      const response = await api.get('/payroll-configuration/insurance-brackets', { params });
+      const response = await api.get(BASE_URL, params ? { params } : {}) as any;
       
       // Handle different response formats
       let insuranceBrackets: any[] = [];
       if (Array.isArray(response)) {
         insuranceBrackets = response;
       } else if (response && typeof response === 'object') {
-        insuranceBrackets = (response as any).data || (response as any).insuranceBrackets || [];
+        insuranceBrackets = response.data || response.items || response.insuranceBrackets || [];
       }
       
       // Map each item from backend to frontend format
@@ -84,7 +113,7 @@ export const insuranceBracketsApi = {
 
   getById: async (id: string): Promise<InsuranceBracket> => {
     try {
-      const response = await api.get(`/payroll-configuration/insurance-brackets/${id}`);
+      const response = await api.get(`${BASE_URL}/${id}`) as any;
       return mapBackendToFrontend(response);
     } catch (error) {
       console.error(`Error fetching insurance bracket ${id}:`, error);
@@ -92,7 +121,7 @@ export const insuranceBracketsApi = {
     }
   },
 
-  create: async (data: Omit<InsuranceBracket, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'status' | 'createdBy' | 'description' | 'approvedBy' | 'approvedAt'>): Promise<InsuranceBracket> => {
+  create: async (data: CreateInsuranceBracketDto | Omit<InsuranceBracket, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'status' | 'createdBy' | 'description' | 'approvedBy' | 'approvedAt'>): Promise<InsuranceBracket> => {
     try {
       // Map frontend data to backend DTO format
       const backendData = mapFrontendToBackend(data);
@@ -114,7 +143,7 @@ export const insuranceBracketsApi = {
         throw new Error('Employer rate must be between 0 and 100');
       }
       
-      const response = await api.post('/payroll-configuration/insurance-brackets', backendData);
+      const response = await api.post(BASE_URL, backendData) as any;
       return mapBackendToFrontend(response);
     } catch (error) {
       console.error('Error creating insurance bracket:', error);
@@ -122,17 +151,19 @@ export const insuranceBracketsApi = {
     }
   },
 
-  update: async (id: string, data: Partial<InsuranceBracket>): Promise<InsuranceBracket> => {
+  update: async (id: string, data: UpdateInsuranceBracketDto | Partial<InsuranceBracket>): Promise<InsuranceBracket> => {
     try {
       // Map frontend data to backend DTO format
       const backendData: any = {};
       
-      if (data.name !== undefined) backendData.name = data.name;
-      if (data.minSalary !== undefined) backendData.minSalary = parseFloat(String(data.minSalary));
-      if (data.maxSalary !== undefined) backendData.maxSalary = parseFloat(String(data.maxSalary));
-      if (data.employeeRate !== undefined) backendData.employeeRate = parseFloat(String(data.employeeRate));
-      if (data.employerRate !== undefined) backendData.employerRate = parseFloat(String(data.employerRate));
-      if (data.amount !== undefined) backendData.amount = data.amount ? parseFloat(String(data.amount)) : undefined;
+      if (data.name !== undefined) backendData.name = String(data.name).trim();
+      if (data.minSalary !== undefined) backendData.minSalary = Number(data.minSalary);
+      if (data.maxSalary !== undefined) backendData.maxSalary = Number(data.maxSalary);
+      if (data.employeeRate !== undefined) backendData.employeeRate = Number(data.employeeRate);
+      if (data.employerRate !== undefined) backendData.employerRate = Number(data.employerRate);
+      if (data.amount !== undefined && data.amount !== null) {
+        backendData.amount = Number(data.amount);
+      }
       
       // Validate if both min and max are provided
       if (backendData.minSalary !== undefined && backendData.maxSalary !== undefined) {
@@ -141,7 +172,7 @@ export const insuranceBracketsApi = {
         }
       }
       
-      const response = await api.put(`/payroll-configuration/insurance-brackets/${id}`, backendData);
+      const response = await api.put(`${BASE_URL}/${id}`, backendData) as any;
       return mapBackendToFrontend(response);
     } catch (error) {
       console.error(`Error updating insurance bracket ${id}:`, error);
@@ -151,32 +182,29 @@ export const insuranceBracketsApi = {
 
   delete: async (id: string): Promise<void> => {
     try {
-      await api.delete(`/payroll-configuration/insurance-brackets/${id}`);
+      await api.delete(`${BASE_URL}/${id}`);
     } catch (error) {
       console.error(`Error deleting insurance bracket ${id}:`, error);
       throw error;
     }
   },
 
-  approve: async (
-    id: string,
-    data?: { comment?: string }
-  ): Promise<any> => {
-    const response = await api.post(
-      `/payroll-configuration/insurance-brackets/${id}/approve`,
-      data || {}
-    );
-    return response;
+  approve: async (id: string, data?: ApprovalDto | { comment?: string }): Promise<void> => {
+    try {
+      await api.post(`${BASE_URL}/${id}/approve`, data || {});
+    } catch (error) {
+      console.error(`Error approving insurance bracket ${id}:`, error);
+      throw error;
+    }
   },
 
-  reject: async (
-    id: string,
-    data: { comment: string }
-  ): Promise<any> => {
-    const response = await api.post(
-      `/payroll-configuration/insurance-brackets/${id}/reject`,
-      data
-    );
-    return response;
+  reject: async (id: string, data: RejectionDto | { comment: string }): Promise<void> => {
+    try {
+      await api.post(`${BASE_URL}/${id}/reject`, data);
+    } catch (error) {
+      console.error(`Error rejecting insurance bracket ${id}:`, error);
+      throw error;
+    }
   },
 };
+

@@ -71,91 +71,87 @@ export function ConfigurationTable<T extends ConfigurationItem>({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+    <div className="overflow-x-auto rounded-xl border-2 border-gray-200 bg-white shadow-lg">
       <table className="w-full">
-        <thead className="bg-gray-50">
+        <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
           <tr>
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 ${column.className || ''}`}
+                className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-gray-700 border-b-2 border-gray-200 ${column.className || ''}`}
               >
                 {column.label}
               </th>
             ))}
             {showStatus && (
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-gray-700 border-b-2 border-gray-200">
                 Status
               </th>
             )}
-            <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-gray-700 border-b-2 border-gray-200">
               Actions
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200 bg-white">
-          {data.map((item) => {
+        <tbody className="divide-y divide-gray-100 bg-white">
+          {data.map((item, index) => {
             const itemId = item._id || item.id || '';
             return (
-              <tr key={itemId} className="hover:bg-gray-50">
+              <tr 
+                key={itemId} 
+                className={`hover:bg-gradient-to-r hover:from-cyan-50 hover:to-blue-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+              >
                 {columns.map((column) => (
-                  <td key={column.key} className={`whitespace-nowrap px-6 py-4 text-sm text-gray-900 ${column.className || ''}`}>
+                  <td key={column.key} className={`px-6 py-4 text-sm text-gray-900 ${column.className || ''}`}>
                     {column.render ? column.render(item) : (item[column.key] as string) || '-'}
                   </td>
                 ))}
                 {showStatus && (
-                  <td className="whitespace-nowrap px-6 py-4 text-sm">
+                  <td className="px-6 py-4 text-sm">
                     <StatusBadge status={item.status} size="sm" />
                   </td>
                 )}
-                <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                  <div className="flex justify-end gap-2">
+                <td className="px-6 py-4 text-right text-sm font-medium">
+                  <div className="flex justify-end gap-2 flex-wrap">
                     {onView && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
                         onClick={() => onView(item)}
+                        className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all duration-200 hover:shadow-md"
                       >
                         View
-                      </Button>
+                      </button>
                     )}
                     {onEdit && canEdit(item) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
+                      <button
                         onClick={() => onEdit(item)}
+                        className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-all duration-200 hover:shadow-md"
                       >
                         Edit
-                      </Button>
+                      </button>
                     )}
                     {onApprove && canApprove(item) && (
-                      <Button
-                        variant="primary"
-                        size="sm"
+                      <button
                         onClick={() => onApprove(item)}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-lg transition-all duration-200 hover:shadow-md transform hover:scale-105"
                       >
                         Approve
-                      </Button>
+                      </button>
                     )}
                     {onReject && canReject(item) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
+                      <button
                         onClick={() => onReject(item)}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        className="px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 border-2 border-red-300 rounded-lg transition-all duration-200 hover:shadow-md"
                       >
                         Reject
-                      </Button>
+                      </button>
                     )}
                     {onDelete && canDelete(item) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
+                      <button
                         onClick={() => onDelete(item)}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
+                        className="px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-100 hover:bg-red-200 border-2 border-red-300 rounded-lg transition-all duration-200 hover:shadow-md"
                       >
                         Delete
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </td>

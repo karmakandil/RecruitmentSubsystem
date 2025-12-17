@@ -56,7 +56,17 @@ export const allowancesApi = {
   getAll: async (status?: 'draft' | 'approved' | 'rejected'): Promise<Allowance[]> => {
     try {
       const response = await api.get('/payroll-configuration/allowances');
-      let allowances = Array.isArray(response) ? response : response.data || response.items || [];
+      let allowances: any[] = [];
+      if (Array.isArray(response)) {
+        allowances = response;
+      } else if (response && typeof response === 'object') {
+        if ('data' in response) {
+          const data = (response as any).data;
+          allowances = Array.isArray(data) ? data : (data?.items && Array.isArray(data.items) ? data.items : []);
+        } else if ('items' in response && Array.isArray((response as any).items)) {
+          allowances = (response as any).items;
+        }
+      }
       
       // Map each item from backend to frontend format
       allowances = allowances.map(mapBackendToFrontend);
@@ -131,3 +141,4 @@ export const allowancesApi = {
     }
   }
 };
+

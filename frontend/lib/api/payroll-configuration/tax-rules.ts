@@ -61,11 +61,15 @@ export const taxRulesApi = {
   getAll: async (status?: 'draft' | 'approved' | 'rejected'): Promise<TaxRule[]> => {
     try {
       const response = await api.get('/payroll-configuration/tax-rules');
-      let taxRules = Array.isArray(response) ? response : response.data || response.items || [];
+      // The Axios response will have .data; backend might return array or object with "items"
+      let raw = response?.data;
+      let taxRules: any[] =
+        Array.isArray(raw)
+          ? raw
+          : (raw && Array.isArray(raw.items) ? raw.items : []);
       
       // Map each item from backend to frontend format
       taxRules = taxRules.map(mapBackendToFrontend);
-      
       // Filter by status if provided
       if (status) {
         taxRules = taxRules.filter((item: TaxRule) => 

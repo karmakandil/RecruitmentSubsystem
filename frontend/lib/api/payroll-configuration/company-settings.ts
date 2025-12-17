@@ -9,7 +9,14 @@ import {
 export const companySettingsApi = {
   get: async (): Promise<CompanySettings> => {
     const response = await api.get('/payroll-configuration/company-settings');
-    return response as CompanySettings;
+    // Extract data from response
+    if (response && typeof response === 'object') {
+      if ('data' in response) {
+        return (response as any).data as CompanySettings;
+      }
+      return response as unknown as CompanySettings;
+    }
+    throw new Error('Invalid response format');
   },
 
   create: async (

@@ -53,11 +53,13 @@ export const signingBonusesApi = {
   getAll: async (status?: 'draft' | 'approved' | 'rejected'): Promise<SigningBonus[]> => {
     try {
       const response = await api.get('/payroll-configuration/signing-bonuses');
-      let signingBonuses = Array.isArray(response) ? response : response.data || response.items || [];
+      // Axios responses are not arrays, so always get the array from .data
+      let signingBonuses = Array.isArray(response.data)
+        ? response.data
+        : (Array.isArray(response.data?.items) ? response.data.items : []);
       
       // Map each item from backend to frontend format
       signingBonuses = signingBonuses.map(mapBackendToFrontend);
-      
       // Filter by status if provided
       if (status) {
         signingBonuses = signingBonuses.filter((item: SigningBonus) => 
