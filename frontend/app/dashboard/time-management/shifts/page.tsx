@@ -49,12 +49,18 @@ export default function ShiftsPage() {
     switch (status) {
       case ShiftAssignmentStatus.APPROVED:
         return "text-green-600 bg-green-50";
-      case ShiftAssignmentStatus.PENDING:
-        return "text-yellow-600 bg-yellow-50";
-      case ShiftAssignmentStatus.CANCELLED:
+      case ShiftAssignmentStatus.ENTERED:
+        return "text-gray-600 bg-gray-100";
+      case ShiftAssignmentStatus.SUBMITTED:
+        return "text-blue-600 bg-blue-50";
+      case ShiftAssignmentStatus.REJECTED:
         return "text-red-600 bg-red-50";
+      case ShiftAssignmentStatus.CANCELLED:
+        return "text-orange-600 bg-orange-50";
+      case ShiftAssignmentStatus.POSTPONED:
+        return "text-yellow-600 bg-yellow-50";
       case ShiftAssignmentStatus.EXPIRED:
-        return "text-gray-600 bg-gray-50";
+        return "text-purple-600 bg-purple-50";
       default:
         return "text-gray-600 bg-gray-50";
     }

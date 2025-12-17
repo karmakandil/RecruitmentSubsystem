@@ -1,9 +1,14 @@
 // Enums
+// All 7 required statuses per business requirements:
+// Shifts must be assigned per employee for a defined term and hold these statuses
 export enum ShiftAssignmentStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  CANCELLED = 'CANCELLED',
-  EXPIRED = 'EXPIRED',
+  ENTERED = 'ENTERED',       // Initial entry - assignment has been entered but not yet submitted
+  SUBMITTED = 'SUBMITTED',   // Submitted for approval
+  APPROVED = 'APPROVED',     // Approved by manager/HR
+  REJECTED = 'REJECTED',     // Rejected by approver
+  CANCELLED = 'CANCELLED',   // Cancelled assignment
+  POSTPONED = 'POSTPONED',   // Temporarily postponed
+  EXPIRED = 'EXPIRED',       // Assignment term has expired
 }
 
 export enum PunchPolicy {
