@@ -15,6 +15,9 @@ import Link from "next/link";
 import { employeeProfileApi } from "@/lib/api/employee-profile/profile";
 import type { EmployeeProfile } from "@/types";
 
+import EducationSection from "@/components/employee-profile/EducationSection";
+import ProfilePhotoUpload from "@/components/employee-profile/ProfilePhotoUpload";
+
 export default function MyProfilePage() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
@@ -22,9 +25,6 @@ export default function MyProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   const canEdit = true;
-
-  // app/dashboard/employee-profile/my-profile/page.tsx - UPDATED "use client" section
-  // Update just the useEffect and loadProfile function:
 
   useEffect(() => {
     loadProfile();
@@ -35,7 +35,6 @@ export default function MyProfilePage() {
       setLoading(true);
       const response = await employeeProfileApi.getMyProfile();
 
-      // The API helper now extracts data properly
       if (response && typeof response === "object") {
         setProfile(response as EmployeeProfile);
       } else {
@@ -81,8 +80,8 @@ export default function MyProfilePage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-2xl font-bold text-white-900">My Profile</h1>
+            <p className="text-white-900 mt-1">
               Employee ID: {profile?.employeeNumber || user?.employeeNumber}
             </p>
           </div>
@@ -100,7 +99,7 @@ export default function MyProfilePage() {
 
         {/* Profile Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Personal Info */}
+          {/* Personal Information */}
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Personal Information</CardTitle>
@@ -109,7 +108,7 @@ export default function MyProfilePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Full Name</p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.fullName || user?.fullName || "Not available"}
                   </p>
                 </div>
@@ -117,7 +116,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Employee Number
                   </p>
-                  <p className="mt-1 font-mono">
+                  <p className="mt-1 font-mono text-black">
                     {profile?.employeeNumber || user?.employeeNumber || "N/A"}
                   </p>
                 </div>
@@ -125,7 +124,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Date of Birth
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.dateOfBirth
                       ? new Date(profile.dateOfBirth).toLocaleDateString()
                       : "Not provided"}
@@ -133,13 +132,15 @@ export default function MyProfilePage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Gender</p>
-                  <p className="mt-1">{profile?.gender || "Not provided"}</p>
+                  <p className="mt-1 text-black">
+                    {profile?.gender || "Not provided"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">
                     Marital Status
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.maritalStatus || "Not provided"}
                   </p>
                 </div>
@@ -147,7 +148,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     National ID
                   </p>
-                  <p className="mt-1 font-mono">
+                  <p className="mt-1 font-mono text-black">
                     {profile?.nationalId || "Not provided"}
                   </p>
                 </div>
@@ -155,13 +156,30 @@ export default function MyProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Status Card */}
+          {/* Profile Photo */}
           <Card>
             <CardHeader>
-              <CardTitle>Employment Status</CardTitle>
+              <CardTitle>Profile Photo</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
+              <ProfilePhotoUpload
+                currentPhotoUrl={profile?.profilePictureUrl}
+                onPhotoUpdated={(newUrl) => {
+                  if (profile) {
+                    setProfile({ ...profile, profilePictureUrl: newUrl });
+                  }
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Employment Status */}
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Employment Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Status</p>
                   <span
@@ -184,7 +202,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Date of Hire
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.dateOfHire
                       ? new Date(profile.dateOfHire).toLocaleDateString()
                       : "N/A"}
@@ -194,11 +212,15 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Contract Type
                   </p>
-                  <p className="mt-1">{profile?.contractType || "N/A"}</p>
+                  <p className="mt-1 text-black">
+                    {profile?.contractType || "N/A"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Work Type</p>
-                  <p className="mt-1">{profile?.workType || "N/A"}</p>
+                  <p className="mt-1 text-black">
+                    {profile?.workType || "N/A"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -215,7 +237,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Work Email
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.workEmail || user?.workEmail || "N/A"}
                   </p>
                 </div>
@@ -223,7 +245,7 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Personal Email
                   </p>
-                  <p className="mt-1">
+                  <p className="mt-1 text-black">
                     {profile?.personalEmail || user?.personalEmail || "N/A"}
                   </p>
                 </div>
@@ -231,18 +253,22 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Mobile Phone
                   </p>
-                  <p className="mt-1">{profile?.mobilePhone || "N/A"}</p>
+                  <p className="mt-1 text-black">
+                    {profile?.mobilePhone || "N/A"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">
                     Home Phone
                   </p>
-                  <p className="mt-1">{profile?.homePhone || "N/A"}</p>
+                  <p className="mt-1 text-black">
+                    {profile?.homePhone || "N/A"}
+                  </p>
                 </div>
                 {profile?.address && (
                   <div className="md:col-span-2">
                     <p className="text-sm font-medium text-gray-500">Address</p>
-                    <p className="mt-1">
+                    <p className="mt-1 text-black">
                       {[
                         profile.address.streetAddress,
                         profile.address.city,
@@ -265,13 +291,13 @@ export default function MyProfilePage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium text-gray-500">Position</p>
-                <p className="mt-1">
+                <p className="mt-1 text-black">
                   {profile?.primaryPosition?.title || "Not assigned"}
                 </p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Department</p>
-                <p className="mt-1">
+                <p className="mt-1 text-black">
                   {profile?.primaryDepartment?.name || "Not assigned"}
                 </p>
               </div>
@@ -280,9 +306,21 @@ export default function MyProfilePage() {
                   <p className="text-sm font-medium text-gray-500">
                     Supervisor
                   </p>
-                  <p className="mt-1">{profile.supervisor.fullName}</p>
+                  <p className="mt-1 text-black">
+                    {profile.supervisor.fullName}
+                  </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Education & Qualifications */}
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Education & Qualifications</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EducationSection />
             </CardContent>
           </Card>
         </div>

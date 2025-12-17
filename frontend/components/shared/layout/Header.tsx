@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 import { SystemRole } from "@/types";
+import { User, ChevronDown, LogOut, UserCircle, Settings } from "lucide-react";
 
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, logout, loading } = useAuth();
+
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch by only rendering conditional content after mount
@@ -27,6 +31,8 @@ export default function Header() {
   const isHR = isHRAdminOrManager(user);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
+  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN) ?? false;
+  const canConfigureShifts = isHRAdmin || isHRManager || isSystemAdmin;
   const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST) ?? false;
   const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER) ?? false;
   const isFinanceStaff = user?.roles?.includes(SystemRole.FINANCE_STAFF) ?? false;
@@ -37,6 +43,20 @@ export default function Header() {
         ? "text-blue-600"
         : "text-gray-700 hover:text-blue-600"
     }`;
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
@@ -49,49 +69,50 @@ export default function Header() {
 
         {/* Only render navigation after mount to prevent hydration mismatch */}
         {mounted && !loading && isAuthenticated && (
-          <nav className="flex items-center space-x-6">
-            {/* HR Admin Navigation */}
-            {isHRAdmin && (
-              <>
-                <Link
-                  href="/dashboard/employee-profile/admin/search"
-                  className={navItemClass("/dashboard/employee-profile/admin")}
-                >
-                  Employees
-                </Link>
+          <div className="flex items-center space-x-6">
+            <nav className="flex items-center space-x-6">
+              {/* HR Admin Navigation */}
+              {isHRAdmin && (
+                <>
+                  <Link
+                    href="/dashboard/employee-profile/admin/search"
+                    className={navItemClass("/dashboard/employee-profile/admin")}
+                  >
+                    Employees
+                  </Link>
 
-                <Link
-                  href="/dashboard/employee-profile/admin/approvals"
-                  className={navItemClass(
-                    "/dashboard/employee-profile/admin/approvals"
-                  )}
-                >
-                  Approvals
-                </Link>
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className={navItemClass(
+                      "/dashboard/employee-profile/admin/approvals"
+                    )}
+                  >
+                    Approvals
+                  </Link>
 
-                <Link
-                  href="/dashboard/employee-profile/team"
-                  className={navItemClass("/dashboard/employee-profile/team")}
-                >
-                  Team
-                </Link>
+                  <Link
+                    href="/dashboard/employee-profile/team"
+                    className={navItemClass("/dashboard/employee-profile/team")}
+                  >
+                    Team
+                  </Link>
 
-                <Link
-                  href="/dashboard/admin"
-                  className={navItemClass("/dashboard/admin")}
-                >
-                  Admin
-                </Link>
+                  <Link
+                    href="/dashboard/admin"
+                    className={navItemClass("/dashboard/admin")}
+                  >
+                    Admin
+                  </Link>
 
-                {/* Optional: Additional Admin Links */}
-                <Link
-                  href="/dashboard/leaves"
-                  className={navItemClass("/dashboard/leaves")}
-                >
-                  Leaves
-                </Link>
-              </>
-            )}
+                  {/* Optional: Additional Admin Links */}
+                  <Link
+                    href="/dashboard/leaves"
+                    className={navItemClass("/dashboard/leaves")}
+                  >
+                    Leaves
+                  </Link>
+                </>
+              )}
 
             {/* HR Manager Navigation */}
             {isHRManager && (
@@ -172,20 +193,24 @@ export default function Header() {
               </Link>
             )}
 
-            {/* Notification Bell - Available for All Users */}
+            {/* Notification Bell */}
             <NotificationBell />
 
+            {/* User Welcome */}
             <span className="text-sm text-gray-600">
               Welcome, {user?.fullName || user?.firstName}
             </span>
 
+            {/* Logout */}
             <button
               onClick={handleLogout}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
-              Logout
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
             </button>
-          </nav>
+            </nav>
+          </div>
         )}
 
         {/* Only render login/register after mount to prevent hydration mismatch */}

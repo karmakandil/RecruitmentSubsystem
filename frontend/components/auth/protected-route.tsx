@@ -19,9 +19,10 @@ export function ProtectedRoute({
   requiredUserType,
   redirectTo = "/dashboard",
 }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -30,22 +31,35 @@ export function ProtectedRoute({
 
   useEffect(() => {
     // Wait for mount and auth loading to complete
-    if (!mounted || isLoading) return;
-
-    if (!user) {
-      router.push("/auth/login");
+    if (!mounted || loading) {
+      setHasChecked(false);
       return;
+    }
+
+    // Mark that we've checked
+    setHasChecked(true);
+
+    // Only redirect if we're sure there's no user (after loading completes)
+    if (!user && !isAuthenticated) {
+      // Small delay to prevent redirect loops during navigation
+      const timer = setTimeout(() => {
+        const currentPath = window.location.pathname;
+        if (!currentPath.startsWith("/auth/login")) {
+          router.push("/auth/login");
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
 
     let hasAccess = true;
 
     // Check user type if required
-    if (requiredUserType && user.userType !== requiredUserType) {
+    if (requiredUserType && user && user.userType !== requiredUserType) {
       hasAccess = false;
     }
 
     // Check roles if required
-    if (allowedRoles && allowedRoles.length > 0) {
+    if (allowedRoles && allowedRoles.length > 0 && user) {
       const userRoles = user.roles || [];
 
       // Convert both arrays to strings for comparison
@@ -73,9 +87,10 @@ export function ProtectedRoute({
     }
 
     setIsAuthorized(true);
-  }, [mounted, user, isLoading, allowedRoles, requiredUserType, router, redirectTo]);
+  }, [mounted, user, loading, isAuthenticated, allowedRoles, requiredUserType, router, redirectTo]);
 
-  if (!mounted || isLoading || !isAuthorized) {
+  // Show loading while checking auth or if not yet authorized
+  if (!mounted || loading || !hasChecked || (!isAuthorized && hasChecked)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

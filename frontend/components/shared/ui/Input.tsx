@@ -14,6 +14,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
+        {/* CHANGED - Added text-gray-900 for visibility */}
         <input
           ref={ref}
           className={`w-full rounded-md border ${

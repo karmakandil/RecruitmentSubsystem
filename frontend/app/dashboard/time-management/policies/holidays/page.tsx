@@ -25,10 +25,11 @@ import { Input } from "@/components/shared/ui/Input";
 import { Select } from "@/components/leaves/Select";
 import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
+import HolidayCalendar from "@/components/time-management/HolidayCalendar";
 
 export default function HolidaysPage() {
   const { user } = useAuth();
-  useRequireAuth(SystemRole.HR_ADMIN);
+  useRequireAuth([SystemRole.HR_ADMIN, SystemRole.SYSTEM_ADMIN]);
   const { toast, showToast, hideToast } = useToast();
 
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -38,7 +39,11 @@ export default function HolidaysPage() {
   const [isBulkCreateModalOpen, setIsBulkCreateModalOpen] = useState(false);
   const [isRestDaysModalOpen, setIsRestDaysModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedHoliday, setSelectedHoliday] = useState<Holiday | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
   // Dropdown data
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -47,6 +52,15 @@ export default function HolidaysPage() {
 
   // Create holiday form
   const [createForm, setCreateForm] = useState<CreateHolidayRequest>({
+    type: HolidayType.NATIONAL,
+    startDate: "",
+    endDate: "",
+    name: "",
+    active: true,
+  });
+
+  // Edit holiday form
+  const [editForm, setEditForm] = useState<CreateHolidayRequest>({
     type: HolidayType.NATIONAL,
     startDate: "",
     endDate: "",
@@ -86,9 +100,9 @@ export default function HolidaysPage() {
   // Helper functions to get display names
   const getShiftDisplay = (shiftId: string): string => {
     if (!shiftId) return "Select a shift...";
-    const shift = shifts.find((s) => (s._id || s.id) === shiftId);
+    const shift = shifts.find((s) => (s._id || (s as any).id) === shiftId);
     if (!shift) return shiftId;
-    return shift.name || shift.shiftType?.name || shiftId;
+    return shift.name || (typeof shift.shiftType === 'object' && shift.shiftType !== null ? (shift.shiftType as any).name : shift.shiftType) || shiftId;
   };
 
   const getDepartmentDisplay = (deptId: string): string => {
@@ -99,6 +113,7 @@ export default function HolidaysPage() {
   };
 
   useEffect(() => {
+    console.log("Filters changed, reloading holidays:", filters);
     loadHolidays();
     loadDropdowns();
   }, [filters]);
@@ -140,8 +155,8 @@ export default function HolidaysPage() {
       }
       
       // Handle different response formats
-      const finalShifts = Array.isArray(shiftsData) ? shiftsData : (shiftsData?.data || shiftsData?.shifts || []);
-      const finalDepartments = Array.isArray(departmentsData) ? departmentsData : (departmentsData?.data || departmentsData?.departments || []);
+      const finalShifts = Array.isArray(shiftsData) ? shiftsData : ((shiftsData as any)?.data || (shiftsData as any)?.shifts || []);
+      const finalDepartments = Array.isArray(departmentsData) ? departmentsData : ((departmentsData as any)?.data || (departmentsData as any)?.departments || []);
       
       console.log("Final shifts array:", finalShifts);
       console.log("Final departments array:", finalDepartments);
@@ -163,9 +178,12 @@ export default function HolidaysPage() {
   const loadHolidays = async () => {
     try {
       setLoading(true);
+      console.log("Loading holidays with filters:", filters);
       const data = await policyConfigApi.getHolidays(filters);
+      console.log("Holidays response:", data);
       setHolidays(Array.isArray(data) ? data : []);
     } catch (error: any) {
+      console.error("Failed to load holidays:", error);
       showToast(error.message || "Failed to load holidays", "error");
       setHolidays([]);
     } finally {
@@ -365,6 +383,30 @@ export default function HolidaysPage() {
         </p>
       </div>
 
+      {/* View Toggle */}
+      <div className="flex gap-2 mb-6">
+        <Button
+          variant={viewMode === "list" ? "primary" : "outline"}
+          onClick={() => setViewMode("list")}
+        >
+          📋 List View
+        </Button>
+        <Button
+          variant={viewMode === "calendar" ? "primary" : "outline"}
+          onClick={() => setViewMode("calendar")}
+        >
+          📅 Calendar View
+        </Button>
+      </div>
+
+      {viewMode === "calendar" ? (
+        <HolidayCalendar
+          onHolidayClick={(holiday) => {
+            setSelectedHoliday(holiday);
+          }}
+        />
+      ) : (
+        <>
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-4 mb-6">
         <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
@@ -815,6 +857,8 @@ export default function HolidaysPage() {
           </div>
         </div>
       </Modal>
+      </>
+      )}
     </div>
   );
 }
