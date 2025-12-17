@@ -2877,11 +2877,13 @@ export class PayrollExecutionService {
     const grossSalary = actualBaseSalary + totalAllowances;
 
     // Apply statutory rules (REQ-PY-3) - Taxes and Insurance (BR 35)
-    // BR 35: Taxes = % of Base Salary, Social/Health Insurance
+    // BR 35: Taxes = % of Base Salary
+    // Social Insurance and Pensions Law: Employee Insurance = GrossSalary * employee_percentage
     // BR 31: Store all calculation elements for auditability
     const statutoryBreakdown = await this.applyStatutoryRulesWithBreakdown(
       actualBaseSalary,
       employeeId,
+      grossSalary, // Pass grossSalary for insurance calculations
     );
     const statutoryDeductions = statutoryBreakdown.total;
 
@@ -3040,11 +3042,7 @@ export class PayrollExecutionService {
         const payGradeDoc = await this.payrollConfigurationService.findOnePayGrade(employee.payGradeId.toString());
         if (payGradeDoc && payGradeDoc.status === ConfigStatus.APPROVED) {
           baseSalary = payGradeDoc.baseSalary || 0;
-          
-          // BR 4: Validate minimum salary bracket compliance (Egyptian Labor Law 2025)
-          if (baseSalary > 0) {
-            await this.validateMinimumSalaryBracket(baseSalary, employeeId, payrollRunId, currentUserId);
-          }
+          // Note: Minimum salary bracket validation is already performed in the main calculation flow
         }
       } catch (error) {
         const errorMessage =
@@ -3664,11 +3662,12 @@ export class PayrollExecutionService {
   }
 
   // Helper: Apply statutory rules with breakdown (BR 31: Store all calculation elements for auditability)
-  // BR 35: Taxes = % of Base Salary, Social/Health Insurance
-  // Note: All calculations are based on baseSalary per BR 35
+  // BR 35: Taxes = % of Base Salary
+  // Social Insurance and Pensions Law: Employee Insurance = GrossSalary * employee_percentage, Employer Insurance = GrossSalary * employer_percentage
   async applyStatutoryRulesWithBreakdown(
     baseSalary: number,
     employeeId: string,
+    grossSalary?: number, // Optional: if provided, use for insurance calculations; otherwise use baseSalary
   ): Promise<{
     total: number;
     taxes: number;
@@ -3678,6 +3677,9 @@ export class PayrollExecutionService {
     if (!baseSalary || baseSalary < 0) {
       throw new Error('Base salary must be a positive number');
     }
+    
+    // Use grossSalary for insurance calculations if provided, otherwise fall back to baseSalary
+    const salaryForInsurance = grossSalary && grossSalary > 0 ? grossSalary : baseSalary;
 
     let totalTaxes = 0;
     let totalInsurance = 0;
@@ -3741,10 +3743,11 @@ export class PayrollExecutionService {
     const approvedInsuranceBrackets = insuranceRulesResult?.data || [];
     
     // BR 7: Identify social insurance brackets enforced through Social Insurance and Pensions Law
+    // Note: Bracket matching uses baseSalary to determine which bracket applies, but calculation uses grossSalary
     const applicableInsuranceBrackets = approvedInsuranceBrackets.filter((rule: any) => {
       const ruleData = rule.toObject ? rule.toObject() : rule;
-      // Insurance brackets use 'minSalary' and 'maxSalary' fields, and 'employeeRate' (percentage)
-      // BR 35: Insurance calculated as percentage of base salary within applicable bracket
+      // Insurance brackets use 'minSalary' and 'maxSalary' fields to determine applicability
+      // The bracket is determined by baseSalary, but calculation uses grossSalary per Social Insurance and Pensions Law
       return (
         baseSalary >= ruleData.minSalary &&
         (ruleData.maxSalary === null ||
@@ -3778,7 +3781,7 @@ export class PayrollExecutionService {
       });
       
       console.log(
-        `[Social Insurance Brackets Identification] Employee ${employeeId}, Base Salary: ${baseSalary}. ` +
+        `[Social Insurance Brackets Identification] Employee ${employeeId}, Base Salary: ${baseSalary}, Gross Salary: ${salaryForInsurance}. ` +
         `Identified ${identifiedInsuranceBrackets.length} social insurance bracket(s) enforced through Social Insurance and Pensions Law: ` +
         `${identifiedInsuranceBrackets.map(ib => `${ib.name} (${ib.minSalary}-${ib.maxSalary || '∞'}, Employee: ${ib.employeeRate}%, Employer: ${ib.employerRate}%)`).join(', ')}`
       );
@@ -3793,15 +3796,16 @@ export class PayrollExecutionService {
     for (const rule of applicableInsuranceBrackets) {
       const ruleData = rule as any;
       // Insurance brackets use 'minSalary' and 'maxSalary' fields, and 'employeeRate' (percentage)
-      // BR 35: Insurance calculated as percentage of base salary within applicable bracket
+      // Social Insurance and Pensions Law: Employee Insurance = GrossSalary * employee_percentage
       // Each insurance bracket represents a social insurance bracket enforced through Social Insurance and Pensions Law
-      // Use employeeRate for employee deductions (employerRate is for employer contributions)
+      // Use employeeRate for employee deductions (employerRate is for employer contributions, tracked separately)
       if (ruleData.employeeRate && ruleData.employeeRate > 0) {
-        const insuranceAmount = (baseSalary * ruleData.employeeRate) / 100;
+        // Calculate employee insurance contribution from gross salary
+        const insuranceAmount = (salaryForInsurance * ruleData.employeeRate) / 100;
         totalInsurance += insuranceAmount;
       }
-      // Note: If insurance bracket has a fixed 'amount' field, it could be added here
-      // Currently using percentage-based calculation per BR 35
+      // Note: Employer contributions (employerRate) are tracked but not deducted from employee pay
+      // Employer Insurance = GrossSalary * employer_percentage (for reporting/accounting purposes)
     }
 
     const total = totalTaxes + totalInsurance;
@@ -4629,12 +4633,13 @@ export class PayrollExecutionService {
           employeeRate: rule.insuranceBracketEmployeeRate,
           employerRate: rule.insuranceBracketEmployerRate,
           enforcedThrough: rule.enforcedThrough,
-          appliedToSalary: baseSalary,
-          calculatedInsurance: (baseSalary * rule.insuranceBracketEmployeeRate) / 100,
+          bracketDeterminedBy: baseSalary, // Bracket is determined by baseSalary
+          calculatedFromGrossSalary: totalGrossSalary, // But calculated from grossSalary per Social Insurance and Pensions Law
+          calculatedInsurance: (totalGrossSalary * rule.insuranceBracketEmployeeRate) / 100,
         }));
         
         console.log(
-          `[Social Insurance Brackets Identification] Employee ${employeeId} (${employee?.employeeNumber || 'N/A'}), Base Salary: ${baseSalary}. ` +
+          `[Social Insurance Brackets Identification] Employee ${employeeId} (${employee?.employeeNumber || 'N/A'}), Base Salary: ${baseSalary}, Gross Salary: ${totalGrossSalary}. ` +
           `Identified ${insuranceBracketsInfo.length} social insurance bracket(s) enforced through Social Insurance and Pensions Law: ` +
           `${insuranceBracketsInfo.map(ib => `${ib.name} (${ib.minSalary}-${ib.maxSalary || '∞'}, Employee: ${ib.employeeRate}%, Employer: ${ib.employerRate}%)`).join(', ')}`
         );
@@ -4694,8 +4699,9 @@ export class PayrollExecutionService {
       );
       const totalInsuranceAmount = applicableInsuranceBrackets.reduce(
         (sum: number, rule: any) => {
-          // Insurance brackets use 'employeeRate' field (percentage), not 'percentage'
-          return sum + (baseSalary * (rule.employeeRate || 0)) / 100;
+          // Social Insurance and Pensions Law: Employee Insurance = GrossSalary * employee_percentage
+          // Insurance brackets use 'employeeRate' field (percentage)
+          return sum + (totalGrossSalary * (rule.employeeRate || 0)) / 100;
         },
         0,
       );
