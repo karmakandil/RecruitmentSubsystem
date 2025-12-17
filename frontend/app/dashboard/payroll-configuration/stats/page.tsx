@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/hooks/use-auth';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/shared/ui/Card';
@@ -10,13 +9,16 @@ import { statsApi, ConfigurationStats } from '@/lib/api/payroll-configuration';
 import Link from 'next/link';
 
 export default function StatsPage() {
-  const { user } = useAuth();
-  // SYSTEM_ADMIN should have access to stats (highest admin role)
-  // Note: Backend currently only allows PAYROLL_MANAGER - backend needs to be updated to include SYSTEM_ADMIN
+  // Allow Payroll Manager, System Admin, HR Manager, HR Admin, Employee (view-only), and Department Head (view-only)
+  // Note: Backend currently only allows PAYROLL_MANAGER - backend needs to be updated to include other roles
   useRequireAuth(
     [
       SystemRole.PAYROLL_MANAGER,
       SystemRole.SYSTEM_ADMIN,
+      SystemRole.HR_MANAGER,
+      SystemRole.HR_ADMIN,
+      SystemRole.DEPARTMENT_EMPLOYEE,
+      SystemRole.DEPARTMENT_HEAD,
     ],
     '/dashboard'
   );
@@ -264,294 +266,74 @@ export default function StatsPage() {
 
       {/* Quick Actions */}
       {stats && stats.pending > 0 && (
-        <div className="mb-8 bg-gradient-to-r from-amber-500 to-orange-600 rounded-2xl shadow-xl p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-bold mb-1">Quick Actions</h3>
-              <p className="text-amber-100 text-sm">
-                {stats.pending} configuration(s) pending approval
-              </p>
-            </div>
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>
+              {stats.pending} configuration(s) pending approval
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <Link href="/dashboard/payroll-configuration/approvals">
-              <button className="px-6 py-3 bg-white text-amber-600 font-semibold rounded-xl hover:bg-amber-50 transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center">
-                Review Pending Approvals
-                <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
-                </svg>
-              </button>
+              <Button variant="primary">
+                Review Pending Approvals →
+              </Button>
             </Link>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Detailed Statistics by Type */}
-      <div className="mb-8">
-        <h2 className="mb-6 text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-          </svg>
-          Statistics by Configuration Type
-        </h2>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {stats?.payGrades && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-blue-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-blue-100 rounded-lg">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                  </svg>
-                </div>
-                Pay Grades
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.payGrades.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.payGrades.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.payGrades.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.payGrades.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.allowances && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-emerald-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-emerald-100 rounded-lg">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                </div>
-                Allowances
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.allowances.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.allowances.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.allowances.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.allowances.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.payTypes && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-purple-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-purple-100 rounded-lg">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                </div>
-                Pay Types
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.payTypes.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.payTypes.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.payTypes.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.payTypes.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.taxRules && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-slate-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-slate-100 rounded-lg">
-                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                  </svg>
-                </div>
-                Tax Rules
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.taxRules.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.taxRules.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.taxRules.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.taxRules.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.insuranceBrackets && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-cyan-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-cyan-100 rounded-lg">
-                  <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                </div>
-                Insurance Brackets
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.insuranceBrackets.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.insuranceBrackets.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.insuranceBrackets.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.insuranceBrackets.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.signingBonuses && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-yellow-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-yellow-100 rounded-lg">
-                  <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                  </svg>
-                </div>
-                Signing Bonuses
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.signingBonuses.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.signingBonuses.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.signingBonuses.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.signingBonuses.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.terminationBenefits && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-rose-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-rose-100 rounded-lg">
-                  <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                </div>
-                Termination Benefits
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.terminationBenefits.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.terminationBenefits.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.terminationBenefits.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.terminationBenefits.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {stats?.payrollPolicies && (
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-violet-100 p-6 hover:shadow-xl transition-shadow duration-200">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-violet-100 rounded-lg">
-                  <svg className="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                </div>
-                Payroll Policies
-              </h3>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{stats.payrollPolicies.total ?? 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-amber-600">{stats.payrollPolicies.pending ?? 0}</div>
-                  <div className="text-xs text-gray-500">Pending</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{stats.payrollPolicies.approved ?? 0}</div>
-                  <div className="text-xs text-gray-500">Approved</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-600">{stats.payrollPolicies.rejected ?? 0}</div>
-                  <div className="text-xs text-gray-500">Rejected</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {stats?.payGrades && (
+          <TypeStatsCard
+            title="Pay Grades"
+            stats={stats.payGrades}
+          />
+        )}
+        {stats?.allowances && (
+          <TypeStatsCard
+            title="Allowances"
+            stats={stats.allowances}
+          />
+        )}
+        {stats?.payTypes && (
+          <TypeStatsCard
+            title="Pay Types"
+            stats={stats.payTypes}
+          />
+        )}
+        {stats?.taxRules && (
+          <TypeStatsCard
+            title="Tax Rules"
+            stats={stats.taxRules}
+          />
+        )}
+        {stats?.insuranceBrackets && (
+          <TypeStatsCard
+            title="Insurance Brackets"
+            stats={stats.insuranceBrackets}
+          />
+        )}
+        {stats?.signingBonuses && (
+          <TypeStatsCard
+            title="Signing Bonuses"
+            stats={stats.signingBonuses}
+          />
+        )}
+        {stats?.terminationBenefits && (
+          <TypeStatsCard
+            title="Termination Benefits"
+            stats={stats.terminationBenefits}
+          />
+        )}
+        {stats?.payrollPolicies && (
+          <TypeStatsCard
+            title="Payroll Policies"
+            stats={stats.payrollPolicies}
+          />
+        )}
       </div>
-
-      {/* Empty State */}
-      {stats && stats.total === 0 && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200 p-12 text-center">
-          <div className="p-4 bg-gray-100 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-            </svg>
-          </div>
-          <p className="text-gray-600 font-medium text-lg mb-2">
-            No configuration data available yet.
-          </p>
-          <p className="text-sm text-gray-400">
-            Statistics will appear here once configurations are created.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

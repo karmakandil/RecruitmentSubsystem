@@ -13,7 +13,12 @@ export default function NewPayTypePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
+    name: '',
     type: 'salary',
+    description: '',
+    calculationMethod: '',
+    isTaxable: false,
+    isOvertimeEligible: false,
     amount: '',
   });
 
@@ -50,13 +55,28 @@ export default function NewPayTypePage() {
         throw new Error('Pay type amount must be at least 6000 EGP');
       }
       
-      // Prepare data for API - DTO only accepts: type, amount
-      const payTypeData = {
+      // Prepare data for API - include all fields that might be supported
+      const payTypeData: any = {
         type: formData.type as 'hourly' | 'salary' | 'commission' | 'contract',
-        amount: amount, // Use the validated number
+        amount: amount,
       };
       
-      console.log('Submitting pay type data:', payTypeData);
+      // Add optional fields if they have values
+      if (formData.name?.trim()) {
+        payTypeData.name = formData.name.trim();
+      }
+      if (formData.description?.trim()) {
+        payTypeData.description = formData.description.trim();
+      }
+      if (formData.calculationMethod?.trim()) {
+        payTypeData.calculationMethod = formData.calculationMethod.trim();
+      }
+      if (formData.isTaxable !== undefined) {
+        payTypeData.isTaxable = formData.isTaxable;
+      }
+      if (formData.isOvertimeEligible !== undefined) {
+        payTypeData.isOvertimeEligible = formData.isOvertimeEligible;
+      }
       
       await payTypesApi.create(payTypeData);
       
@@ -123,12 +143,31 @@ export default function NewPayTypePage() {
               </div>
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                {/* Name */}
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
                     </svg>
-                    Type *
+                    Pay Type Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white hover:border-purple-300"
+                    placeholder="e.g., Monthly Salary"
+                  />
+                </div>
+
+                {/* Type */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                    </svg>
+                    Type <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="type"
@@ -137,19 +176,20 @@ export default function NewPayTypePage() {
                     required
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white hover:border-purple-300 appearance-none cursor-pointer"
                   >
-                    <option value="salary">💼 Salary</option>
-                    <option value="hourly">⏰ Hourly</option>
-                    <option value="commission">📈 Commission</option>
-                    <option value="contract">📝 Contract</option>
+                    <option value="salary">Salary</option>
+                    <option value="hourly">Hourly</option>
+                    <option value="commission">Commission</option>
+                    <option value="contract">Contract</option>
                   </select>
                 </div>
 
+                {/* Amount */}
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    Amount (EGP) *
+                    Amount (EGP) <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -171,6 +211,72 @@ export default function NewPayTypePage() {
                     </svg>
                     Minimum: 6,000 EGP
                   </p>
+                </div>
+
+                {/* Description */}
+                <div className="sm:col-span-2 space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7"></path>
+                    </svg>
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={3}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white hover:border-purple-300"
+                    placeholder="Describe this pay type..."
+                  />
+                </div>
+
+                {/* Calculation Method */}
+                <div className="sm:col-span-2 space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    Calculation Method
+                  </label>
+                  <input
+                    type="text"
+                    name="calculationMethod"
+                    value={formData.calculationMethod}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 bg-white hover:border-purple-300"
+                    placeholder="e.g., fixed, hourly_rate * hours"
+                  />
+                </div>
+
+                {/* Checkboxes */}
+                <div className="sm:col-span-2 space-y-4">
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        name="isTaxable"
+                        checked={formData.isTaxable}
+                        onChange={handleChange}
+                        className="w-5 h-5 text-purple-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
+                      />
+                      <label className="ml-3 block text-sm font-medium text-gray-700">
+                        Is Taxable
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        name="isOvertimeEligible"
+                        checked={formData.isOvertimeEligible}
+                        onChange={handleChange}
+                        className="w-5 h-5 text-purple-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
+                      />
+                      <label className="ml-3 block text-sm font-medium text-gray-700">
+                        Overtime Eligible
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -213,3 +319,4 @@ export default function NewPayTypePage() {
     </div>
   );
 }
+

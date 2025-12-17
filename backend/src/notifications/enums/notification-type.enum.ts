@@ -89,4 +89,14 @@ export enum NotificationType {
   PROFILE_CHANGE_APPROVED = 'profile_change_approved',
   PROFILE_CHANGE_REJECTED = 'profile_change_rejected',
   PROFILE_UPDATED = 'profile_updated',
+
+
+
+  // Payroll Tracking Module Notifications
+  DISPUTE_APPROVED_FOR_FINANCE = 'dispute_approved_for_finance',
+  CLAIM_APPROVED_FOR_FINANCE = 'claim_approved_for_finance',
+  DISPUTE_APPROVED = 'dispute_approved',
+  CLAIM_APPROVED = 'claim_approved',
+  DISPUTE_REJECTED = 'dispute_rejected',
+  CLAIM_REJECTED = 'claim_rejected',
 }

@@ -16,12 +16,18 @@ type AuthState = {
   updateUser: (updates: Partial<User>) => void; // ADD THIS
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
-  isAuthenticated: false,
-  loading: false,
-  error: null,
+export const useAuthStore = create<AuthState>((set, get) => {
+  // Initialize synchronously on store creation
+  const token = typeof window !== "undefined" ? authApi.getToken() : null;
+  const user = typeof window !== "undefined" ? authApi.getUser() : null;
+  const isAuthenticated = !!(token && user);
+
+  return {
+    user: user,
+    token: token,
+    isAuthenticated: isAuthenticated,
+    loading: false,
+    error: null,
 
   initialize: () => {
     // Set loading to true initially to prevent premature redirects
@@ -127,4 +133,4 @@ export const useAuthStore = create<AuthState>((set) => ({
       return { user: updatedUser };
     });
   },
-}));
+}});

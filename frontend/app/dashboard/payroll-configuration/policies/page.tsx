@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
-import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
+import { ConfigurationTable } from '@/components/payroll-configuration/ConfigurationTable';
 import { policiesApi } from '@/lib/api/payroll-configuration/policies';
 import { PayrollPolicy } from '@/lib/api/payroll-configuration/types';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
@@ -181,7 +181,7 @@ export default function PoliciesPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Payroll Policies</h1>
-                <p className="text-gray-600 mt-1 text-sm">Manage and configure payroll policies for your organization</p>
+                <p className="text-gray-600 mt-1 text-sm">Configure company-level payroll policies (basic salary types, misconduct penalties, leave policies, allowances)</p>
               </div>
             </div>
           </div>
@@ -290,8 +290,7 @@ export default function PoliciesPage() {
             columns={columns}
             onView={handleView}
             onEdit={handleEdit}
-            onDelete={undefined}
-            canDelete={() => false}
+            onDelete={handleDelete}
             isLoading={isLoading}
             emptyMessage={statusFilter !== 'all' ? `No ${statusFilter} policies found.` : 'No policies created yet. Start by creating your first policy.'}
           />
@@ -314,3 +313,4 @@ export default function PoliciesPage() {
     </div>
   );
 }
+

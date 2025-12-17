@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
-import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
+import { ConfigurationTable } from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { payTypesApi } from '@/lib/api/payroll-configuration/payTypes';
 
@@ -40,32 +40,52 @@ export default function PayTypesPage() {
 
   const columns = [
     { 
+      key: 'name', 
+      label: 'Pay Type Name',
+      render: (item: any) => (
+        <div>
+          <div className="font-semibold text-gray-900">{item.name}</div>
+          {item.description && (
+            <div className="text-sm text-gray-500 mt-0.5">{item.description}</div>
+          )}
+        </div>
+      )
+    },
+    { 
       key: 'type', 
-      label: 'Pay Type',
+      label: 'Type',
       render: (item: any) => {
-        const typeColors: Record<string, { bg: string; text: string; icon: string }> = {
-          salary: { bg: 'bg-gradient-to-r from-purple-500 to-pink-500', text: 'text-white', icon: '💼' },
-          hourly: { bg: 'bg-gradient-to-r from-blue-500 to-cyan-500', text: 'text-white', icon: '⏰' },
-          commission: { bg: 'bg-gradient-to-r from-green-500 to-emerald-500', text: 'text-white', icon: '📈' },
-          contract: { bg: 'bg-gradient-to-r from-orange-500 to-amber-500', text: 'text-white', icon: '📝' }
+        const typeColors: Record<string, { bg: string; text: string }> = {
+          salary: { bg: 'bg-gradient-to-r from-purple-500 to-pink-500', text: 'text-white' },
+          hourly: { bg: 'bg-gradient-to-r from-blue-500 to-cyan-500', text: 'text-white' },
+          commission: { bg: 'bg-gradient-to-r from-green-500 to-emerald-500', text: 'text-white' },
+          contract: { bg: 'bg-gradient-to-r from-orange-500 to-amber-500', text: 'text-white' }
         };
-        const colors = typeColors[item.type] || { bg: 'bg-gray-500', text: 'text-white', icon: '💰' };
+        const colors = typeColors[item.type] || { bg: 'bg-gray-500', text: 'text-white' };
         return (
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${colors.bg} ${colors.text}`}>
-              <span>{colors.icon}</span>
-              <span className="capitalize">{item.type || 'N/A'}</span>
-            </span>
-          </div>
+          <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold shadow-md ${colors.bg} ${colors.text}`}>
+            <span className="capitalize">{item.type || 'N/A'}</span>
+          </span>
         );
       }
+    },
+    { 
+      key: 'calculationMethod', 
+      label: 'Calculation Method',
+      render: (item: any) => (
+        <div className="text-sm text-gray-900">
+          {item.calculationMethod || 'N/A'}
+          {item.isOvertimeEligible && (
+            <div className="text-xs text-blue-600 mt-1 font-medium">Overtime eligible</div>
+          )}
+        </div>
+      )
     },
     { 
       key: 'amount', 
       label: 'Amount',
       render: (item: any) => {
-        const payTypeWithAmount = item as any;
-        const amount = payTypeWithAmount._amount || payTypeWithAmount.amount || 0;
+        const amount = item._amount || item.amount || 0;
         return (
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -84,6 +104,17 @@ export default function PayTypesPage() {
           </div>
         );
       }
+    },
+    { 
+      key: 'taxStatus', 
+      label: 'Tax Status',
+      render: (item: any) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+          item.isTaxable ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+        }`}>
+          {item.isTaxable ? 'Taxable' : 'Tax-free'}
+        </span>
+      )
     },
     { 
       key: 'createdBy', 
@@ -255,8 +286,7 @@ export default function PayTypesPage() {
             columns={columns}
             onView={handleView}
             onEdit={handleEdit}
-            onDelete={undefined}
-            canDelete={() => false}
+            onDelete={handleDelete}
             isLoading={isLoading}
             emptyMessage="No pay types found. Create your first pay type to get started."
           />
@@ -265,3 +295,4 @@ export default function PayTypesPage() {
     </div>
   );
 }
+

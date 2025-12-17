@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
-import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
+import { ConfigurationTable } from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { insuranceBracketsApi } from '@/lib/api/payroll-configuration/insurance-brackets';
 import { InsuranceBracket } from '@/lib/api/payroll-configuration/types';
@@ -26,8 +26,8 @@ export default function InsuranceBracketsPage() {
   const loadInsuranceBrackets = async () => {
     setIsLoading(true);
     try {
-      const params = statusFilter !== 'all' ? { status: statusFilter } : undefined;
-      const data = await insuranceBracketsApi.getAll(params);
+      const status = statusFilter !== 'all' ? statusFilter as 'draft' | 'approved' | 'rejected' : undefined;
+      const data = await insuranceBracketsApi.getAll(status);
       setAllInsuranceBrackets(data);
       setInsuranceBrackets(data);
     } catch (error) {
@@ -74,7 +74,7 @@ export default function InsuranceBracketsPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-cyan-700">
-              {((item as any).employeeRate ?? item.employeeContribution ?? 0)}%
+              {((item as any).employeeRate ?? (item as any).employeeContribution ?? 0).toFixed(2)}%
             </span>
           </div>
           <div className="text-xs text-gray-500">Employee contribution</div>
@@ -88,7 +88,7 @@ export default function InsuranceBracketsPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold text-blue-700">
-              {((item as any).employerRate ?? item.employerContribution ?? 0)}%
+              {((item as any).employerRate ?? (item as any).employerContribution ?? 0).toFixed(2)}%
             </span>
           </div>
           <div className="text-xs text-gray-500">Employer contribution</div>
@@ -107,12 +107,12 @@ export default function InsuranceBracketsPage() {
   };
 
   const handleView = (item: InsuranceBracket) => {
-    router.push(`/dashboard/payroll-configuration/insurance-brackets/${item._id}`);
+    router.push(`/dashboard/payroll-configuration/insurance-brackets/${item.id}`);
   };
 
   const handleEdit = (item: InsuranceBracket) => {
     if (item.status === 'draft') {
-      router.push(`/dashboard/payroll-configuration/insurance-brackets/${item._id}/edit`);
+      router.push(`/dashboard/payroll-configuration/insurance-brackets/${item.id}/edit`);
     } else {
       alert('Only draft insurance brackets can be edited.');
     }
@@ -129,7 +129,7 @@ export default function InsuranceBracketsPage() {
     }
 
     try {
-      await insuranceBracketsApi.delete(item._id);
+      await insuranceBracketsApi.delete(item.id);
       loadInsuranceBrackets(); // Refresh
     } catch (error) {
       console.error('Error deleting insurance bracket:', error);
@@ -158,7 +158,7 @@ export default function InsuranceBracketsPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">Insurance Brackets</h1>
-                <p className="text-gray-600 mt-1 text-sm">Manage insurance contribution brackets</p>
+                <p className="text-gray-600 mt-1 text-sm">Configure insurance brackets with defined salary ranges and contribution percentages for both employer and employee, so that the system automatically applies the correct insurance deductions during payroll processing in compliance with policy and law</p>
               </div>
             </div>
           </div>
@@ -242,11 +242,20 @@ export default function InsuranceBracketsPage() {
             columns={columns}
             onView={handleView}
             onEdit={handleEdit}
-            onDelete={undefined}
-            canDelete={() => false}
+            onDelete={handleDelete}
             isLoading={isLoading}
-            emptyMessage="No insurance brackets found. Create your first insurance bracket to get started."
+            emptyMessage={statusFilter !== 'all' ? `No ${statusFilter} insurance brackets found.` : 'No insurance brackets created yet. Start by creating your first insurance bracket configuration.'}
           />
+
+          {/* Table Info */}
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Only insurance brackets with <StatusBadge status="draft" size="sm" /> status can be edited or deleted. 
+                Insurance brackets with <StatusBadge status="approved" size="sm" /> or <StatusBadge status="rejected" size="sm" /> status are read-only.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

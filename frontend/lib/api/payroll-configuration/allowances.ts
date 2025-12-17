@@ -95,7 +95,7 @@ export const allowancesApi = {
     }
   },
 
-  create: async (data: { name: string; amount: number }): Promise<Allowance> => {
+  create: async (data: Omit<Allowance, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'status' | 'createdBy'> | { name: string; amount: number }): Promise<Allowance> => {
     try {
       // Map frontend data to backend DTO format
       const backendData = mapFrontendToBackend(data);
@@ -141,3 +141,4 @@ export const allowancesApi = {
     }
   }
 };
+

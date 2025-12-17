@@ -66,6 +66,9 @@ export class EmployeeProfileController {
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
   )
   async findAll(@Query() query: QueryEmployeeDto, @CurrentUser() user: any) {
     const result = await this.employeeProfileService.findAll(

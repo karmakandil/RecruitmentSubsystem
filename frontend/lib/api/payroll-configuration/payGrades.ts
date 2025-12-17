@@ -101,33 +101,24 @@ export const payGradesApi = {
     }
   },
 
-  create: async (data: { name: string; minSalary: number; maxSalary: number }): Promise<PayGrade> => {
+  create: async (data: Omit<PayGrade, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'status' | 'createdBy'> | { name: string; minSalary: number; maxSalary: number }): Promise<PayGrade> => {
     try {
-      // Backend DTO ONLY accepts: grade, baseSalary, grossSalary
-      const name = String(data.name || '').trim();
-      const minSalary = parseFloat(String(data.minSalary));
-      const maxSalary = parseFloat(String(data.maxSalary));
+      // Map frontend data to backend DTO format
+      const backendData = mapFrontendToBackend(data);
       
       // Validate required fields
-      if (!name) {
+      if (!backendData.grade) {
         throw new Error('Pay grade name is required');
       }
-      if (isNaN(minSalary) || minSalary < 6000) {
+      if (isNaN(backendData.baseSalary) || backendData.baseSalary < 6000) {
         throw new Error('Base salary must be at least 6000');
       }
-      if (isNaN(maxSalary) || maxSalary < 6000) {
+      if (isNaN(backendData.grossSalary) || backendData.grossSalary < 6000) {
         throw new Error('Gross salary must be at least 6000');
       }
-      if (maxSalary < minSalary) {
+      if (backendData.grossSalary < backendData.baseSalary) {
         throw new Error('Gross salary must be greater than or equal to base salary');
       }
-      
-      // Build backend data with ONLY fields in DTO
-      const backendData = {
-        grade: name,
-        baseSalary: Number(minSalary),
-        grossSalary: Number(maxSalary),
-      };
       
       const response = await api.post('/payroll-configuration/pay-grades', backendData);
       return mapBackendToFrontend(response);
@@ -177,9 +168,13 @@ export const payGradesApi = {
       
       const response = await api.put(`/payroll-configuration/pay-grades/${id}`, backendData);
       return mapBackendToFrontend(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error updating pay grade ${id}:`, error);
-      throw error;
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Failed to update pay grade';
+      throw new Error(errorMessage);
     }
   },
 
@@ -192,3 +187,4 @@ export const payGradesApi = {
     }
   }
 };
+

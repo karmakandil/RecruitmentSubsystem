@@ -2,17 +2,22 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { terminationBenefitsApi } from '@/lib/api/payroll-configuration/termination-benefits';
 import { TerminationBenefit } from '@/lib/api/payroll-configuration/types';
 
 export default function EditTerminationBenefitPage() {
+  // Only Payroll Specialist can edit termination benefits
+  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
   const params = useParams();
   const router = useRouter();
   const terminationBenefitId = params.id as string;
+  
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [terminationBenefit, setTerminationBenefit] = useState<TerminationBenefit | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -24,17 +29,22 @@ export default function EditTerminationBenefitPage() {
   }, [terminationBenefitId]);
 
   const loadTerminationBenefit = async () => {
-    setIsLoadingData(true);
     try {
-      const terminationBenefit = await terminationBenefitsApi.getById(terminationBenefitId);
-      if (terminationBenefit.status !== 'draft') {
+      setIsLoadingData(true);
+      const data = await terminationBenefitsApi.getById(terminationBenefitId);
+      setTerminationBenefit(data);
+      
+      // Check if termination benefit can be edited
+      if (data.status !== 'draft') {
         setError('Only draft termination benefits can be edited.');
         return;
       }
+      
+      // Populate form with existing data
       setFormData({
-        name: terminationBenefit.name ?? '',
-        amount: terminationBenefit.amount ? String(terminationBenefit.amount) : '',
-        terms: (terminationBenefit as any).terms ?? '',
+        name: data.name || '',
+        amount: data.amount?.toString() || '',
+        terms: (data as any).terms || '',
       });
     } catch (err) {
       console.error('Error loading termination benefit:', err);
@@ -58,16 +68,16 @@ export default function EditTerminationBenefitPage() {
         throw new Error('Termination benefit amount must be non-negative');
       }
       
-      // Prepare data for API - backend expects name, amount, and optional terms
-      const terminationBenefitData = {
-        name: formData.name,
+      // Prepare data for API
+      const terminationBenefitData: Partial<TerminationBenefit> = {
+        name: formData.name.trim(),
         amount: parseFloat(formData.amount),
-        terms: formData.terms || undefined,
+        terms: formData.terms.trim() || undefined,
       };
       
       await terminationBenefitsApi.update(terminationBenefitId, terminationBenefitData);
       
-      // Redirect to termination benefits list
+      // Redirect back to list
       router.push('/dashboard/payroll-configuration/termination-benefits');
     } catch (err) {
       console.error('Error updating termination benefit:', err);
@@ -95,6 +105,55 @@ export default function EditTerminationBenefitPage() {
     );
   }
 
+  if (!terminationBenefit) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-50 border-2 border-red-200 rounded-xl shadow-lg p-6 flex items-center gap-3">
+            <svg className="w-6 h-6 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-800 font-semibold">{error || 'Termination benefit not found'}</p>
+          </div>
+          <button
+            onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Back to Termination Benefits
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (terminationBenefit.status !== 'draft') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl shadow-lg p-6">
+            <div className="flex items-start gap-3">
+              <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <h3 className="text-sm font-semibold text-yellow-800 mb-1">Cannot Edit</h3>
+                <p className="text-sm text-yellow-700 mb-4">
+                  This termination benefit cannot be edited because it is not in draft status. Only draft termination benefits can be edited.
+                </p>
+                <button
+                  onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                >
+                  Back to Termination Benefits
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 p-6">
       {/* Header */}
@@ -116,133 +175,105 @@ export default function EditTerminationBenefitPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-600 to-orange-600 bg-clip-text text-transparent">
-              Edit Termination Benefit
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm">Update the termination benefit information</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-rose-600 to-orange-600 bg-clip-text text-transparent">Edit Termination Benefit</h1>
+            <p className="text-gray-600 mt-1 text-sm">Update termination benefit information and settings</p>
           </div>
         </div>
       </div>
 
-      {/* Form Card */}
+      {/* Form */}
       <div className="max-w-4xl mx-auto">
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg flex items-center gap-3">
-            <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-            <p className="text-red-800 font-semibold">{error}</p>
-          </div>
-        )}
-
         <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
-          <form onSubmit={handleSubmit} className="p-8 space-y-8">
-            {/* Termination Benefit Information */}
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
+            {error && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <p className="text-red-800 font-medium text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Basic Information */}
             <div className="space-y-6">
-              <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
-                <div className="p-2 bg-rose-100 rounded-lg">
-                  <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                  </svg>
-                </div>
-                <h2 className="text-xl font-bold text-gray-900">Termination Benefit Details</h2>
+              <h2 className="text-xl font-bold text-slate-800 border-b border-slate-200 pb-3">Basic Information</h2>
+              
+              <div>
+                <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Termination Benefit Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200"
+                  placeholder="Enter termination benefit name"
+                />
               </div>
 
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    <svg className="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                    </svg>
-                    Benefit Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all duration-200 bg-white hover:border-rose-300"
-                    placeholder="e.g., Severance Pay"
-                  />
-                </div>
+              <div>
+                <label htmlFor="amount" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Benefit Amount (EGP) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  id="amount"
+                  name="amount"
+                  value={formData.amount}
+                  onChange={handleChange}
+                  required
+                  min="0"
+                  step="0.01"
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200"
+                  placeholder="0.00"
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Amount (EGP) *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      name="amount"
-                      value={formData.amount}
-                      onChange={handleChange}
-                      required
-                      min="0"
-                      step="0.01"
-                      className="w-full px-4 py-3 pl-12 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 bg-white hover:border-orange-300"
-                      placeholder="0.00"
-                    />
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">EGP</div>
-                  </div>
-                  <p className="text-xs text-gray-500 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    Benefit amount
-                  </p>
-                </div>
-
-                <div className="sm:col-span-2 space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    <svg className="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    Terms and Conditions (Optional)
-                  </label>
-                  <textarea
-                    name="terms"
-                    value={formData.terms}
-                    onChange={handleChange}
-                    rows={4}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-all duration-200 bg-white hover:border-rose-300 resize-none"
-                    placeholder="Enter terms and conditions for this benefit..."
-                  />
-                </div>
+              <div>
+                <label htmlFor="terms" className="block text-sm font-semibold text-gray-700 mb-2">
+                  Terms and Conditions
+                </label>
+                <textarea
+                  id="terms"
+                  name="terms"
+                  value={formData.terms}
+                  onChange={handleChange}
+                  rows={6}
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-900 placeholder:text-gray-400 transition-all duration-200 resize-none"
+                  placeholder="Enter terms and conditions for this termination benefit"
+                />
+                <p className="mt-2 text-xs text-gray-500">Describe the terms and conditions under which this benefit applies</p>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-4 pt-6 border-t border-gray-200">
+            {/* Form Actions */}
+            <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => router.push('/dashboard/payroll-configuration/termination-benefits')}
-                className="px-6 py-3 border-2 border-gray-300 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200"
+                className="px-6 py-3 border-2 border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-200"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="group relative px-8 py-3 bg-gradient-to-r from-rose-600 to-orange-600 text-white rounded-xl text-sm font-semibold shadow-lg hover:shadow-xl hover:from-rose-700 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:transform-none flex items-center gap-2"
+                className="px-6 py-3 bg-gradient-to-r from-rose-600 to-orange-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl hover:from-rose-700 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                    <span>Saving...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                     </svg>
-                    Save Changes
+                    <span>Save Changes</span>
                   </>
                 )}
               </button>

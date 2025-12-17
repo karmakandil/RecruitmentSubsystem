@@ -39,6 +39,14 @@ export enum NotificationType {
   // Recruitment Module Notifications - Candidate notifications
   APPLICATION_ACCEPTED = 'APPLICATION_ACCEPTED',
   APPLICATION_REJECTED = 'APPLICATION_REJECTED',
+
+  // Payroll Tracking Module Notifications
+  DISPUTE_APPROVED_FOR_FINANCE = 'dispute_approved_for_finance',
+  CLAIM_APPROVED_FOR_FINANCE = 'claim_approved_for_finance',
+  DISPUTE_APPROVED = 'dispute_approved',
+  CLAIM_APPROVED = 'claim_approved',
+  DISPUTE_REJECTED = 'dispute_rejected',
+  CLAIM_REJECTED = 'claim_rejected',
 }
 
 export interface Notification {
