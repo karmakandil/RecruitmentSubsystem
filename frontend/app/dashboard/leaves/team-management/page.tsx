@@ -26,6 +26,7 @@ export default function TeamManagementPage() {
   const [leaveRequests, setLeaveRequests] = useState<TeamLeaveRequest[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [departments, setDepartments] = useState<Array<{ id: string; name: string }>>([]);
+  const [teamMembers, setTeamMembers] = useState<Array<{ employeeId: string; employeeName: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [total, setTotal] = useState(0);
@@ -52,6 +53,7 @@ export default function TeamManagementPage() {
   useEffect(() => {
     fetchLeaveTypes();
     fetchDepartments();
+    fetchTeamMembers();
     fetchTeamLeaveData();
   }, [user]);
 
@@ -109,6 +111,30 @@ export default function TeamManagementPage() {
     } catch (error) {
       console.warn("Failed to fetch departments:", error);
       setDepartments([]);
+    }
+  };
+
+  const fetchTeamMembers = async () => {
+    try {
+      const managerId = authApi.getUserId() || user?.id || user?.userId || "";
+      if (!managerId || !managerId.trim()) {
+        return;
+      }
+      
+      // Use getTeamLeaveBalances to get all team members (it returns all members, not just those with requests)
+      const result = await leavesApi.getTeamLeaveBalances(managerId.trim());
+      const members = result.teamMembers || [];
+      
+      const memberList = members.map((member: any) => ({
+        employeeId: member.employeeId || member._id,
+        employeeName: member.employeeName || `${member.firstName || ''} ${member.lastName || ''}`.trim() || 'Unknown',
+      }));
+      
+      setTeamMembers(memberList);
+      console.log(`[fetchTeamMembers] Found ${memberList.length} team members`);
+    } catch (error) {
+      console.warn("Failed to fetch team members:", error);
+      setTeamMembers([]);
     }
   };
 
@@ -434,33 +460,60 @@ export default function TeamManagementPage() {
         </div>
       )}
 
-      <div className="mb-4 text-sm text-gray-600">
-        Total Results: {total}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="text-sm text-gray-600">
+          Total Results: {total} {total === 1 ? 'request' : 'requests'}
+          {teamMembers.length > 0 && (
+            <span className="ml-2 text-gray-500">
+              ({teamMembers.length} {teamMembers.length === 1 ? 'team member' : 'team members'})
+            </span>
+          )}
+        </div>
       </div>
 
       {leaveRequests.length === 0 && !loading ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-gray-600 mb-4">No leave requests found.</p>
-              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
-                <p className="text-sm font-semibold text-yellow-800 mb-2">Troubleshooting Steps:</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-yellow-700">
-                  <li>Check if you have team members assigned:
-                    <ul className="list-disc list-inside ml-4 mt-1">
-                      <li>Go to Employee Profile search page</li>
-                      <li>Verify employees have their <code className="bg-yellow-100 px-1 rounded">supervisorPositionId</code> set to your position</li>
-                    </ul>
-                  </li>
-                  <li>Verify your position is set in your employee profile (you need a <code className="bg-yellow-100 px-1 rounded">primaryPositionId</code>)</li>
-                  <li>Check if your team members have submitted any leave requests</li>
-                  <li>Try clearing all filters and clicking "Apply Filters"</li>
-                  <li>Open browser console (F12) to see detailed logs</li>
-                </ol>
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <p className="text-gray-600 mb-4">No leave requests found.</p>
+                {teamMembers.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="text-sm text-gray-600 mb-2">
+                      You have {teamMembers.length} {teamMembers.length === 1 ? 'team member' : 'team members'}, but none have submitted leave requests matching the current filters.
+                    </p>
+                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md text-left">
+                      <p className="text-sm font-semibold text-blue-800 mb-2">Your Team Members:</p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-blue-700">
+                        {teamMembers.map((member) => (
+                          <li key={member.employeeId}>
+                            {member.employeeName} (No leave requests)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
+                    <p className="text-sm font-semibold text-yellow-800 mb-2">Troubleshooting Steps:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-yellow-700">
+                      <li>Check if you have team members assigned:
+                        <ul className="list-disc list-inside ml-4 mt-1">
+                          <li>Go to Employee Profile search page</li>
+                          <li>Verify employees have their <code className="bg-yellow-100 px-1 rounded">supervisorPositionId</code> set to your position</li>
+                        </ul>
+                      </li>
+                      <li>Verify your position is set in your employee profile (you need a <code className="bg-yellow-100 px-1 rounded">primaryPositionId</code>)</li>
+                      <li>Check if your team members have submitted any leave requests</li>
+                      <li>Try clearing all filters and clicking "Apply Filters"</li>
+                      <li>Open browser console (F12) to see detailed logs</li>
+                    </ol>
+                  </div>
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       ) : (
         <div className="space-y-4">
           {leaveRequests.map((request, index) => (

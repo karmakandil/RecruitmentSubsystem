@@ -11,6 +11,8 @@ import { useRequireAuth } from "@/lib/hooks/use-auth";
 import { Card, CardContent } from "@/components/shared/ui/Card";
 import { Button } from "@/components/shared/ui/Button";
 import { CancelLeaveRequestButton } from "@/components/leaves/CancelLeaveRequestButton";
+import { RoleGuard } from "@/components/auth/role-guard";
+import { SystemRole } from "@/types";
 
 export default function LeaveRequestsPage() {
   const router = useRouter();
@@ -204,19 +206,41 @@ export default function LeaveRequestsPage() {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="container mx-auto max-w-6xl px-4 py-8">
-        <div className="flex justify-center items-center min-h-[400px]">
-          <p className="text-gray-600">Loading leave requests...</p>
-        </div>
+  // All roles except RECRUITER and JOB_CANDIDATE can create leave requests
+  const allowedRoles = [
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.HR_ADMIN,
+  ];
+
+  const accessDeniedFallback = (
+    <div className="container mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
+        <p className="text-sm font-medium text-red-800">
+          Access denied: You need one of these roles: {allowedRoles.join(", ")}. Your roles: {user?.roles?.join(", ") || "None"}
+        </p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex justify-between items-center">
+    <RoleGuard allowedRoles={allowedRoles} fallback={accessDeniedFallback}>
+      <div className="container mx-auto max-w-6xl px-4 py-8">
+        {loading && (
+          <div className="flex justify-center items-center min-h-[400px]">
+            <p className="text-gray-600">Loading leave requests...</p>
+          </div>
+        )}
+        {!loading && (
+          <>
+            <div className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">My Leave Requests</h1>
           <p className="mt-2 text-sm text-gray-600">
@@ -348,21 +372,21 @@ export default function LeaveRequestsPage() {
             </div>
           </CardContent>
         </Card>
-      )}
+            )}
 
-      {successMessage && (
+            {successMessage && (
         <div className="mb-6 rounded-md bg-green-50 p-4 border border-green-200">
           <p className="text-sm text-green-800">{successMessage}</p>
         </div>
-      )}
+            )}
 
-      {error && (
+            {error && (
         <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
           <p className="text-sm text-red-800">{error}</p>
         </div>
-      )}
+            )}
 
-      {leaveRequests.length === 0 ? (
+            {leaveRequests.length === 0 ? (
         <Card className="p-8 text-center">
           <svg
             className="mx-auto h-12 w-12 text-gray-400"
@@ -389,8 +413,8 @@ export default function LeaveRequestsPage() {
             </Link>
           </div>
         </Card>
-      ) : (
-        <div className="space-y-4">
+            ) : (
+              <div className="space-y-4">
           {leaveRequests.map((request) => (
             <Card key={request._id} className="p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -498,8 +522,11 @@ export default function LeaveRequestsPage() {
               </div>
             </Card>
           ))}
-        </div>
-      )}
-    </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </RoleGuard>
   );
 }
