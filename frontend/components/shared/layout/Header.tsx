@@ -7,7 +7,15 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { isHRAdminOrManager } from "@/lib/utils/role-utils";
 import { SystemRole } from "@/types";
-import { User, ChevronDown, LogOut, UserCircle, Settings } from "lucide-react";
+import {
+  User,
+  ChevronDown,
+  LogOut,
+  UserCircle,
+  Settings,
+  LayoutDashboard,
+  Briefcase,
+} from "lucide-react";
 
 export default function Header() {
   const router = useRouter();
@@ -24,9 +32,6 @@ export default function Header() {
 
   const isHR = isHRAdminOrManager(user);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) ?? false;
-  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER) ?? false;
-  const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN) ?? false;
-  const canConfigureShifts = isHRAdmin || isHRManager || isSystemAdmin;
 
   const navItemClass = (href: string) =>
     `text-sm font-medium transition-colors ${
@@ -50,109 +55,146 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-50 w-full border-b bg-white">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center space-x-2">
-          <div className="h-8 w-8 rounded-lg bg-blue-600" />
+          <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <Briefcase className="h-5 w-5 text-white" />
+          </div>
           <span className="text-xl font-bold text-gray-900">HR System</span>
         </Link>
 
-        {isAuthenticated && (
+        {isAuthenticated ? (
           <div className="flex items-center space-x-6">
-            {/* Navigation Links */}
-            <nav className="flex items-center space-x-6">
-              {/* All Authenticated Users */}
+            {/* Main Navigation */}
+            <nav className="hidden md:flex items-center space-x-6">
+              {/* Dashboard for all users */}
               <Link href="/dashboard" className={navItemClass("/dashboard")}>
                 Dashboard
               </Link>
 
-              {/* Admin Link - Only for HR Admins */}
+              {/* Admin Panel for HR Admins */}
               {isHRAdmin && (
-                <>
-                  <Link
-                    href="/dashboard/admin"
-                    className={navItemClass("/dashboard/admin")}
-                  >
-                    Admin
-                  </Link>
-
-                  {/* Optional: Additional Admin Links */}
-                  <Link
-                    href="/dashboard/leaves"
-                    className={navItemClass("/dashboard/leaves")}
-                  >
-                    Leaves
-                  </Link>
-                </>
+                <Link
+                  href="/dashboard/admin"
+                  className={navItemClass("/dashboard/admin")}
+                >
+                  Admin
+                </Link>
               )}
 
-            {/* HR Manager Navigation */}
-            {isHRManager && (
-              <>
-                <Link
-                  href="/dashboard/employee-profile/admin/search"
-                  className={navItemClass("/dashboard/employee-profile/admin")}
-                >
-                  Employees
-                </Link>
-
-                <Link
-                  href="/dashboard/employee-profile/admin/approvals"
-                  className={navItemClass(
-                    "/dashboard/employee-profile/admin/approvals"
-                  )}
-                >
-                  Approvals
-                </Link>
-
-                <Link
-                  href="/dashboard/employee-profile/team"
-                  className={navItemClass("/dashboard/employee-profile/team")}
-                >
-                  Team
-                </Link>
-
-                <Link
-                  href="/dashboard/employee-profile/my-profile"
-                  className={navItemClass("/dashboard/employee-profile/my-profile")}
-                >
-                  My Profile
-                </Link>
-              </>
-            )}
-
-            {/* Regular Employee Navigation */}
-            {!isHR && (
-              <Link
-                href="/dashboard/employee-profile/my-profile"
-                className={navItemClass("/dashboard/employee-profile/my-profile")}
-              >
-                My Profile
-              </Link>
-            )}
-
-            {/* Notification Bell */}
-            <NotificationBell />
-
-            {/* User Welcome */}
-            <span className="text-sm text-gray-600">
-              Welcome, {user?.fullName || user?.firstName}
-            </span>
-
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Logout</span>
-            </button>
+              {/* Notification Bell */}
+              <NotificationBell />
             </nav>
-          </div>
-        )}
 
-        {!isAuthenticated && (
+            {/* Profile Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
+                aria-expanded={isProfileOpen}
+                aria-label="User menu"
+              >
+                {/* Profile Photo or Avatar */}
+                <div className="relative">
+                  {user?.profilePictureUrl ? (
+                    <img
+                      src={user.profilePictureUrl}
+                      alt={user.fullName || "User"}
+                      className="w-9 h-9 rounded-full object-cover border border-gray-200"
+                      key={user.profilePictureUrl}
+                      onError={(e) => {
+                        // Fallback to default avatar if image fails to load
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center border border-gray-200">
+                      <User className="h-5 w-5 text-gray-600" />
+                    </div>
+                  )}
+                </div>
+
+                {/* User Info - Hidden on mobile */}
+                <div className="hidden md:block text-left">
+                  <p className="text-sm font-medium text-gray-900">
+                    {user?.fullName || user?.firstName || "User"}
+                  </p>
+                </div>
+
+                <ChevronDown
+                  className={`h-4 w-4 text-gray-500 transition-transform ${
+                    isProfileOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {/* Dropdown Menu */}
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-56 rounded-md bg-white shadow-lg border border-gray-200 py-2 z-50">
+                  {/* User Info Section */}
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <p className="text-sm font-medium text-gray-900">
+                      {user?.fullName || user?.firstName || "User"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {user?.workEmail || user?.personalEmail || "No email"}
+                    </p>
+                  </div>
+
+                  {/* Menu Items */}
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <LayoutDashboard className="h-4 w-4 text-gray-500" />
+                    <span>Dashboard</span>
+                  </Link>
+
+                  {/* My Profile for all users */}
+                  <Link
+                    href="/dashboard/employee-profile/my-profile"
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <UserCircle className="h-4 w-4 text-gray-500" />
+                    <span>My Profile</span>
+                  </Link>
+
+                  {/* Admin Panel for HR Admins in dropdown */}
+                  {isHRAdmin && (
+                    <Link
+                      href="/dashboard/admin"
+                      onClick={() => setIsProfileOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Settings className="h-4 w-4 text-gray-500" />
+                      <span>Admin Panel</span>
+                    </Link>
+                  )}
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-100 my-2"></div>
+
+                  {/* Logout */}
+                  <button
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-600 hover:bg-gray-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          // Unauthenticated State
           <nav className="flex items-center space-x-4">
             <Link
               href="/auth/login"
