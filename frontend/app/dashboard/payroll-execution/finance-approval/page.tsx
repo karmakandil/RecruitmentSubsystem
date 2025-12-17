@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -41,7 +41,7 @@ interface PayrollRun {
   exceptions?: number;
 }
 
-export default function FinanceApprovalPage() {
+function FinanceApprovalPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -142,7 +142,7 @@ export default function FinanceApprovalPage() {
         return true;
       });
     }
-  }, [payrollRuns, view, user?.userId, user?.id, user?._id]);
+  }, [payrollRuns, view, user?.userId, user?.id]);
 
   const handleDecision = (run: PayrollRun, decisionType: "approve" | "reject") => {
     setSelectedPayrollRun(run);
@@ -428,7 +428,7 @@ export default function FinanceApprovalPage() {
                       </Button>
                       <Button
                         onClick={() => handleDecision(run, "reject")}
-                        variant="destructive"
+                        variant="danger"
                         className="flex-1"
                         disabled={processing}
                       >
@@ -568,6 +568,23 @@ export default function FinanceApprovalPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function FinanceApprovalPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-6 py-8">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <FinanceApprovalPageContent />
+    </Suspense>
   );
 }
 

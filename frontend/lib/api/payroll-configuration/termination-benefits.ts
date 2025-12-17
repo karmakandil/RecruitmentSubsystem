@@ -54,7 +54,10 @@ export const terminationBenefitsApi = {
   getAll: async (status?: 'draft' | 'approved' | 'rejected'): Promise<TerminationBenefit[]> => {
     try {
       const response = await api.get('/payroll-configuration/termination-benefits');
-      let terminationBenefits = Array.isArray(response) ? response : response.data || response.items || [];
+      // API interceptor returns response.data, so response is already the data at runtime
+      // Use type assertion to handle different response formats
+      const responseData = response as any;
+      let terminationBenefits = Array.isArray(responseData) ? responseData : responseData.data || responseData.items || [];
       
       // Map each item from backend to frontend format
       terminationBenefits = terminationBenefits.map(mapBackendToFrontend);

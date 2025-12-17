@@ -89,8 +89,8 @@ export default function GenerateDraftPage() {
       setError("Please enter an entity name");
       return;
     }
-    // Get user ID - check both id and userId fields
-    const userId = user?.id || user?.userId || user?._id;
+    // Get user ID - check both id and userId fields   
+    const userId = user?.id || user?.userId;
     
     if (!userId) {
       setError("User information not available. Please refresh the page or log in again.");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -42,7 +42,7 @@ interface PayrollRun {
   createdAt?: string;
 }
 
-export default function ManagerApprovalPage() {
+function ManagerApprovalPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -96,7 +96,7 @@ export default function ManagerApprovalPage() {
             runId: r.runId,
             status: r.status,
             payrollManagerId: r.payrollManagerId,
-            currentUserId: user?.userId || user?.id || user?._id,
+            currentUserId: user?.userId || user?.id,
           })),
         });
       }
@@ -156,12 +156,12 @@ export default function ManagerApprovalPage() {
             // Handle ObjectId or populated object
             managerIdToCompare = (run.payrollManagerId as any)?._id?.toString()?.trim() || 
                                  (run.payrollManagerId as any)?.id?.toString()?.trim() || 
-                                 run.payrollManagerId.toString().trim();
+                                 String(run.payrollManagerId).trim();
           } else {
-            managerIdToCompare = run.payrollManagerId.toString().trim();
+            managerIdToCompare = String(run.payrollManagerId).trim();
           }
           
-          const currentUserId = (user?.userId?.toString() || user?.id?.toString() || user?._id?.toString() || "").trim();
+          const currentUserId = (user?.userId?.toString() || user?.id?.toString() || "").trim();
           
           const matches = managerIdToCompare === currentUserId;
           
@@ -217,7 +217,7 @@ export default function ManagerApprovalPage() {
         totalRuns: payrollRuns.length,
         filtered: filtered.length,
         finalFiltered: finalFiltered.length,
-        currentUserId: user?.userId || user?.id || user?._id,
+        currentUserId: user?.userId || user?.id,
         runStatuses: payrollRuns.map(r => ({ runId: r.runId, status: r.status, managerId: r.payrollManagerId })),
       });
     }
@@ -249,7 +249,7 @@ export default function ManagerApprovalPage() {
       await payrollExecutionApi.managerApproval({
         payrollRunId: selectedPayrollRun._id,
         status: selectedPayrollRun.status,
-        managerDecision: decision,
+        managerDecision: decision === "approve" ? "approved" : "rejected",
         managerComments: decision === "reject" ? comments : comments || undefined,
         payrollManagerId: user?.userId,
       });
@@ -439,7 +439,7 @@ export default function ManagerApprovalPage() {
                   Total payroll runs loaded: <strong>{payrollRuns.length}</strong>
                 </p>
                 <p className="text-xs text-yellow-700 mb-1">
-                  Current user ID: <strong>{user?.userId || user?.id || user?._id || "Not found"}</strong>
+                  Current user ID: <strong>{user?.userId || user?.id || "Not found"}</strong>
                 </p>
                 <p className="text-xs text-yellow-700 mb-2">Statuses found in payroll runs:</p>
                 <ul className="text-xs text-yellow-700 list-disc list-inside space-y-1 mb-2">
@@ -559,7 +559,7 @@ export default function ManagerApprovalPage() {
                       </Button>
                       <Button
                         onClick={() => handleDecision(run, "reject")}
-                        variant="destructive"
+                        variant="danger"
                         className="flex-1"
                         disabled={processing}
                       >
@@ -696,6 +696,23 @@ export default function ManagerApprovalPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function ManagerApprovalPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-6 py-8">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <ManagerApprovalPageContent />
+    </Suspense>
   );
 }
 

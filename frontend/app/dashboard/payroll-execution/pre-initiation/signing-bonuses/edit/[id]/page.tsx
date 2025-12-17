@@ -221,7 +221,7 @@ export default function EditSigningBonusPage() {
                   <div>
                     <p className="text-sm text-gray-600">Bonus Configuration</p>
                     <p className="font-semibold text-gray-900">
-                      {bonusConfig.positionName || bonusConfig.name || "N/A"}
+                      {bonusConfig.positionName || "N/A"}
                     </p>
                   </div>
                 </div>

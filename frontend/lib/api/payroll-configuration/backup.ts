@@ -71,7 +71,9 @@ export const backupApi = {
       const response = await api.post('/payroll-configuration/backups', {
         type: 'manual',
       });
-      return response as CreateBackupResponse;
+      // API interceptor returns response.data, but TypeScript doesn't know this
+      // Extract data properly or use type assertion through unknown
+      return (response as unknown as CreateBackupResponse);
     } catch (error: any) {
       // If endpoint doesn't exist (404), throw a user-friendly error
       if (error?.response?.status === 404 || error?.message?.includes('404')) {
@@ -91,7 +93,9 @@ export const backupApi = {
           responseType: 'blob',
         }
       );
-      return response as Blob;
+      // API interceptor returns response.data, which is a Blob when responseType is 'blob'
+      // Use type assertion through unknown for TypeScript safety
+      return (response as unknown as Blob);
     } catch (error: any) {
       // If endpoint doesn't exist (404), throw a user-friendly error
       if (error?.response?.status === 404 || error?.message?.includes('404')) {
@@ -106,7 +110,9 @@ export const backupApi = {
   getSchedule: async (): Promise<BackupSchedule | null> => {
     try {
       const response = await api.get('/payroll-configuration/backups/schedule');
-      return response as BackupSchedule;
+      // API interceptor returns response.data, but TypeScript doesn't know this
+      // Use type assertion through unknown for TypeScript safety
+      return (response as unknown as BackupSchedule);
     } catch (error: any) {
       // If endpoint doesn't exist (404), return null gracefully
       // Check multiple ways the error might be structured
@@ -138,7 +144,9 @@ export const backupApi = {
   updateSchedule: async (schedule: BackupSchedule): Promise<BackupSchedule> => {
     try {
       const response = await api.put('/payroll-configuration/backups/schedule', schedule);
-      return response as BackupSchedule;
+      // API interceptor returns response.data, but TypeScript doesn't know this
+      // Use type assertion through unknown for TypeScript safety
+      return (response as unknown as BackupSchedule);
     } catch (error: any) {
       // If endpoint doesn't exist (404), throw a user-friendly error
       if (error?.response?.status === 404 || error?.message?.includes('404')) {

@@ -125,12 +125,12 @@ export default function TerminationBenefitsPage() {
   };
 
   const handleView = (item: TerminationBenefit) => {
-    router.push(`/dashboard/payroll-configuration/termination-benefits/${item._id}`);
+    router.push(`/dashboard/payroll-configuration/termination-benefits/${item.id}`);
   };
 
   const handleEdit = (item: TerminationBenefit) => {
     if (item.status === 'draft') {
-      router.push(`/dashboard/payroll-configuration/termination-benefits/${item._id}/edit`);
+      router.push(`/dashboard/payroll-configuration/termination-benefits/${item.id}/edit`);
     } else {
       alert('Only draft termination benefits can be edited.');
     }
@@ -147,7 +147,7 @@ export default function TerminationBenefitsPage() {
     }
 
     try {
-      await terminationBenefitsApi.delete(item._id);
+      await terminationBenefitsApi.delete(item.id);
       loadTerminationBenefits(); // Refresh
     } catch (error) {
       console.error('Error deleting termination benefit:', error);

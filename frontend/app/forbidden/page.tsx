@@ -36,7 +36,7 @@ export default function ForbiddenPage() {
                   <strong>403 Forbidden Error</strong>
                 </p>
                 <p className="text-red-700 text-sm mt-2">
-                  Your account {mounted && !loading && user ? `(${user.fullName || user.email || "User"})` : ""} does not have the required permissions 
+                  Your account {mounted && !loading && user ? `(${user.fullName || user.firstName || (user as any)?.email || "User"})` : ""} does not have the required permissions 
                   to access this resource. This could be due to:
                 </p>
                 <ul className="list-disc list-inside text-red-700 text-sm mt-2 space-y-1">

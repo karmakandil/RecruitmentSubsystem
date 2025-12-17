@@ -134,7 +134,7 @@ export default function ReviewInitiationPage() {
     }
 
     // Get user ID - check both id and userId fields
-    const userId = user?.id || user?.userId || user?._id;
+    const userId = user?.id || user?.userId;
     
     if (!userId) {
       setError("User information not available. Please refresh the page or log in again.");
@@ -376,7 +376,7 @@ export default function ReviewInitiationPage() {
                       </Button>
                       <Button
                         onClick={() => handleDecision(run, "reject")}
-                        variant="destructive"
+                        variant="danger"
                         className="flex-1"
                         disabled={processing}
                       >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { useRequireAuth } from "@/lib/hooks/use-auth";
@@ -28,7 +28,7 @@ import {
 
 const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY"];
 
-export default function EditInitiationPage() {
+function EditInitiationPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -349,6 +349,23 @@ export default function EditInitiationPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function EditInitiationPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-6 py-8">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <EditInitiationPageContent />
+    </Suspense>
   );
 }
 

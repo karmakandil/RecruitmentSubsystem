@@ -44,6 +44,9 @@ interface GenerationResult {
   totalEmployees: number;
   successful: number;
   failed: number;
+  actualDatabaseCount?: number;
+  warnings?: string[];
+  verifiedPayslips?: any[];
 }
 
 export default function GeneratePayslipsPage() {
@@ -78,8 +81,8 @@ export default function GeneratePayslipsPage() {
         }
         // Filter to only show locked payroll runs with PAID payment status (ready for payslip generation)
         // Backend requires: status = LOCKED AND paymentStatus = PAID
-        const readyRuns = runsData.filter(
-          (run) =>
+        const readyRuns = (runsData as PayrollRun[]).filter(
+          (run: PayrollRun) =>
             run.status.toLowerCase() === "locked" &&
             (run.paymentStatus?.toLowerCase() === "paid" || run.paymentStatus === "PAID")
         );

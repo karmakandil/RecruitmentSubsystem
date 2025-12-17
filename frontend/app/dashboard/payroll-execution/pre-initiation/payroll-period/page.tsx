@@ -102,7 +102,7 @@ export default function PayrollPeriodPage() {
     try {
       if (decision === "approve") {
         // Store approved period in localStorage (frontend state only as per user story)
-        const userId = user?.id || user?.userId || user?._id || "unknown";
+        const userId = user?.id || user?.userId || "unknown";
         const approved: ApprovedPeriod = {
           period: payrollPeriod,
           approvedAt: new Date().toISOString(),

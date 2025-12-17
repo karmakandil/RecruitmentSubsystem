@@ -130,7 +130,7 @@ export default function ProcessInitiationPage() {
     }
 
     // Get user ID - check both id and userId fields
-    const userId = user?.id || user?.userId || user?._id;
+    const userId = user?.id || user?.userId;
     
     if (!userId) {
       setError("User information not available. Please refresh the page or log in again.");
