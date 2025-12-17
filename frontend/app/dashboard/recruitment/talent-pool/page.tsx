@@ -62,8 +62,8 @@ export default function TalentPoolPage() {
     const loadDropdownData = async () => {
       try {
         const [deptsData, posData] = await Promise.all([
-          organizationStructureApi.getAllDepartments(true),
-          organizationStructureApi.getAllPositions(undefined, true),
+          organizationStructureApi.departments.getAllDepartments({ isActive: true }),
+          organizationStructureApi.positions.getAllPositions({ isActive: true }),
         ]);
         
         // Handle different response formats

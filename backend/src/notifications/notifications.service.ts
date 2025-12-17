@@ -793,6 +793,10 @@ export class NotificationsService {
   }
 
   // ===== RECRUITMENT SUBSYSTEM =====
+  // NOTE: All recruitment notification methods below are DELEGATIONS to RecruitmentNotificationsService
+  // The actual implementations are in recruitment-notifications.service.ts
+  // These methods are kept here to maintain the NotificationsService API interface
+  
   // Notify panel members when assigned to an interview
   async notifyInterviewPanelMembers(
     panelMemberIds: string[],
@@ -999,6 +1003,9 @@ export class NotificationsService {
   }
 
   // ===== ONBOARDING → PAYROLL INTEGRATION NOTIFICATIONS =====
+  // NOTE: All onboarding/payroll notification methods below are DELEGATIONS to RecruitmentNotificationsService
+  // The actual implementations are in recruitment-notifications.service.ts
+  
   // ONB-018: Notify Payroll Team about New Hire Ready for Payroll
   async notifyPayrollTeamNewHire(
     payrollTeamIds: string[],
@@ -1046,6 +1053,9 @@ export class NotificationsService {
   }
 
   // ===== ONBOARDING NOTIFICATIONS =====
+  // NOTE: All onboarding notification methods below are DELEGATIONS to RecruitmentNotificationsService
+  // The actual implementations are in recruitment-notifications.service.ts
+  
   // ONB-005: Send Welcome Notification to New Hire
   async notifyNewHireWelcome(
     newHireId: string,
