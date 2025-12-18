@@ -546,6 +546,13 @@ export interface AttendanceRecord {
   totalWorkMinutes?: number;
   hasMissedPunch?: boolean;
   status: 'COMPLETE' | 'INCOMPLETE' | 'CORRECTION_PENDING';
+  exceptionIds?: string[];
+  finalisedForPayroll?: boolean;
+  correctionRequest?: {
+    id: string;
+    status: CorrectionRequestStatus;
+    reason?: string;
+  };
   punches?: Array<{
     time: Date | string;
     type: 'IN' | 'OUT';

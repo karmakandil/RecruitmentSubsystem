@@ -61,11 +61,12 @@ export default function AttendanceImportPage() {
   };
 
   const sampleCsv = [
-    "employeeId,clockInTime,clockOutTime,deviceId,source",
-    "692b5a9ac70f3bc6a4753441,2025-12-15T08:55:00Z,2025-12-15T17:05:00Z,DEV-1,BIOMETRIC",
-    "692b5a9ac70f3bc6a4753441,2025-12-16T09:02:00Z,,DEV-1,BIOMETRIC",
-    "692b5a9ac70f3bc6a4753441,2025-12-17T08:50:00Z,2025-12-17T12:10:00Z,DEV-2,BIOMETRIC",
-    "692b5a9ac70f3bc6a4753441,2025-12-17T13:05:00Z,2025-12-17T17:45:00Z,DEV-2,BIOMETRIC",
+    // Recommended punch-row format:
+    "employeeId,punchType,time",
+    "692b5a9ac70f3bc6a4753441,IN,2025-12-15T08:55:00Z",
+    "692b5a9ac70f3bc6a4753441,OUT,2025-12-15T17:05:00Z",
+    // Missed punch example (missing OUT) => will be flagged as missed punch:
+    "692b5a9ac70f3bc6a4753441,IN,2025-12-16T09:02:00Z",
   ].join("\n");
 
   const canImport =
@@ -141,8 +142,9 @@ export default function AttendanceImportPage() {
                   placeholder={sampleCsv}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Required columns: <code>employeeId</code>, <code>clockInTime</code>. Optional:
-                  <code>clockOutTime</code>, <code>deviceId</code>, <code>source</code>.
+                  Recommended columns: <code>employeeId</code>, <code>punchType</code> (IN/OUT),{" "}
+                  <code>time</code>. (Legacy also supported: <code>employeeId</code>,{" "}
+                  <code>clockInTime</code>, optional <code>clockOutTime</code>.)
                 </p>
               </div>
 

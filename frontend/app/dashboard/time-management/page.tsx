@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/hooks/use-auth";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/shared/ui/Card";
 import { ClockInOutButton } from "@/components/time-management/ClockInOutButton";
@@ -8,6 +9,8 @@ import { SystemRole } from "@/types";
 
 export default function TimeManagementPage() {
   const { user } = useAuth();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN);
   const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
@@ -16,17 +19,28 @@ export default function TimeManagementPage() {
   // HR_ADMIN should NOT configure shifts, only HR_MANAGER and SYSTEM_ADMIN can
   const canConfigureShifts = isHRManager || isSystemAdmin;
   const canViewAdminSection = isHRAdmin || isHRManager || isSystemAdmin; // HR_ADMIN can view but not configure
+  const [subtitle, setSubtitle] = useState<string>(
+    "Manage attendance, schedules, shifts, and time tracking",
+  );
+
+  // Avoid hydration mismatches: compute user/role-based subtitle after mount.
+  useEffect(() => {
+    setSubtitle(
+      canConfigureShifts
+        ? "Manage attendance, schedules, shifts, and time tracking"
+        : "Track your attendance and manage your time",
+    );
+  }, [canConfigureShifts]);
+
+  // Prevent hydration mismatch across role-gated dashboard sections
+  if (!mounted) return null;
 
   return (
     <div className="container mx-auto px-6 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Time Management</h1>
-        <p className="text-gray-600 mt-1">
-          {canConfigureShifts
-            ? "Manage attendance, schedules, shifts, and time tracking"
-            : "Track your attendance and manage your time"}
-        </p>
+        <p className="text-gray-600 mt-1">{subtitle}</p>
       </div>
 
       {/* Department Head Section - Team Management */}
