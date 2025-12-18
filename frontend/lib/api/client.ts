@@ -5,6 +5,8 @@ import axios, {
 } from "axios";
 
 // CHANGED - Fixed port to match backend (5000)
+
+// Backend API runs on port 5000 by default (can be overridden with PORT env var or NEXT_PUBLIC_API_URL)
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
 
@@ -122,6 +124,44 @@ api.interceptors.response.use(
     // },
     // });
 
+    const status = error.response?.status || error.status;
+    const url = error.config?.url || error.request?.responseURL || '';
+    
+    // Suppress 404 errors for backup endpoints (not yet implemented)
+    // Browser network layer will still show these, but we won't log them as application errors
+    const isBackup404 = status === 404 && (url.includes('/backups') || url.includes('backup'));
+    
+    // Suppress 403 errors for optional endpoints (employee-profile and payroll/runs with query params)
+    const isOptionalEmployeeProfile = status === 403 && url.includes('/employee-profile') && 
+      (url.includes('limit') || url.includes('?'));
+    const isOptionalPayrollRuns = status === 403 && url.includes('/payroll/runs') && 
+      (url.includes('limit') || url.includes('?'));
+    
+    // Suppress timeout errors for notifications endpoint (optional feature, may be slow or unavailable)
+    const isNotificationsTimeout = (error.message?.includes('timeout') || error.code === 'ECONNABORTED') && 
+      (url.includes('/notifications') || url.includes('notification'));
+    
+    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
+      // Silently handle these errors - they're expected for optional features or unimplemented endpoints
+      // Browser console will show the network error, but we don't treat it as an app error
+      // Return a clean error that can be caught and handled gracefully
+    } else {
+      // Log other errors normally
+      console.error(
+        `❌ API Error [${error.config?.method?.toUpperCase()} ${
+          error.config?.url
+        }]:`,
+        {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          message: error.message,
+          responseData: error.response?.data,
+          headers: error.response?.headers,
+        }
+      );
+    }
+
+    // Handle errors
     if (error.response?.status === 401) {
       console.log("🔒 401 Unauthorized - Token may be invalid");
       
@@ -191,6 +231,26 @@ api.interceptors.response.use(
       errorMessage = error.message;
     } else {
       errorMessage = `HTTP ${error.response?.status || "Unknown"} error`;
+      // Check if this is an optional endpoint (already checked above, but check again for redirect logic)
+      const isOptionalEndpoint = isOptionalEmployeeProfile || isOptionalPayrollRuns;
+      
+      if (!isOptionalEndpoint) {
+        console.log("🚫 403 Forbidden - Insufficient permissions");
+        console.log("Endpoint:", url);
+        console.log("User role may not have access to this endpoint");
+      }
+      
+      // Redirect to forbidden page instead of login
+      // But only if we're not on a dashboard page (to avoid breaking dashboard functionality)
+      // Don't redirect for optional endpoints - let the page handle it gracefully
+      if (typeof window !== "undefined" && !isOptionalEndpoint) {
+        const currentPath = window.location.pathname;
+        // Only redirect if we're not already on the forbidden page or a dashboard page
+        // Dashboard pages should handle 403 errors gracefully without redirecting
+        if (!currentPath.includes("/forbidden") && !currentPath.includes("/dashboard")) {
+          window.location.href = "/forbidden";
+        }
+      }
     }
     
     // ============================================================

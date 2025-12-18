@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth, useAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
-import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
+import { ConfigurationTable } from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { taxRulesApi } from '@/lib/api/payroll-configuration/tax-rules';
 import { TaxRule } from '@/lib/api/payroll-configuration/types';
@@ -78,13 +78,60 @@ export default function TaxRulesPage() {
     },
     { 
       key: 'rate', 
-      label: 'Rate',
+      label: 'Tax Rate',
       render: (item: TaxRule) => (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-slate-700">{item.rate}%</span>
+            <span className="text-2xl font-bold text-slate-700">{item.rate.toFixed(2)}%</span>
           </div>
+          {item.isProgressive && (
+            <div className="text-xs text-blue-600 font-medium">Progressive</div>
+          )}
           <div className="text-xs text-gray-500">Tax rate</div>
+        </div>
+      )
+    },
+    { 
+      key: 'thresholds', 
+      label: 'Thresholds',
+      render: (item: TaxRule) => {
+        if (item.thresholds && (item.thresholds.minAmount || item.thresholds.maxAmount)) {
+          return (
+            <div className="text-sm text-gray-900 space-y-1">
+              {item.thresholds.minAmount !== undefined && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                  </svg>
+                  <span>Min: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EGP' }).format(item.thresholds.minAmount)}</span>
+                </div>
+              )}
+              {item.thresholds.maxAmount !== undefined && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path>
+                  </svg>
+                  <span>Max: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EGP' }).format(item.thresholds.maxAmount)}</span>
+                </div>
+              )}
+            </div>
+          );
+        }
+        return <span className="text-gray-400 text-sm">No thresholds</span>;
+      }
+    },
+    { 
+      key: 'exemptions', 
+      label: 'Exemptions',
+      render: (item: TaxRule) => (
+        <div className="text-sm text-gray-900">
+          {item.exemptions && item.exemptions.length > 0 ? (
+            <span className="inline-flex items-center px-3 py-1 rounded-xl text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 shadow-sm">
+              {item.exemptions.length} exemption{item.exemptions.length !== 1 ? 's' : ''}
+            </span>
+          ) : (
+            <span className="text-gray-400">None</span>
+          )}
         </div>
       )
     },
@@ -124,11 +171,16 @@ export default function TaxRulesPage() {
   ];
 
   const handleCreateNew = () => {
+    // Only Legal Admin can create
+    if (!isLegalAdmin) {
+      alert('Only Legal Admin can create tax rules.');
+      return;
+    }
     router.push('/dashboard/payroll-configuration/tax-rules/new');
   };
 
   const handleView = (item: TaxRule) => {
-    router.push(`/dashboard/payroll-configuration/tax-rules/${item._id}`);
+    router.push(`/dashboard/payroll-configuration/tax-rules/${item.id}`);
   };
 
   const handleEdit = (item: TaxRule) => {
@@ -137,8 +189,13 @@ export default function TaxRulesPage() {
       alert('Only Legal Admin can edit tax rules.');
       return;
     }
-    // Tax rules can be edited even if approved (they go back to draft)
-    router.push(`/dashboard/payroll-configuration/tax-rules/${item._id}/edit`);
+    // According to business rules, approved tax rules can be edited (for legal updates)
+    // Editing approved tax rule sets it back to Draft
+    if (item.status === 'draft' || item.status === 'approved') {
+      router.push(`/dashboard/payroll-configuration/tax-rules/${item.id}/edit`);
+    } else {
+      alert('Only draft or approved tax rules can be edited.');
+    }
   };
 
   const handleDelete = async (item: TaxRule) => {
@@ -158,7 +215,7 @@ export default function TaxRulesPage() {
     }
 
     try {
-      await taxRulesApi.delete(item._id);
+      await taxRulesApi.delete(item.id);
       loadTaxRules(); // Refresh
     } catch (error) {
       console.error('Error deleting tax rule:', error);
@@ -181,16 +238,14 @@ export default function TaxRulesPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
-                <div className="p-4 bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl shadow-xl">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="p-3 bg-gradient-to-br from-slate-500 to-gray-600 rounded-xl shadow-lg">
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-600 to-gray-600 bg-clip-text text-transparent">Tax Rules</h1>
-                  <p className="text-gray-600 mt-1 text-sm">
-                    {isLegalAdmin ? 'Manage tax rules and rates' : 'View tax rules and rates (Read-only)'}
-                  </p>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-600 to-gray-600 bg-clip-text text-transparent">Tax Rules</h1>
+                  <p className="text-gray-600 mt-1 text-sm">Define tax rules and laws to ensure payroll compliance</p>
                 </div>
               </div>
             </div>
@@ -211,20 +266,20 @@ export default function TaxRulesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
             {(['draft', 'approved', 'rejected'] as const).map((status) => {
               const statusConfig = {
-                draft: { border: 'border-amber-200', bg: 'bg-amber-100', icon: 'text-amber-600', bgIcon: 'bg-amber-100', gradient: 'from-amber-50 to-yellow-50' },
-                approved: { border: 'border-green-200', bg: 'bg-green-100', icon: 'text-green-600', bgIcon: 'bg-green-100', gradient: 'from-green-50 to-emerald-50' },
-                rejected: { border: 'border-red-200', bg: 'bg-red-100', icon: 'text-red-600', bgIcon: 'bg-red-100', gradient: 'from-red-50 to-rose-50' }
+                draft: { border: 'border-amber-100', bg: 'bg-amber-100', icon: 'text-amber-600', bgIcon: 'bg-amber-100' },
+                approved: { border: 'border-green-100', bg: 'bg-green-100', icon: 'text-green-600', bgIcon: 'bg-green-100' },
+                rejected: { border: 'border-red-100', bg: 'bg-red-100', icon: 'text-red-600', bgIcon: 'bg-red-100' }
               };
               const config = statusConfig[status];
               return (
-                <div key={status} className={`bg-gradient-to-br ${config.gradient} p-6 rounded-2xl shadow-xl border-2 ${config.border} hover:shadow-2xl transition-all duration-200 relative overflow-hidden transform hover:scale-105`}>
-                  <div className={`absolute top-0 right-0 w-32 h-32 ${config.bg} rounded-full -mr-16 -mt-16 opacity-30`}></div>
+                <div key={status} className={`bg-white p-6 rounded-2xl shadow-lg border ${config.border} hover:shadow-xl transition-shadow duration-200 relative overflow-hidden`}>
+                  <div className={`absolute top-0 right-0 w-32 h-32 ${config.bg} rounded-full -mr-16 -mt-16 opacity-50`}></div>
                   <div className="relative flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className={`p-3 ${config.bgIcon} rounded-xl shadow-md`}>
+                      <div className={`p-3 ${config.bgIcon} rounded-xl`}>
                         {status === 'draft' && (
                           <svg className={`w-6 h-6 ${config.icon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                           </svg>
                         )}
                         {status === 'approved' && (
@@ -239,7 +294,7 @@ export default function TaxRulesPage() {
                         )}
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">{status}</p>
+                        <p className="text-sm font-medium text-gray-500 mb-1">{status.charAt(0).toUpperCase() + status.slice(1)}</p>
                         <p className="text-3xl font-bold text-gray-900">{getStatusCount(status)}</p>
                       </div>
                     </div>
@@ -250,20 +305,20 @@ export default function TaxRulesPage() {
           </div>
         </div>
 
+        {/* Filter and Table Section */}
         <div className="bg-white/80 backdrop-blur-sm shadow-2xl rounded-2xl border border-white/20 overflow-hidden">
           <div className="px-6 py-6 sm:px-8 sm:py-8">
+            {/* Filters */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <div className="flex items-center space-x-3">
-                <div className="p-2 bg-slate-100 rounded-lg">
-                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-                  </svg>
-                </div>
+                <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                </svg>
                 <label className="text-sm font-semibold text-gray-700">Filter by status:</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2 text-sm font-medium border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-700 transition-all duration-200 hover:border-slate-300 shadow-sm"
+                  className="px-4 py-2 text-sm font-medium border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 bg-white text-gray-700 transition-all duration-200 hover:border-slate-300"
                 >
                   <option value="all">All Statuses</option>
                   <option value="draft">Draft</option>
@@ -271,19 +326,44 @@ export default function TaxRulesPage() {
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
+              
+              <button
+                onClick={loadTaxRules}
+                className="px-4 py-2 border-2 border-slate-200 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-200 flex items-center hover:border-slate-300"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+              </button>
             </div>
 
+            {/* Table */}
             <ConfigurationTable
               data={taxRules}
               columns={columns}
               onView={handleView}
-              onEdit={isLegalAdmin ? handleEdit : undefined}
-              onDelete={isLegalAdmin ? handleDelete : undefined}
-              canEdit={isLegalAdmin ? () => true : () => false}
-              canDelete={isLegalAdmin ? (item) => item.status === 'draft' : () => false}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
               isLoading={isLoading}
-              emptyMessage="No tax rules found."
+              emptyMessage={statusFilter !== 'all' ? `No ${statusFilter} tax rules found.` : 'No tax rules created yet. Start by creating your first tax rule.'}
             />
+
+            {/* Table Info */}
+            <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-start gap-2 text-sm text-slate-700">
+                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                  <p className="font-semibold mb-1">Tax Rule Management Rules:</p>
+                  <p>• Only Legal Admin can create, edit, or delete tax rules.</p>
+                  <p>• Draft tax rules can be edited or deleted.</p>
+                  <p>• Approved tax rules can be edited (for legal updates) and will be set back to Draft status requiring re-approval.</p>
+                  <p>• Rejected tax rules are read-only.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

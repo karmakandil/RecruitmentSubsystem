@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
-import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
+import { ConfigurationTable } from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
@@ -51,9 +51,23 @@ export default function AllowancesPage() {
           </div>
           <div>
             <div className="font-semibold text-gray-900">{item.name}</div>
-            <div className="text-xs text-gray-500 mt-0.5">Employee benefit</div>
+            <div className="text-xs text-gray-500 mt-0.5">{item.description || 'Employee benefit'}</div>
           </div>
         </div>
+      )
+    },
+    { 
+      key: 'type', 
+      label: 'Type',
+      render: (item: any) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+          item.allowanceType === 'housing' ? 'bg-blue-100 text-blue-800' :
+          item.allowanceType === 'transportation' ? 'bg-green-100 text-green-800' :
+          item.allowanceType === 'meal' ? 'bg-yellow-100 text-yellow-800' :
+          'bg-gray-100 text-gray-800'
+        }`}>
+          {item.allowanceType}
+        </span>
       )
     },
     { 
@@ -68,13 +82,26 @@ export default function AllowancesPage() {
             <span className="text-lg font-bold text-gray-900">
               {new Intl.NumberFormat('en-US', {
                 style: 'currency',
-                currency: 'EGP',
+                currency: item.currency || 'EGP',
                 minimumFractionDigits: 0
               }).format(item.amount || 0)}
             </span>
           </div>
-          <div className="text-xs text-gray-500">Monthly allowance</div>
+          <div className="text-xs text-gray-500">
+            {item.frequency} • {item.taxable ? 'Taxable' : 'Tax-free'}
+          </div>
         </div>
+      )
+    },
+    { 
+      key: 'recurring', 
+      label: 'Recurring',
+      render: (item: any) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+          item.isRecurring ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+        }`}>
+          {item.isRecurring ? 'Recurring' : 'One-time'}
+        </span>
       )
     },
     { 
@@ -247,8 +274,7 @@ export default function AllowancesPage() {
             columns={columns}
             onView={handleView}
             onEdit={handleEdit}
-            onDelete={undefined}
-            canDelete={() => false}
+            onDelete={handleDelete}
             isLoading={isLoading}
             emptyMessage="No allowances found. Create your first allowance to get started."
           />
@@ -257,3 +283,4 @@ export default function AllowancesPage() {
     </div>
   );
 }
+
