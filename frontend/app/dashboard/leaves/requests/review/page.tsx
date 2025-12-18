@@ -90,7 +90,8 @@ export default function ManagerLeaveReviewPage() {
       
       // If user is a delegate, fetch all pending requests for the manager's team
       // The backend will handle this when userId is passed
-      const userId = user?.userId || (user as any)?._id || (user as any)?.id;
+      // IMPORTANT: always prefer employee profile _id to match backend delegationMap
+      const userId = (user as any)?._id || user?.userId || (user as any)?.id;
       if (userId) {
         setLoadingRequests(true);
         setError(null);
@@ -107,9 +108,6 @@ export default function ManagerLeaveReviewPage() {
           );
           console.log("Filtered delegated pending requests:", pendingOnly);
           setPendingRequests(pendingOnly);
-          if (pendingOnly.length > 0) {
-            setSuccessMessage(`Found ${pendingOnly.length} pending request(s) delegated to you`);
-          }
         } catch (err: any) {
           console.error("Error fetching delegated requests:", err);
           // If error, user might not be a delegate - that's okay
@@ -258,16 +256,69 @@ export default function ManagerLeaveReviewPage() {
     );
   };
 
-  // ENHANCED: Check if leave request is overridden by HR Manager
+  // ENHANCED: Check if leave request is overridden by HR Manager (not finalized)
   const isOverridden = (request: LeaveRequest): boolean => {
     if (!request.approvalFlow || request.approvalFlow.length === 0) {
       return false;
     }
-    // Check if approvalFlow contains an HR Manager override (can be approved or rejected)
-    const hrApproval = request.approvalFlow.find(
+    
+    // Find all HR Manager entries
+    const hrManagerEntries = request.approvalFlow.filter(
       (approval) => approval.role === "HR Manager"
     );
-    return hrApproval !== undefined;
+    
+    if (hrManagerEntries.length === 0) {
+      return false;
+    }
+    
+    // Find the first HR Manager entry index
+    const firstHrIndex = request.approvalFlow.findIndex(
+      (approval) => approval.role === "HR Manager"
+    );
+    
+    if (firstHrIndex === -1) {
+      return false;
+    }
+    
+    // Check if the initial approval role is "HR Manager" (department head request)
+    // If so, HR Manager approval is the initial approval, not an override
+    const initialApproval = request.approvalFlow[0];
+    if (initialApproval?.role === "HR Manager") {
+      return false; // This is initial approval for department head, not an override
+    }
+    
+    // Check if there's a Department Head decision before the first HR Manager entry
+    const deptHeadEntry = request.approvalFlow
+      .slice(0, firstHrIndex)
+      .reverse()
+      .find((approval) => 
+        approval.role === "Departement_Head" || 
+        approval.role === "Department Head" ||
+        approval.role?.toLowerCase().includes("department")
+      );
+    
+    if (!deptHeadEntry) {
+      // No Department Head decision before HR Manager = it's an override
+      return true;
+    }
+    
+    // Get the HR Manager entry and Department Head status
+    const hrEntry = request.approvalFlow[firstHrIndex];
+    const deptHeadStatus = deptHeadEntry.status?.toLowerCase();
+    const hrStatus = hrEntry.status?.toLowerCase();
+    
+    // Finalization: Department Head approved → HR Manager approves (same status, normal flow)
+    // Override: Department Head rejected → HR Manager approves (status changed)
+    // Override: Department Head approved → HR Manager rejects (status changed)
+    // Override: Any status change by HR Manager
+    
+    // If both are approved and Department Head approved first = finalization (not override)
+    if (deptHeadStatus === "approved" && hrStatus === "approved") {
+      return false; // This is finalization, not override
+    }
+    
+    // If statuses don't match = override (HR changed the decision)
+    return true;
   };
 
   const getStatusColor = (status: string): string => {
