@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 // Import schemas
 import { ShiftType } from '../models/shift-type.schema';
+import { NotificationService } from './notification.service';
 import { Shift } from '../models/shift.schema';
 import { ShiftAssignment } from '../models/shift-assignment.schema';
 import { ScheduleRule } from '../models/schedule-rule.schema';
@@ -27,6 +28,7 @@ export class ShiftScheduleService {
     private shiftAssignmentModel: Model<ShiftAssignment>,
     @InjectModel(ScheduleRule.name)
     private scheduleRuleModel: Model<ScheduleRule>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ===== SHIFT TYPE SERVICE METHODS =====
@@ -334,7 +336,7 @@ export class ShiftScheduleService {
       (assignment.endDate || new Date()).getTime() + 30 * 24 * 60 * 60 * 1000
     );
 
-    return this.shiftAssignmentModel.findByIdAndUpdate(
+    const updatedAssignment = await this.shiftAssignmentModel.findByIdAndUpdate(
       dto.assignmentId,
       {
         endDate: newEndDate,
@@ -343,6 +345,16 @@ export class ShiftScheduleService {
       },
       { new: true },
     );
+
+    // Send renewal confirmation notification
+    await this.notificationService.sendShiftRenewalConfirmation(
+      assignment.employeeId.toString(),
+      dto.assignmentId,
+      newEndDate,
+      currentUserId,
+    );
+
+    return updatedAssignment;
   }
 
   // 16. Cancel a shift assignment
@@ -365,7 +377,40 @@ export class ShiftScheduleService {
     );
   }
 
-  // 17. Postpone a shift assignment
+  // 17. Reassign a shift assignment to a different employee
+  async reassignShiftAssignment(
+    assignmentId: string,
+    newEmployeeId: string,
+    currentUserId: string,
+  ) {
+    const assignment = await this.shiftAssignmentModel.findById(assignmentId);
+    if (!assignment) {
+      throw new NotFoundException('Shift assignment not found');
+    }
+
+    // Update the assignment with new employee
+    const updatedAssignment = await this.shiftAssignmentModel.findByIdAndUpdate(
+      assignmentId,
+      {
+        employee: newEmployeeId,
+        updatedBy: currentUserId,
+      },
+      { new: true },
+    );
+
+    // Send notification to new employee about the reassignment
+    // Note: Using generic notification since specific reassignment notification doesn't exist
+    await this.notificationService.sendShiftRenewalConfirmation(
+      newEmployeeId,
+      assignmentId,
+      updatedAssignment.endDate || new Date(),
+      currentUserId,
+    );
+
+    return updatedAssignment;
+  }
+
+  // 18. Postpone a shift assignment
   async postponeShiftAssignment(
     dto: PostponeShiftAssignmentDto,
     currentUserId: string,

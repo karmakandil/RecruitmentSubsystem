@@ -11,6 +11,7 @@ import { Input } from '@/components/shared/ui/Input';
 import { Toast, useToast } from '@/components/leaves/Toast';
 import { checkExpiringShifts } from '@/lib/api/notifications';
 import { ExpiringShiftAssignment, CheckExpiringShiftsResponse } from '@/types/time-management';
+import ShiftManagementDialog from './ShiftManagementDialog';
 
 export default function NotificationCenter() {
   const { user } = useAuth();
@@ -25,6 +26,14 @@ export default function NotificationCenter() {
   const [checkResult, setCheckResult] = useState<CheckExpiringShiftsResponse | null>(null);
   const [checking, setChecking] = useState(false);
   const [daysBeforeExpiry, setDaysBeforeExpiry] = useState<number>(7);
+  
+  // Shift management dialog state
+  const [selectedShiftAssignment, setSelectedShiftAssignment] = useState<{
+    assignmentId: string;
+    employeeId: string;
+    employeeName: string;
+    endDate: Date;
+  } | null>(null);
 
   useEffect(() => {
     if (error) {
@@ -310,6 +319,7 @@ export default function NotificationCenter() {
                         <th className="text-left py-3 px-4 font-semibold text-gray-700">End Date</th>
                         <th className="text-left py-3 px-4 font-semibold text-gray-700">Days Remaining</th>
                         <th className="text-left py-3 px-4 font-semibold text-gray-700">Urgency</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -344,6 +354,20 @@ export default function NotificationCenter() {
                             >
                               {assignment.urgency}
                             </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Button
+                              onClick={() => setSelectedShiftAssignment({
+                                assignmentId: assignment.assignmentId,
+                                employeeId: assignment.employeeId || '',
+                                employeeName: assignment.employeeName,
+                                endDate: new Date(assignment.endDate),
+                              })}
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              Manage
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -483,6 +507,22 @@ export default function NotificationCenter() {
                     </p>
                   </div>
                   <div className="flex flex-shrink-0 gap-2">
+                    {/* Show action button for shift expiry notifications */}
+                    {(notif.type === 'SHIFT_EXPIRY_ALERT' || notif.type === 'SHIFT_EXPIRY_BULK_ALERT') && 
+                     notif.data?.assignmentId && notif.data?.endDate && (
+                      <Button
+                        onClick={() => setSelectedShiftAssignment({
+                          assignmentId: notif.data!.assignmentId,
+                          employeeId: notif.data!.employeeId || '',
+                          employeeName: notif.data!.employeeName || 'Unknown Employee',
+                          endDate: new Date(notif.data!.endDate),
+                        })}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Manage
+                      </Button>
+                    )}
                     {!notif.isRead && (
                       <Button
                         onClick={() => handleMarkAsRead(notif._id)}
@@ -506,6 +546,21 @@ export default function NotificationCenter() {
           )}
         </CardContent>
       </Card>
+
+      {/* Shift Management Dialog */}
+      {selectedShiftAssignment && (
+        <ShiftManagementDialog
+          assignmentId={selectedShiftAssignment.assignmentId}
+          employeeId={selectedShiftAssignment.employeeId}
+          employeeName={selectedShiftAssignment.employeeName}
+          endDate={selectedShiftAssignment.endDate}
+          onClose={() => setSelectedShiftAssignment(null)}
+          onSuccess={() => {
+            showToast('Shift assignment updated successfully', 'success');
+            refetch();
+          }}
+        />
+      )}
     </div>
   );
 }

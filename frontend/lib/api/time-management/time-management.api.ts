@@ -344,5 +344,33 @@ export const timeManagementApi = {
   }): Promise<any> => {
     return await api.put(`/time-management/attendance/${recordId}`, data);
   },
+
+  // ===== Shift Assignment Management APIs =====
+
+  // Renew shift assignment
+  renewShiftAssignment: async (data: {
+    assignmentId: string;
+    newEndDate?: string;
+    note?: string;
+  }): Promise<any> => {
+    return await api.post('/time-management/shift-schedule/shift/assignment/renew', data);
+  },
+
+  // Reassign shift assignment to different employee
+  reassignShiftAssignment: async (data: {
+    assignmentId: string;
+    newEmployeeId: string;
+    reason?: string;
+  }): Promise<any> => {
+    return await api.post('/time-management/shift-schedule/shift/assignment/reassign', data);
+  },
+
+  // Cancel shift assignment
+  cancelShiftAssignment: async (data: {
+    assignmentId: string;
+    reason?: string;
+  }): Promise<any> => {
+    return await api.post('/time-management/shift-schedule/shift/assignment/cancel', data);
+  },
 };
 
