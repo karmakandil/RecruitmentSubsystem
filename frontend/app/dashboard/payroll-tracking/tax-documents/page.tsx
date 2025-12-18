@@ -142,7 +142,7 @@ export default function TaxDocumentsPage() {
 
     try {
       // Dynamically import jsPDF
-      const jsPDFModule = await import("jspdf");
+      const jsPDFModule = await import("jspdf") as any;
       const jsPDF = jsPDFModule.default;
       const doc = new jsPDF();
       const { annualStatement, year } = taxDocumentsData;
