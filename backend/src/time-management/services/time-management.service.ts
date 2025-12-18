@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import * as XLSX from 'xlsx';
 // Import schemas
 import { AttendanceRecord } from '../models/attendance-record.schema';
 import { AttendanceCorrectionRequest } from '../models/attendance-correction-request.schema';
@@ -6246,6 +6247,57 @@ export class TimeManagementService {
       },
       errors,
     };
+  }
+
+  /**
+   * Import attendance from Excel file (base64 encoded)
+   * Supports .xlsx and .xls formats
+   * Same column formats as CSV:
+   * 1) Punch rows: employeeId, punchType, time
+   * 2) Legacy rows: employeeId, clockInTime, clockOutTime (optional)
+   */
+  async importAttendanceFromExcel(
+    base64Data: string,
+    currentUserId: string,
+  ) {
+    if (!base64Data || typeof base64Data !== 'string') {
+      throw new BadRequestException('Excel file data is required');
+    }
+
+    try {
+      console.log('[Excel Import] Received base64 data length:', base64Data.length);
+      
+      // Decode base64 to buffer
+      const buffer = Buffer.from(base64Data, 'base64');
+      console.log('[Excel Import] Buffer size:', buffer.length);
+      
+      // Read workbook from buffer
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      console.log('[Excel Import] Sheet names:', workbook.SheetNames);
+      
+      // Get first sheet
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        throw new BadRequestException('Excel file has no sheets');
+      }
+      
+      const sheet = workbook.Sheets[sheetName];
+      console.log('[Excel Import] Sheet ref:', sheet['!ref']);
+      
+      // Convert sheet to CSV string
+      const csvContent = XLSX.utils.sheet_to_csv(sheet);
+      console.log('[Excel Import] CSV content preview:', csvContent.substring(0, 500));
+      console.log('[Excel Import] CSV line count:', csvContent.split('\n').length);
+      
+      // Use existing CSV import logic
+      return this.importAttendanceFromCsv(csvContent, currentUserId);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Failed to parse Excel file: ${errorMessage}`);
+    }
   }
 
   // ===== DATA SYNCHRONIZATION (BR-TM-22) =====

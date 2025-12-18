@@ -314,10 +314,14 @@ export const timeManagementApi = {
     return await api.get("/time-management/sync-status");
   },
 
-  // ===== Attendance CSV Import (for HR/System Admin) =====
+  // ===== Attendance Import (CSV/Excel) =====
 
   importAttendanceFromCsv: async (csv: string): Promise<any> => {
     return await api.post("/time-management/attendance/import-csv", { csv });
+  },
+
+  importAttendanceFromExcel: async (excelData: string): Promise<any> => {
+    return await api.post("/time-management/attendance/import-excel", { excelData });
   },
 
   // ===== Manual Attendance Recording (Department Head) =====
@@ -353,7 +357,7 @@ export const timeManagementApi = {
     newEndDate?: string;
     note?: string;
   }): Promise<any> => {
-    return await api.post('/time-management/shift-schedule/shift/assignment/renew', data);
+    return await api.post('/shift-schedule/shift/assignment/renew', data);
   },
 
   // Reassign shift assignment to different employee
@@ -362,7 +366,7 @@ export const timeManagementApi = {
     newEmployeeId: string;
     reason?: string;
   }): Promise<any> => {
-    return await api.post('/time-management/shift-schedule/shift/assignment/reassign', data);
+    return await api.post('/shift-schedule/shift/assignment/reassign', data);
   },
 
   // Cancel shift assignment
@@ -370,7 +374,7 @@ export const timeManagementApi = {
     assignmentId: string;
     reason?: string;
   }): Promise<any> => {
-    return await api.post('/time-management/shift-schedule/shift/assignment/cancel', data);
+    return await api.post('/shift-schedule/shift/assignment/cancel', data);
   },
 };
 

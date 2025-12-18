@@ -458,7 +458,7 @@ export class TimeManagementController {
   /**
    * Import attendance punches from a CSV file.
    * The CSV should include at least: employeeId, clockInTime, clockOutTime (optional).
-   * This endpoint is intended for HR Manager / System Admin to ingest data
+   * This endpoint allows HR, System Admin, and Employees to import attendance data
    * from biometric devices or external systems.
    *
    * The service will:
@@ -471,6 +471,7 @@ export class TimeManagementController {
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
     SystemRole.SYSTEM_ADMIN,
+    SystemRole.DEPARTMENT_EMPLOYEE,
   )
   async importAttendanceFromCsv(
     @Body() body: ImportAttendanceCsvDto,
@@ -478,6 +479,29 @@ export class TimeManagementController {
   ) {
     return this.timeManagementService.importAttendanceFromCsv(
       body.csv,
+      user.userId,
+    );
+  }
+
+  /**
+   * Import attendance punches from an Excel file (.xlsx, .xls)
+   * The Excel file should have the same format as CSV:
+   * - Punch rows: employeeId, punchType, time
+   * - Legacy rows: employeeId, clockInTime, clockOutTime (optional)
+   */
+  @Post('attendance/import-excel')
+  @Roles(
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.DEPARTMENT_EMPLOYEE,
+  )
+  async importAttendanceFromExcel(
+    @Body() body: { excelData: string }, // base64 encoded Excel file
+    @CurrentUser() user: any,
+  ) {
+    return this.timeManagementService.importAttendanceFromExcel(
+      body.excelData,
       user.userId,
     );
   }

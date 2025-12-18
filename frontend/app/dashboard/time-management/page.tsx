@@ -200,6 +200,12 @@ export default function TimeManagementPage() {
                 >
                   View My Shifts
                 </Link>
+                <Link
+                  href="/dashboard/time-management/attendance/import"
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Import Attendance CSV
+                </Link>
               </CardContent>
             </Card>
           </div>
@@ -249,6 +255,21 @@ export default function TimeManagementPage() {
                     className="text-blue-600 hover:underline font-medium"
                   >
                     View Shifts
+                  </Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Import Attendance</CardTitle>
+                  <CardDescription>Upload attendance data from CSV file</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link
+                    href="/dashboard/time-management/attendance/import"
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    Import CSV
                   </Link>
                 </CardContent>
               </Card>
@@ -474,7 +495,7 @@ export default function TimeManagementPage() {
             </div>
           )}
 
-        {/* Attendance Data Management (CSV Import) - HR Manager & System Admin only */}
+        {/* Attendance Data Management (CSV Import) - All roles can import */}
         <div className="mb-8">
           <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
             <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">

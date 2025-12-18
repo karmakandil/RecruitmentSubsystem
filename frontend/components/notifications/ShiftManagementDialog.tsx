@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { Button } from '@/components/shared/ui/Button';
 import { Input } from '@/components/shared/ui/Input';
 import { timeManagementApi } from '@/lib/api/time-management/time-management.api';
+import { deleteNotification } from '@/lib/api/notifications';
 
 interface ShiftManagementDialogProps {
   assignmentId: string;
   employeeId: string;
   employeeName: string;
   endDate: Date;
+  notificationId?: string; // Optional: delete notification after successful action
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -19,6 +21,7 @@ export default function ShiftManagementDialog({
   employeeId,
   employeeName,
   endDate,
+  notificationId,
   onClose,
   onSuccess,
 }: ShiftManagementDialogProps) {
@@ -45,6 +48,16 @@ export default function ShiftManagementDialog({
         note: renewalNote || undefined,
       });
       
+      // Delete the notification after successful renewal
+      if (notificationId) {
+        try {
+          await deleteNotification(notificationId);
+        } catch (deleteErr) {
+          console.error('Failed to delete notification:', deleteErr);
+          // Don't fail the whole operation if notification delete fails
+        }
+      }
+      
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -70,33 +83,20 @@ export default function ShiftManagementDialog({
         reason: reassignReason || undefined,
       });
       
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to reassign shift assignment');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (!confirm('Are you sure you want to cancel this shift assignment?')) {
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      await timeManagementApi.cancelShiftAssignment({
-        assignmentId,
-        reason: 'Cancelled from notification',
-      });
+      // Delete the notification after successful reassignment
+      if (notificationId) {
+        try {
+          await deleteNotification(notificationId);
+        } catch (deleteErr) {
+          console.error('Failed to delete notification:', deleteErr);
+          // Don't fail the whole operation if notification delete fails
+        }
+      }
       
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to cancel shift assignment');
+      setError(err.message || 'Failed to reassign shift assignment');
     } finally {
       setLoading(false);
     }
@@ -148,13 +148,6 @@ export default function ShiftManagementDialog({
               disabled={loading}
             >
               Reassign to Different Employee
-            </Button>
-            <Button
-              onClick={handleCancel}
-              className="w-full bg-red-600 hover:bg-red-700 text-white"
-              disabled={loading}
-            >
-              Cancel Assignment
             </Button>
           </div>
         )}

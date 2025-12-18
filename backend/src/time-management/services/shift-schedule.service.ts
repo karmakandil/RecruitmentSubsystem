@@ -346,13 +346,20 @@ export class ShiftScheduleService {
       { new: true },
     );
 
-    // Send renewal confirmation notification
-    await this.notificationService.sendShiftRenewalConfirmation(
-      assignment.employeeId.toString(),
-      dto.assignmentId,
-      newEndDate,
-      currentUserId,
-    );
+    // Send renewal confirmation notification (only if employeeId exists)
+    if (assignment.employeeId) {
+      try {
+        await this.notificationService.sendShiftRenewalConfirmation(
+          assignment.employeeId.toString(),
+          dto.assignmentId,
+          newEndDate,
+          currentUserId,
+        );
+      } catch (notifError) {
+        console.error('Failed to send renewal notification:', notifError);
+        // Don't fail the renewal if notification fails
+      }
+    }
 
     return updatedAssignment;
   }
@@ -383,29 +390,42 @@ export class ShiftScheduleService {
     newEmployeeId: string,
     currentUserId: string,
   ) {
-    const assignment = await this.shiftAssignmentModel.findById(assignmentId);
+    // Validate newEmployeeId is a valid MongoDB ObjectId
+    if (!Types.ObjectId.isValid(newEmployeeId)) {
+      throw new BadRequestException('Invalid employee ID format. Please provide a valid employee ID.');
+    }
+
+    const assignment = await this.shiftAssignmentModel
+      .findById(assignmentId)
+      .populate('shiftId', 'name');
     if (!assignment) {
       throw new NotFoundException('Shift assignment not found');
     }
 
-    // Update the assignment with new employee
+    // Update the assignment with new employee (correct field is employeeId)
     const updatedAssignment = await this.shiftAssignmentModel.findByIdAndUpdate(
       assignmentId,
       {
-        employee: newEmployeeId,
+        employeeId: new Types.ObjectId(newEmployeeId),
         updatedBy: currentUserId,
       },
       { new: true },
     );
 
-    // Send notification to new employee about the reassignment
-    // Note: Using generic notification since specific reassignment notification doesn't exist
-    await this.notificationService.sendShiftRenewalConfirmation(
-      newEmployeeId,
-      assignmentId,
-      updatedAssignment.endDate || new Date(),
-      currentUserId,
-    );
+    // Send reassignment notification to new employee
+    try {
+      const shiftName = (assignment.shiftId as any)?.name || 'Unknown Shift';
+      await this.notificationService.sendShiftReassignmentConfirmation(
+        newEmployeeId,
+        assignmentId,
+        shiftName,
+        updatedAssignment.endDate || new Date(),
+        currentUserId,
+      );
+    } catch (notifError) {
+      console.error('Failed to send reassignment notification:', notifError);
+      // Don't fail the reassignment if notification fails
+    }
 
     return updatedAssignment;
   }
