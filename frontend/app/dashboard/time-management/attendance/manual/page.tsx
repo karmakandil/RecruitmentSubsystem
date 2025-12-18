@@ -302,14 +302,6 @@ export default function ManualAttendancePage() {
           time: clockOutDate,
         });
       }
-      console.log("[Manual Attendance] Save payload preview:", {
-        mode: selectedRecord ? "update" : "create",
-        recordId: selectedRecord?._id || selectedRecord?.id,
-        employeeId: selectedEmployeeId,
-        date: formData.date,
-        punches: punches.map((p) => ({ type: p.type, time: p.time.toISOString() })),
-        totalWorkMinutes,
-      });
 
       // Calculate total work minutes
       let totalWorkMinutes = 0;
@@ -319,6 +311,15 @@ export default function ManualAttendancePage() {
           Math.round((clockOutDate.getTime() - clockInDate.getTime()) / (1000 * 60)),
         );
       }
+
+      console.log("[Manual Attendance] Save payload preview:", {
+        mode: selectedRecord ? "update" : "create",
+        recordId: selectedRecord?._id || selectedRecord?.id,
+        employeeId: selectedEmployeeId,
+        date: formData.date,
+        punches: punches.map((p) => ({ type: p.type, time: p.time.toISOString() })),
+        totalWorkMinutes,
+      });
 
       if (selectedRecord) {
         // Update existing record
