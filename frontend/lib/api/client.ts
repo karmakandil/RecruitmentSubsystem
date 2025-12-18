@@ -67,69 +67,15 @@ api.interceptors.response.use(
     // Date: Recent fix for TypeScript compilation errors
     // ============================================================
     // Log detailed error information
-    const errorDetails = {
-      message: error.message,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-      },
-      response: {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message,
-        responseData: error.response?.data,
-        requestData: error.config?.data,
-        requestUrl: error.config?.url,
-        requestMethod: error.config?.method,
-        headers: error.response?.headers,
-        // CHANGED - Additional debug info
-        fullURL: error.config?.baseURL + error.config?.url,
-        errorCode: error.code,
-        errorName: error.name,
-        isAxiosError: error.isAxiosError,
-        hasResponse: !!error.response,
-      },
-    };
-    
-    console.error("API Error:", errorDetails);
-    
-    console.error(
-      `❌ API Error [${error.config?.method?.toUpperCase()} ${
-        error.config?.url
-      }]:`,
-      errorDetails
-    );
-    
-    // CHANGED - Log the full error object for debugging
-    if (!error.response) {
-      console.error('⚠️ No response received - possible network error:', error);
-    } else {
-      console.error('📋 Full error response:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data,
-        headers: error.response.headers,
-      });
-    }
-    
-    // ============================================================
-    // CHANGED: Removed orphaned code causing syntax errors
-    // Issue: Lines 103-106 had orphaned code fragments that broke syntax
-    // Fix: Commented out the duplicate/orphaned code instead of deleting
-    //      to preserve any potential logic that might be needed later
-    // ============================================================
-    // COMMENTED OUT - Duplicate/orphaned code that was causing syntax errors
-    // requestData: error.config?.data, // ADDED TO SEE WHAT WAS SENT
-    // },
-    // });
-
     const status = error.response?.status || error.status;
     const url = error.config?.url || error.request?.responseURL || '';
     
     // Suppress 404 errors for backup endpoints (not yet implemented)
     // Browser network layer will still show these, but we won't log them as application errors
     const isBackup404 = status === 404 && (url.includes('/backups') || url.includes('backup'));
+    
+    // Suppress 404 errors for recruitment offer endpoints (applications may not have offers yet)
+    const isOffer404 = status === 404 && url.includes('/recruitment/offer/application/');
     
     // Suppress 403 errors for optional endpoints (employee-profile and payroll/runs with query params)
     const isOptionalEmployeeProfile = status === 403 && url.includes('/employee-profile') && 
@@ -141,7 +87,7 @@ api.interceptors.response.use(
     const isNotificationsTimeout = (error.message?.includes('timeout') || error.code === 'ECONNABORTED') && 
       (url.includes('/notifications') || url.includes('notification'));
     
-    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
+    if (isBackup404 || isOffer404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
       // Silently handle these errors - they're expected for optional features or unimplemented endpoints
       // Browser console will show the network error, but we don't treat it as an app error
       // Return a clean error that can be caught and handled gracefully
@@ -156,7 +102,6 @@ api.interceptors.response.use(
           statusText: error.response?.statusText,
           message: error.message,
           responseData: error.response?.data,
-          headers: error.response?.headers,
         }
       );
     }

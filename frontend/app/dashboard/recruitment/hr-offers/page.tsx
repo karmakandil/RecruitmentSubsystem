@@ -6,6 +6,9 @@ import { useAuth } from "@/lib/hooks/use-auth";
 import { SystemRole } from "@/types";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { recruitmentApi } from "@/lib/api/recruitment/recruitment";
+import { departmentsApi } from "@/lib/api/organization-structure/departments.api";
+import { positionsApi } from "@/lib/api/organization-structure/positions.api";
+import { DepartmentResponseDto, PositionResponseDto } from "@/types/organization-structure";
 import {
   Offer,
   Application,
@@ -59,8 +62,18 @@ export default function HROffersPage() {
     startDate: "",
     workEmail: "",
     employeeNumber: "",
+    // CHANGED - Added fields to integrate with employee-profile subsystem
+    contractType: undefined,
+    workType: undefined,
+    primaryDepartmentId: undefined,
+    supervisorPositionId: undefined,
   });
   const [creatingEmployee, setCreatingEmployee] = useState(false);
+  
+  // CHANGED - State for organization structure data (departments & positions)
+  const [departments, setDepartments] = useState<DepartmentResponseDto[]>([]);
+  const [positions, setPositions] = useState<PositionResponseDto[]>([]);
+  const [loadingOrgData, setLoadingOrgData] = useState(false);
   const [contractStatusMap, setContractStatusMap] = useState<Record<string, {
     hasContract: boolean;
     hasSignedDocument: boolean;
@@ -88,6 +101,26 @@ export default function HROffersPage() {
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  // CHANGED - Load organization structure data (departments & positions)
+  useEffect(() => {
+    const loadOrgData = async () => {
+      try {
+        setLoadingOrgData(true);
+        const [depts, pos] = await Promise.all([
+          departmentsApi.getAllDepartments(),
+          positionsApi.getAllPositions(),
+        ]);
+        setDepartments(depts);
+        setPositions(pos);
+      } catch (error) {
+        console.error("Failed to load organization data:", error);
+      } finally {
+        setLoadingOrgData(false);
+      }
+    };
+    loadOrgData();
   }, []);
 
   const loadData = async () => {
@@ -191,7 +224,7 @@ export default function HROffersPage() {
       signingBonus: 0,
       benefits: [],
       deadline: "",
-      role: application.requisition?.template?.title || "",
+      role: (application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "",
       content: "",
     });
     setBenefitInput("");
@@ -584,6 +617,11 @@ export default function HROffersPage() {
       startDate: defaultStartDate.toISOString().split('T')[0],
       workEmail: "",
       employeeNumber: "",
+      // CHANGED - Initialize new fields for employee-profile integration
+      contractType: undefined,
+      workType: undefined,
+      primaryDepartmentId: undefined,
+      supervisorPositionId: undefined,
     });
     
     setIsCreateEmployeeModalOpen(true);
@@ -714,7 +752,7 @@ export default function HROffersPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-3">
                               <h3 className="text-lg font-semibold text-gray-900">
-                                {application.requisition?.template?.title || "Job Opening"}
+                                {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
                               </h3>
                               <StatusBadge status={application.status} type="application" />
                             </div>
@@ -911,7 +949,7 @@ export default function HROffersPage() {
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-3">
                                 <h3 className="text-lg font-semibold text-gray-900">
-                                  {application.requisition?.template?.title || "Job Opening"}
+                                  {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
                                 </h3>
                                 <StatusBadge status={application.status} type="application" />
                                 <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
@@ -1001,7 +1039,7 @@ export default function HROffersPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-3">
                               <h3 className="text-lg font-semibold text-gray-900">
-                                {application.requisition?.template?.title || "Job Opening"}
+                                {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
                               </h3>
                               <StatusBadge status={application.status} type="application" />
                             </div>
@@ -1058,7 +1096,7 @@ export default function HROffersPage() {
                   <p className="text-xs text-gray-500 mb-1">Candidate</p>
                   <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                   <p className="text-xs text-gray-600">
-                    {selectedApplication.requisition?.template?.title || "Position"}
+                    {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
                   </p>
                 </div>
 
@@ -1212,7 +1250,7 @@ export default function HROffersPage() {
                 <p className="text-xs text-gray-500 mb-1">Candidate</p>
                 <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                 <p className="text-xs text-gray-600">
-                  {selectedApplication.requisition?.template?.title || "Position"}
+                  {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
                 </p>
               </div>
 
@@ -1461,7 +1499,7 @@ export default function HROffersPage() {
                 <p className="text-xs text-gray-500 mb-1">Candidate</p>
                 <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                 <p className="text-xs text-gray-600">
-                  {selectedApplication.requisition?.template?.title || "Position"}
+                  {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
                 </p>
               </div>
 
@@ -1645,8 +1683,8 @@ export default function HROffersPage() {
                 <h3 className="font-semibold text-blue-900 mb-2">📋 Offer Details</h3>
                 <div className="text-sm text-blue-800 space-y-1">
                   <p><strong>Candidate:</strong> {getCandidateName(selectedApplication)}</p>
-                  <p><strong>Position:</strong> {selectedApplication.requisition?.template?.title || "N/A"}</p>
-                  <p><strong>Department:</strong> {selectedApplication.requisition?.template?.department || "N/A"}</p>
+                  <p><strong>Position:</strong> {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "N/A"}</p>
+                  <p><strong>Department:</strong> {(selectedApplication as any).requisition?.template?.department || (selectedApplication as any).requisition?.templateId?.department || (selectedApplication as any).requisitionId?.template?.department || (selectedApplication as any).requisitionId?.templateId?.department || "N/A"}</p>
                   <p><strong>Salary:</strong> ${selectedOffer.grossSalary?.toLocaleString() || "N/A"}</p>
                 </div>
                 
@@ -1748,6 +1786,126 @@ export default function HROffersPage() {
                 </p>
               </div>
 
+              {/* CHANGED - Added Contract Type and Work Type fields */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-gray-900 mb-3">📋 Employment Details</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Contract Type *
+                    </label>
+                    <Select
+                      value={employeeForm.contractType || ""}
+                      onChange={(e) => setEmployeeForm({ 
+                        ...employeeForm, 
+                        contractType: e.target.value as 'FULL_TIME_CONTRACT' | 'PART_TIME_CONTRACT' || undefined 
+                      })}
+                      options={[
+                        { value: "", label: "Select contract type" },
+                        { value: "FULL_TIME_CONTRACT", label: "Full-Time Contract" },
+                        { value: "PART_TIME_CONTRACT", label: "Part-Time Contract" },
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Work Type *
+                    </label>
+                    <Select
+                      value={employeeForm.workType || ""}
+                      onChange={(e) => setEmployeeForm({ 
+                        ...employeeForm, 
+                        workType: e.target.value as 'FULL_TIME' | 'PART_TIME' || undefined 
+                      })}
+                      options={[
+                        { value: "", label: "Select work type" },
+                        { value: "FULL_TIME", label: "Full-Time" },
+                        { value: "PART_TIME", label: "Part-Time" },
+                      ]}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* CHANGED - Added Department and Supervisor fields */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-gray-900 mb-3">🏢 Organization Assignment</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Department *
+                    </label>
+                    <Select
+                      value={employeeForm.primaryDepartmentId || ""}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, primaryDepartmentId: e.target.value || undefined })}
+                      disabled={loadingOrgData}
+                      options={[
+                        { value: "", label: loadingOrgData ? "Loading departments..." : "Select department" },
+                        ...departments.map((dept) => ({
+                          value: dept._id,
+                          label: dept.name,
+                        })),
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Supervisor Position
+                    </label>
+                    <Select
+                      value={employeeForm.supervisorPositionId || ""}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, supervisorPositionId: e.target.value || undefined })}
+                      disabled={loadingOrgData}
+                      options={[
+                        { value: "", label: loadingOrgData ? "Loading positions..." : "Select supervisor (optional)" },
+                        ...positions.map((pos) => ({
+                          value: pos._id,
+                          label: pos.title,
+                        })),
+                      ]}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Who this employee will report to
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* CHANGED - Added System Role selection for new employees */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-gray-900 mb-3">🔐 System Access & Role</h4>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    System Role *
+                  </label>
+                  <Select
+                    value={employeeForm.systemRole || ""}
+                    onChange={(e) => setEmployeeForm({ 
+                      ...employeeForm, 
+                      systemRole: e.target.value as any || undefined 
+                    })}
+                    options={[
+                      { value: "", label: "Auto-detect from job title (recommended)" },
+                      { value: "department employee", label: "Department Employee (Default)" },
+                      { value: "department head", label: "Department Head" },
+                      { value: "HR Manager", label: "HR Manager" },
+                      { value: "HR Employee", label: "HR Employee" },
+                      { value: "HR Admin", label: "HR Admin" },
+                      { value: "Payroll Manager", label: "Payroll Manager" },
+                      { value: "Payroll Specialist", label: "Payroll Specialist" },
+                      { value: "System Admin", label: "System Admin" },
+                      { value: "Legal & Policy Admin", label: "Legal & Policy Admin" },
+                      { value: "Recruiter", label: "Recruiter" },
+                      { value: "Finance Staff", label: "Finance Staff" },
+                    ]}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Determines what dashboards and features this employee can access. 
+                    Leave as "Auto-detect" to let the system determine based on job title.
+                  </p>
+                </div>
+              </div>
+
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
                 <h4 className="font-semibold text-yellow-900 mb-2">✨ What happens next?</h4>
                 <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
@@ -1774,7 +1932,13 @@ export default function HROffersPage() {
                 </Button>
                 <Button
                   onClick={handleCreateEmployee}
-                  disabled={creatingEmployee || !employeeForm.startDate}
+                  disabled={
+                    creatingEmployee || 
+                    !employeeForm.startDate ||
+                    !employeeForm.contractType ||
+                    !employeeForm.workType ||
+                    !employeeForm.primaryDepartmentId
+                  }
                   className="bg-green-600 hover:bg-green-700"
                 >
                   {creatingEmployee ? "Creating Employee..." : "Create Employee"}

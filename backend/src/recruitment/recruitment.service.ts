@@ -54,7 +54,7 @@ import { CreateEmployeeFromContractDto } from './dto/create-employee-from-contra
 import { OfferResponseStatus } from './enums/offer-response-status.enum';
 import { OfferFinalStatus } from './enums/offer-final-status.enum';
 import { CreateEmployeeDto } from '../employee-profile/dto/create-employee.dto';
-import { EmployeeStatus } from '../employee-profile/enums/employee-profile.enums';
+import { EmployeeStatus, CandidateStatus } from '../employee-profile/enums/employee-profile.enums';
 import {
   Candidate,
   CandidateDocument,
@@ -112,6 +112,7 @@ import {
 import { SystemRole } from '../employee-profile/enums/employee-profile.enums';
 
 import { RevokeSystemAccessDto } from './dto/system-access.dto';
+import { Department, DepartmentDocument } from '../organization-structure/models/department.schema';
 
 @Injectable()
 export class RecruitmentService {
@@ -171,6 +172,10 @@ export class RecruitmentService {
 
     @InjectModel(EmployeeSystemRole.name)
     private readonly employeeSystemRoleModel: Model<EmployeeSystemRoleDocument>,
+
+    // CHANGED - Added Department model for panel member filtering by department
+    @InjectModel(Department.name)
+    private readonly departmentModel: Model<DepartmentDocument>,
 
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -1135,6 +1140,13 @@ export class RecruitmentService {
     const applications = await this.applicationModel
       .find(query)
       .populate('candidateId')
+      .populate({
+        path: 'requisitionId',
+        populate: {
+          path: 'templateId',
+          model: 'JobTemplate'
+        }
+      })
       .lean();
 
     // Fetch interviews for all applications and attach them
@@ -1364,6 +1376,49 @@ export class RecruitmentService {
       console.warn('Failed to log application status history:', e);
     }
 
+    // CHANGED - Sync CandidateStatus with ApplicationStatus
+    try {
+      const candidateId = typeof application.candidateId === 'object' 
+        ? (application.candidateId as any)._id 
+        : application.candidateId;
+      
+      if (candidateId) {
+        let newCandidateStatus: CandidateStatus | null = null;
+        
+        // Map ApplicationStatus to CandidateStatus
+        switch (dto.status) {
+          case ApplicationStatus.IN_PROCESS:
+            // Check stage to determine if SCREENING or INTERVIEW
+            if (newStage === ApplicationStage.SCREENING) {
+              newCandidateStatus = CandidateStatus.SCREENING;
+            } else {
+              newCandidateStatus = CandidateStatus.INTERVIEW;
+            }
+            break;
+          case ApplicationStatus.OFFER:
+            newCandidateStatus = CandidateStatus.OFFER_SENT;
+            break;
+          case ApplicationStatus.HIRED:
+            newCandidateStatus = CandidateStatus.HIRED;
+            break;
+          case ApplicationStatus.REJECTED:
+            newCandidateStatus = CandidateStatus.REJECTED;
+            break;
+          // SUBMITTED stays as APPLIED (already set during registration)
+        }
+        
+        if (newCandidateStatus) {
+          await this.candidateModel.findByIdAndUpdate(candidateId, {
+            status: newCandidateStatus,
+          });
+          console.log(`✅ Synced CandidateStatus to ${newCandidateStatus} for candidate ${candidateId}`);
+        }
+      }
+    } catch (e) {
+      // non-critical, log but don't fail
+      console.warn('Failed to sync candidate status:', e);
+    }
+
     // REC-017, REC-022: Send notification to candidate about status update
     try {
       const candidate = (application as any).candidateId;
@@ -1561,6 +1616,137 @@ export class RecruitmentService {
     }
   }
 
+  // CHANGED - New endpoint to get eligible panel members based on interview stage
+  /**
+   * Get Eligible Panel Members based on Interview Stage
+   * 
+   * - HR_INTERVIEW: Only HR Employees can be panel members
+   * - DEPARTMENT_INTERVIEW: HR Employees + Employees from the job's department
+   * 
+   * @param applicationId - The application being interviewed
+   * @param stage - The interview stage (hr_interview or department_interview)
+   */
+  async getEligiblePanelMembers(applicationId: string, stage: string) {
+    try {
+      // 1. Validate applicationId
+      if (!Types.ObjectId.isValid(applicationId)) {
+        throw new BadRequestException('Invalid application ID format');
+      }
+
+      // 2. Get the application with requisition and template to find department
+      const application = await this.applicationModel
+        .findById(applicationId)
+        .populate({
+          path: 'requisitionId',
+          populate: {
+            path: 'template',
+            select: 'department title',
+          },
+        })
+        .lean();
+
+      if (!application) {
+        throw new NotFoundException('Application not found');
+      }
+
+      // 3. Get HR Employees (always included)
+      const hrEmployeeRoles = await this.employeeSystemRoleModel
+        .find({
+          roles: { $in: [SystemRole.HR_EMPLOYEE] },
+          isActive: true,
+        })
+        .select('employeeProfileId')
+        .lean()
+        .exec();
+
+      const hrEmployeeIds = hrEmployeeRoles
+        .map((role: any) => role.employeeProfileId?.toString())
+        .filter(Boolean);
+
+      // 4. Build list of eligible employees
+      const eligibleEmployees: any[] = [];
+      const addedIds = new Set<string>(); // Prevent duplicates
+
+      // Add HR Employees
+      for (const empId of hrEmployeeIds) {
+        try {
+          const emp: any = await this.employeeProfileService.findOne(empId);
+          if (emp && emp.active !== false && !addedIds.has(empId)) {
+            addedIds.add(empId);
+            eligibleEmployees.push({
+              _id: emp._id?.toString() || empId,
+              id: emp._id?.toString() || empId,
+              firstName: emp.firstName,
+              lastName: emp.lastName,
+              fullName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+              workEmail: emp.workEmail,
+              department: typeof emp.department === 'object' 
+                ? emp.department?.name 
+                : emp.department,
+              isHR: true, // Mark as HR employee
+            });
+          }
+        } catch (e) {
+          console.warn(`Could not fetch HR employee ${empId}:`, e);
+        }
+      }
+
+      // 5. If DEPARTMENT_INTERVIEW, also add employees from the job's department
+      if (stage === ApplicationStage.DEPARTMENT_INTERVIEW) {
+        // Get department name from the job template
+        const requisition = application.requisitionId as any;
+        const departmentName = requisition?.template?.department;
+
+        if (departmentName) {
+          console.log(`[getEligiblePanelMembers] Department Interview for department: ${departmentName}`);
+
+          // Find department by name
+          const department = await this.departmentModel.findOne({ name: departmentName }).lean();
+
+          if (department) {
+            // Find all employees in this department
+            const departmentEmployees = await this.employeeModel
+              .find({
+                primaryDepartmentId: department._id,
+                status: { $ne: EmployeeStatus.TERMINATED },
+              })
+              .select('_id firstName lastName fullName workEmail primaryDepartmentId')
+              .lean()
+              .exec();
+
+            for (const emp of departmentEmployees) {
+              const empId = emp._id?.toString();
+              if (empId && !addedIds.has(empId)) {
+                addedIds.add(empId);
+                eligibleEmployees.push({
+                  _id: empId,
+                  id: empId,
+                  firstName: emp.firstName,
+                  lastName: emp.lastName,
+                  fullName: emp.fullName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+                  workEmail: emp.workEmail,
+                  department: departmentName,
+                  isHR: false, // Mark as department employee
+                });
+              }
+            }
+
+            console.log(`[getEligiblePanelMembers] Found ${departmentEmployees.length} department employees`);
+          }
+        }
+      }
+
+      console.log(`[getEligiblePanelMembers] Total eligible panel members: ${eligibleEmployees.length} (stage: ${stage})`);
+      return eligibleEmployees;
+    } catch (error) {
+      console.error('Error fetching eligible panel members:', error);
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      return [];
+    }
+  }
+
   // =============================================================================
   // INTERVIEWS - RECRUITMENT SUBSYSTEM
   // =============================================================================
@@ -1705,6 +1891,18 @@ export class RecruitmentService {
       const app = await this.applicationModel
         .findById(dto.applicationId)
         .populate('candidateId');
+      
+      // Update candidate status to INTERVIEW when interview is scheduled
+      if (app?.candidateId) {
+        const candidateId = typeof app.candidateId === 'object' 
+          ? (app.candidateId as any)._id 
+          : app.candidateId;
+        await this.candidateModel.findByIdAndUpdate(candidateId, {
+          status: CandidateStatus.INTERVIEW,
+        });
+        console.log(`[INTERVIEW] Candidate ${candidateId} status changed to INTERVIEW`);
+      }
+      
       if (app?.requisitionId) {
         const progress = this.calculateProgress(dto.stage);
         await this.jobModel.findByIdAndUpdate(app.requisitionId, { progress });
@@ -1748,10 +1946,11 @@ export class RecruitmentService {
       //       → Candidate sees "Your interview is scheduled!" in app
       // =============================================================
       if (candidate && candidate._id) {
+        // CHANGED - Populate template to get the actual position title
         const jobRequisition = app?.requisitionId
-          ? await this.jobModel.findById(app.requisitionId).lean().exec()
+          ? await this.jobModel.findById(app.requisitionId).populate('template').lean().exec()
           : null;
-        const positionTitle = (jobRequisition as any)?.title || 'Position';
+        const positionTitle = (jobRequisition as any)?.template?.title || 'Position';
 
         try {
           // Call the notification service to create in-app notification for candidate
@@ -1774,10 +1973,11 @@ export class RecruitmentService {
       }
 
       if (dto.panel && dto.panel.length > 0) {
+        // CHANGED - Populate template to get the actual position title
         const jobRequisition = app?.requisitionId
-          ? await this.jobModel.findById(app.requisitionId).lean().exec()
+          ? await this.jobModel.findById(app.requisitionId).populate('template').lean().exec()
           : null;
-        const positionTitle = (jobRequisition as any)?.title || 'Position';
+        const positionTitle = (jobRequisition as any)?.template?.title || 'Position';
 
         // Send email notifications to panel members
         for (const panelMemberId of dto.panel) {
@@ -1968,6 +2168,19 @@ export class RecruitmentService {
     });
     const savedOffer = await offer.save();
 
+    // Update candidate status to OFFER_SENT when offer is created
+    await this.candidateModel.findByIdAndUpdate(dto.candidateId, {
+      status: CandidateStatus.OFFER_SENT,
+    });
+    console.log(`[CREATE_OFFER] Candidate ${dto.candidateId} status changed to OFFER_SENT`);
+
+    // Update application status to OFFER and stage to OFFER
+    await this.applicationModel.findByIdAndUpdate(dto.applicationId, {
+      status: ApplicationStatus.OFFER,
+      currentStage: ApplicationStage.OFFER,
+    });
+    console.log(`[CREATE_OFFER] Application ${dto.applicationId} status changed to OFFER`);
+
     // =============================================================
     // RECRUITMENT NOTIFICATION: Candidate - New Offer Received
     // =============================================================
@@ -2076,6 +2289,25 @@ export class RecruitmentService {
       throw new NotFoundException('Offer not found');
     }
 
+    // CHANGED - Sync CandidateStatus when candidate rejects offer (WITHDRAWN)
+    if (dto.applicantResponse === OfferResponseStatus.REJECTED) {
+      try {
+        const application = (updated as any).applicationId;
+        if (application && application.candidateId) {
+          const candidateId = typeof application.candidateId === 'object'
+            ? application.candidateId._id
+            : application.candidateId;
+          
+          await this.candidateModel.findByIdAndUpdate(candidateId, {
+            status: CandidateStatus.WITHDRAWN,
+          });
+          console.log(`✅ Synced CandidateStatus to WITHDRAWN for candidate ${candidateId} (rejected offer)`);
+        }
+      } catch (e) {
+        console.warn('Could not update candidate status after offer rejection:', e);
+      }
+    }
+
     // BR: Offer acceptance triggers Onboarding (REC-029)
     // When offer is accepted and finalized, trigger pre-boarding
     if (dto.applicantResponse === OfferResponseStatus.ACCEPTED) {
@@ -2088,6 +2320,16 @@ export class RecruitmentService {
           console.log(
             `Offer accepted. Onboarding should be triggered after employee profile creation for candidate: ${application.candidateId}`,
           );
+          
+          // CHANGED - Sync CandidateStatus to OFFER_ACCEPTED when candidate accepts offer
+          const candidateId = typeof application.candidateId === 'object'
+            ? application.candidateId._id
+            : application.candidateId;
+          
+          await this.candidateModel.findByIdAndUpdate(candidateId, {
+            status: CandidateStatus.OFFER_ACCEPTED,
+          });
+          console.log(`✅ Synced CandidateStatus to OFFER_ACCEPTED for candidate ${candidateId}`);
         }
       } catch (e) {
         // Non-critical, onboarding will be created when employee profile is created
@@ -3062,10 +3304,10 @@ Due: ${context.dueDate}`
         });
         tasks.push({
           name: 'Allocate Laptop/Equipment',
-          department: 'IT',
+          department: 'HR',
           status: OnboardingTaskStatus.PENDING,
           deadline: defaultDeadline,
-          notes: 'Automated task: Hardware allocation',
+          notes: 'Automated task: Hardware allocation (ONB-012: HR Employee)',
         });
         tasks.push({
           name: 'Set up System Access (SSO)',
@@ -3075,20 +3317,21 @@ Due: ${context.dueDate}`
           notes: 'Automated task: SSO and internal systems access',
         });
 
-        // Admin Tasks (ONB-012: Equipment, desk, and access cards)
+        // HR Employee Tasks (ONB-012: Equipment, desk, and access cards)
+        // NOTE: HR Employee handles all equipment - department is HR, not Admin
         tasks.push({
           name: 'Reserve Workspace/Desk',
-          department: 'Admin',
+          department: 'HR',
           status: OnboardingTaskStatus.PENDING,
           deadline: defaultDeadline,
-          notes: 'Automated task: Workspace allocation',
+          notes: 'Automated task: Workspace allocation (ONB-012: HR Employee)',
         });
         tasks.push({
           name: 'Issue ID Badge/Access Card',
-          department: 'Admin',
+          department: 'HR',
           status: OnboardingTaskStatus.PENDING,
           deadline: defaultDeadline,
-          notes: 'Automated task: Access card provisioning',
+          notes: 'Automated task: Access card provisioning (ONB-012: HR Employee)',
         });
 
         // HR Tasks (ONB-018, ONB-019: Payroll and benefits)
@@ -3445,6 +3688,17 @@ Due: ${context.dueDate}`
 
       console.log(`✅ Found onboarding record: ${onboarding._id}`);
 
+      // Get employee info for response
+      let employeeInfo: any = null;
+      try {
+        employeeInfo = await this.employeeModel
+          .findById(employeeId)
+          .select('firstName lastName employeeNumber workEmail status')
+          .lean();
+      } catch (e) {
+        console.warn('Could not fetch employee info:', e);
+      }
+
       // Calculate progress for tracker (ONB-004)
       const totalTasks = onboarding.tasks?.length || 0;
       const completedTasks =
@@ -3478,6 +3732,15 @@ Due: ${context.dueDate}`
 
       return {
         ...onboarding,
+        employee: employeeInfo ? {
+          _id: employeeInfo._id,
+          firstName: employeeInfo.firstName,
+          lastName: employeeInfo.lastName,
+          fullName: `${employeeInfo.firstName || ''} ${employeeInfo.lastName || ''}`.trim(),
+          employeeNumber: employeeInfo.employeeNumber,
+          workEmail: employeeInfo.workEmail,
+          status: employeeInfo.status,
+        } : null,
         progress: {
           totalTasks,
           completedTasks,
@@ -3488,6 +3751,56 @@ Due: ${context.dueDate}`
           nextTask: nextTask || null,
         },
       };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        'Failed to fetch onboarding: ' + this.getErrorMessage(error),
+      );
+    }
+  }
+
+  // ONB-004: Allow candidates to view their onboarding after being hired
+  // This method finds the employee profile linked to a candidate and returns their onboarding
+  async getOnboardingByCandidateId(candidateId: string): Promise<any> {
+    try {
+      if (!Types.ObjectId.isValid(candidateId)) {
+        throw new BadRequestException('Invalid candidate ID format');
+      }
+
+      console.log(`🔍 [ONB-004] Searching for onboarding by candidateId: ${candidateId}`);
+
+      // Step 1: Find the candidate to get their personal email
+      const candidate = await this.candidateModel.findById(candidateId).lean();
+      if (!candidate) {
+        throw new NotFoundException('Candidate not found');
+      }
+
+      const personalEmail = (candidate as any).personalEmail;
+      console.log(`📧 Found candidate with email: ${personalEmail}`);
+
+      // Step 2: Find the employee profile that was created from this candidate
+      // The employee profile is linked via personal email (transferred from candidate)
+      const employee = await this.employeeModel
+        .findOne({ personalEmail: personalEmail?.toLowerCase()?.trim() })
+        .select('_id firstName lastName employeeNumber workEmail status')
+        .lean();
+
+      if (!employee) {
+        // No employee profile found - candidate hasn't been hired yet
+        throw new NotFoundException(
+          'You have not been hired yet. Once HR creates your employee profile from your signed contract, you will be able to view your onboarding tasks.',
+        );
+      }
+
+      console.log(`👤 Found linked employee profile: ${(employee as any)._id}`);
+
+      // Step 3: Get the onboarding for this employee
+      const employeeId = (employee as any)._id?.toString();
+      
+      // Reuse the existing method to get onboarding with all progress calculations
+      return this.getOnboardingByEmployeeId(employeeId);
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -3711,13 +4024,14 @@ Due: ${context.dueDate}`
           employeeData = await this.employeeProfileService.findOne(
             onboarding.employeeId.toString(),
           );
-          if (employeeData && employeeData.status === EmployeeStatus.PROBATION) {
+          // CHANGED - Check for INACTIVE status instead of PROBATION
+          if (employeeData && employeeData.status === EmployeeStatus.INACTIVE) {
             // Use onboarding.employeeId directly instead of employee._id to avoid TypeScript issues
             await this.employeeProfileService.update(onboarding.employeeId.toString(), {
               status: EmployeeStatus.ACTIVE,
             });
             console.log(
-              `✅ Employee ${employeeData.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+              `✅ Employee ${employeeData.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from INACTIVE to ACTIVE after completing onboarding`,
             );
           }
         } catch (error) {
@@ -4146,13 +4460,14 @@ Due: ${context.dueDate}`
             // ============= INTEGRATION: Auto-update employee status =============
             // When onboarding is completed, automatically change employee status from PROBATION to ACTIVE
             // This is a business rule: employees become ACTIVE after completing onboarding
-            if (employee.status === EmployeeStatus.PROBATION) {
+            // CHANGED - Check for INACTIVE status instead of PROBATION
+            if (employee.status === EmployeeStatus.INACTIVE) {
               // Use onboarding.employeeId directly instead of employee._id to avoid TypeScript issues
               await this.employeeProfileService.update(onboarding.employeeId.toString(), {
                 status: EmployeeStatus.ACTIVE,
               });
               console.log(
-                `✅ Employee ${employee.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from PROBATION to ACTIVE after completing onboarding`,
+                `✅ Employee ${employee.employeeNumber} (${onboarding.employeeId.toString()}) status automatically changed from INACTIVE to ACTIVE after completing onboarding`,
               );
             }
             // ============= END INTEGRATION =============
@@ -4550,15 +4865,152 @@ Due: ${context.dueDate}`
         // For now, we rely on the employee profile service to handle uniqueness
       }
 
+      // =============================================================================
+      // 7.5 DETERMINE SYSTEM ROLE FROM JOB TEMPLATE
+      // =============================================================================
+      // When creating an employee from recruitment, we need to assign the correct
+      // system role based on what position they were hired for.
+      //
+      // This is crucial because:
+      // - If someone is hired as "HR Manager", they need SystemRole.HR_MANAGER
+      //   to access HR dashboards and perform HR functions
+      // - If hired as "Payroll Specialist", they need SystemRole.PAYROLL_SPECIALIST
+      // - etc.
+      //
+      // The role can be:
+      // 1. Explicitly provided in the DTO (dto.systemRole) - HR can override
+      // 2. Auto-determined from the job template's title/department
+      // 3. Default to DEPARTMENT_EMPLOYEE if no match found
+      //
+      // Role mapping is based on job title (case-insensitive matching):
+      // - Contains "HR Manager" → HR_MANAGER
+      // - Contains "HR Employee" or "HR Staff" → HR_EMPLOYEE
+      // - Contains "HR Admin" → HR_ADMIN
+      // - Contains "Payroll Manager" → PAYROLL_MANAGER
+      // - Contains "Payroll Specialist" or "Payroll Staff" → PAYROLL_SPECIALIST
+      // - Contains "System Admin" or "System Administrator" → SYSTEM_ADMIN
+      // - Contains "Legal" and ("Admin" or "Policy") → LEGAL_POLICY_ADMIN
+      // - Contains "Recruiter" or "Recruitment" → RECRUITER
+      // - Contains "Finance" → FINANCE_STAFF
+      // - Contains "Department Head" or "Head of" or "Director" or "Manager" (not HR/Payroll) → DEPARTMENT_HEAD
+      // - Default → DEPARTMENT_EMPLOYEE
+      // =============================================================================
+      let determinedSystemRole: SystemRole = SystemRole.DEPARTMENT_EMPLOYEE;
+      
+      // Try to get job title from offer's application → requisition → template
+      let jobTitle = '';
+      let jobDepartment = '';
+      
+      try {
+        if (offer.applicationId) {
+          const application = await this.applicationModel
+            .findById(offer.applicationId)
+            .populate({
+              path: 'requisitionId',
+              populate: {
+                path: 'templateId',
+                model: 'JobTemplate'
+              }
+            })
+            .lean();
+          
+          if (application) {
+            const requisition = (application as any).requisitionId;
+            const template = requisition?.templateId;
+            
+            if (template) {
+              jobTitle = template.title || '';
+              jobDepartment = template.department || '';
+              
+              console.log(`[CREATE_EMPLOYEE] Job Template - Title: "${jobTitle}", Department: "${jobDepartment}"`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[CREATE_EMPLOYEE] Could not get job template for role determination:', e);
+      }
+      
+      // Determine system role from job title (if not explicitly provided in DTO)
+      if (dto.systemRole) {
+        // HR explicitly specified the role - use it
+        determinedSystemRole = dto.systemRole;
+        console.log(`[CREATE_EMPLOYEE] Using HR-specified system role: ${determinedSystemRole}`);
+      } else if (jobTitle) {
+        // Auto-determine role from job title
+        const titleLower = jobTitle.toLowerCase();
+        const deptLower = jobDepartment.toLowerCase();
+        
+        // HR roles (check specific first, then general)
+        if (titleLower.includes('hr manager') || (titleLower.includes('manager') && deptLower.includes('hr'))) {
+          determinedSystemRole = SystemRole.HR_MANAGER;
+        } else if (titleLower.includes('hr admin') || (titleLower.includes('admin') && deptLower.includes('hr'))) {
+          determinedSystemRole = SystemRole.HR_ADMIN;
+        } else if (titleLower.includes('hr employee') || titleLower.includes('hr staff') || 
+                   titleLower.includes('hr specialist') || titleLower.includes('hr coordinator') ||
+                   (deptLower.includes('hr') && !titleLower.includes('manager') && !titleLower.includes('admin'))) {
+          determinedSystemRole = SystemRole.HR_EMPLOYEE;
+        }
+        // Payroll roles
+        else if (titleLower.includes('payroll manager') || (titleLower.includes('manager') && deptLower.includes('payroll'))) {
+          determinedSystemRole = SystemRole.PAYROLL_MANAGER;
+        } else if (titleLower.includes('payroll specialist') || titleLower.includes('payroll staff') ||
+                   titleLower.includes('payroll coordinator') || deptLower.includes('payroll')) {
+          determinedSystemRole = SystemRole.PAYROLL_SPECIALIST;
+        }
+        // System Admin
+        else if (titleLower.includes('system admin') || titleLower.includes('system administrator') ||
+                 titleLower.includes('sysadmin') || titleLower.includes('it admin')) {
+          determinedSystemRole = SystemRole.SYSTEM_ADMIN;
+        }
+        // Legal & Policy Admin
+        else if ((titleLower.includes('legal') && (titleLower.includes('admin') || titleLower.includes('policy'))) ||
+                 titleLower.includes('policy admin') || titleLower.includes('compliance')) {
+          determinedSystemRole = SystemRole.LEGAL_POLICY_ADMIN;
+        }
+        // Recruiter
+        else if (titleLower.includes('recruiter') || titleLower.includes('recruitment') || 
+                 titleLower.includes('talent acquisition')) {
+          determinedSystemRole = SystemRole.RECRUITER;
+        }
+        // Finance Staff
+        else if (titleLower.includes('finance') || titleLower.includes('accountant') || 
+                 titleLower.includes('accounting') || deptLower.includes('finance')) {
+          determinedSystemRole = SystemRole.FINANCE_STAFF;
+        }
+        // Department Head (check last as "manager" is common)
+        else if (titleLower.includes('department head') || titleLower.includes('head of') ||
+                 titleLower.includes('director') || titleLower.includes('chief') ||
+                 (titleLower.includes('manager') && !titleLower.includes('hr') && !titleLower.includes('payroll'))) {
+          determinedSystemRole = SystemRole.DEPARTMENT_HEAD;
+        }
+        // Default remains DEPARTMENT_EMPLOYEE
+        
+        console.log(`[CREATE_EMPLOYEE] Auto-determined system role from job title "${jobTitle}": ${determinedSystemRole}`);
+      } else {
+        console.log(`[CREATE_EMPLOYEE] No job title found, using default role: ${determinedSystemRole}`);
+      }
+      // =============================================================================
+      // END SYSTEM ROLE DETERMINATION
+      // =============================================================================
+
       // 8. Map data to CreateEmployeeDto
-      // IMPORTANT: Transfer password from candidate so they can login with the same credentials
+      // IMPORTANT: Pass candidateId so employee-profile service gets password directly from candidate
+      // DO NOT pass password here - it would get double-hashed!
+      console.log('🔑 [CREATE_EMPLOYEE] Candidate password hash (first 30 chars):', candidate.password?.substring(0, 30));
+      console.log('🔑 [CREATE_EMPLOYEE] Candidate ID being passed:', candidate._id.toString());
+      console.log('🔑 [CREATE_EMPLOYEE] NOTE: Not passing password - will be fetched from candidate by employee-profile service');
+      
       const createEmployeeDto: CreateEmployeeDto = {
+        // Link to candidate - ensures password is taken from candidate directly (not re-hashed)
+        candidateId: candidate._id.toString(),
+        
         // Personal info from candidate
         firstName: candidate.firstName,
         middleName: candidate.middleName,
         lastName: candidate.lastName,
         nationalId: candidate.nationalId,
-        password: candidate.password, // Transfer hashed password from candidate - allows login with same credentials
+        // DO NOT PASS PASSWORD! Let employee-profile service get it from candidate directly
+        // password: candidate.password, // REMOVED - was causing double-hashing
         gender: candidate.gender,
         maritalStatus: candidate.maritalStatus,
         dateOfBirth: candidate.dateOfBirth,
@@ -4578,7 +5030,7 @@ Due: ${context.dueDate}`
         contractEndDate: undefined, // Can be set manually by HR if needed
         contractType: dto.contractType,
         workType: dto.workType,
-        status: EmployeeStatus.PROBATION, // Default to probation for new hires
+        status: EmployeeStatus.INACTIVE, // CHANGED - New employees start as INACTIVE until onboarding is complete
 
         // Organizational assignment (from DTO or can be derived from offer)
         primaryDepartmentId: dto.primaryDepartmentId,
@@ -4588,6 +5040,10 @@ Due: ${context.dueDate}`
         // Position - Note: primaryPositionId should be set separately by HR if needed
         // Using primaryDepartmentId as fallback is incorrect, so leaving undefined
         primaryPositionId: undefined,
+
+        // System role - determined from job template or explicitly provided by HR
+        // This ensures hired employees get the correct dashboard access
+        systemRole: determinedSystemRole,
       };
 
       // ============= INTEGRATION: Organization Structure Service =============
@@ -4761,6 +5217,19 @@ Due: ${context.dueDate}`
       } catch (appUpdateError) {
         // Non-critical - log but don't fail employee creation
         console.warn('Failed to update application status to HIRED:', this.getErrorMessage(appUpdateError));
+      }
+
+      // 11b. Update candidate status to HIRED after employee creation
+      // BR: Candidate status should be HIRED when employee profile is finalized
+      try {
+        if (offer.candidateId) {
+          await this.candidateModel.findByIdAndUpdate(offer.candidateId, {
+            status: CandidateStatus.HIRED,
+          });
+          console.log(`✅ Candidate ${offer.candidateId} status updated to HIRED after employee creation`);
+        }
+      } catch (candidateUpdateError) {
+        console.warn('Failed to update candidate status to HIRED:', this.getErrorMessage(candidateUpdateError));
       }
 
       // 12. Return success response with employee and contract details (ONB-002)
@@ -5931,25 +6400,29 @@ Due: ${context.dueDate}`
         const name = taskName.toLowerCase();
         const dept = department.toLowerCase();
         
-        // ONB-007: New Hire tasks (document uploads)
+        // ONB-007: Candidate/New Hire tasks (document uploads)
         if (name.includes('upload') || name.includes('document') || 
-            name.includes('id document') || name.includes('certification')) {
+            name.includes('id document') || name.includes('certification') ||
+            name.includes('contract') || name.includes('photo') || name.includes('form')) {
           return 'NEW_HIRE';
         }
         
-        // ONB-009: System Admin tasks (IT/system access)
-        if (dept === 'it' || name.includes('email') || name.includes('laptop') || 
-            name.includes('equipment') || name.includes('sso') || name.includes('system access')) {
+        // ONB-009: System Admin tasks (email, SSO, system access, internal systems)
+        if (dept === 'it' || name.includes('email') || name.includes('sso') || 
+            name.includes('system access') || name.includes('internal systems')) {
           return 'SYSTEM_ADMIN';
         }
         
-        // ONB-012: HR Employee tasks (equipment/workspace/admin)
-        if (dept === 'admin' || name.includes('workspace') || name.includes('desk') || 
+        // ONB-012: HR Employee tasks (equipment, desk, badge, access card ONLY)
+        if (name.includes('laptop') || name.includes('equipment') ||
+            name.includes('workspace') || name.includes('desk') ||
             name.includes('badge') || name.includes('access card')) {
           return 'HR_EMPLOYEE';
         }
         
-        // Default to HR Manager for other tasks (benefits, payroll, etc.)
+        // ONB-018/019: Automatic tasks (payroll, signing bonus, benefits)
+        // These are system-handled, but notify HR Manager if they're overdue
+        // Default - HR Manager for visibility
         return 'HR_MANAGER';
       };
 
@@ -6322,45 +6795,61 @@ Due: ${context.dueDate}`
         );
       }
 
-      // Find Admin tasks related to equipment
-      const adminTasks = onboarding.tasks.filter(
-        (task: any) => task.department === 'Admin',
-      );
+      // Find equipment tasks (ONB-012: HR Employee handles equipment)
+      // Check by task NAME only - department doesn't matter
+      const equipmentTasks = onboarding.tasks.filter((task: any) => {
+        const nameLower = task.name?.toLowerCase() || '';
+        return nameLower.includes('workspace') || 
+          nameLower.includes('desk') ||
+          nameLower.includes('badge') ||
+          nameLower.includes('access card') ||
+          nameLower.includes('laptop') ||
+          nameLower.includes('equipment');
+      });
 
-      if (adminTasks.length === 0) {
+      if (equipmentTasks.length === 0) {
         throw new BadRequestException(
-          'No Admin tasks found in onboarding checklist',
+          'No equipment tasks found in onboarding checklist. Tasks available: ' + 
+          onboarding.tasks.map((t: any) => `${t.name} (${t.department})`).join(', '),
         );
       }
 
       let targetTask = null;
       if (equipmentType === 'workspace' || equipmentType === 'desk') {
-        targetTask = adminTasks.find(
+        targetTask = equipmentTasks.find(
           (task: any) =>
-            task.name.includes('Workspace') || task.name.includes('Desk'),
+            task.name.toLowerCase().includes('workspace') || task.name.toLowerCase().includes('desk'),
         );
       } else if (equipmentType === 'access_card' || equipmentType === 'badge') {
-        targetTask = adminTasks.find(
+        targetTask = equipmentTasks.find(
           (task: any) =>
-            task.name.includes('ID Badge') || task.name.includes('Access Card'),
+            task.name.toLowerCase().includes('badge') || task.name.toLowerCase().includes('access card'),
+        );
+      } else if (equipmentType === 'laptop' || equipmentType === 'equipment') {
+        targetTask = equipmentTasks.find(
+          (task: any) =>
+            task.name.toLowerCase().includes('laptop') || task.name.toLowerCase().includes('equipment'),
         );
       } else {
         throw new BadRequestException(
-          `Invalid equipment type: ${equipmentType}. Valid types: workspace, desk, access_card, badge`,
+          `Invalid equipment type: ${equipmentType}. Valid types: workspace, desk, access_card, badge, laptop, equipment`,
         );
       }
 
       if (!targetTask) {
         throw new BadRequestException(
-          `No matching Admin task found for equipment type: ${equipmentType}`,
+          `No matching equipment task found for type: ${equipmentType}. Available equipment tasks: ` +
+          equipmentTasks.map((t: any) => t.name).join(', '),
         );
       }
 
       const taskIndex = onboarding.tasks.indexOf(targetTask);
-      targetTask.status = OnboardingTaskStatus.IN_PROGRESS;
+      // CHANGED: Auto-complete the task when equipment is reserved (ONB-012)
+      targetTask.status = OnboardingTaskStatus.COMPLETED;
+      targetTask.completedAt = new Date();
       targetTask.notes =
         (targetTask.notes || '') +
-        `\n[${new Date().toISOString()}] Reserved: ${JSON.stringify(equipmentDetails)}`;
+        `\n[${new Date().toISOString()}] ✅ Reserved & Completed: ${JSON.stringify(equipmentDetails)}`;
 
       await onboarding.save();
 

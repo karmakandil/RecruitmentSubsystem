@@ -37,8 +37,11 @@ interface PendingAdminTask {
   employeeNumber: string;
 }
 
-// CHANGED - Equipment types (must match backend valid types: workspace, desk, access_card, badge)
+// CHANGED - Equipment types (must match backend valid types: workspace, desk, access_card, badge, laptop, equipment)
+// ONB-012: HR Employee handles all physical equipment
 const EQUIPMENT_TYPES = [
+  { value: "laptop", label: "💻 Laptop", icon: "💻", description: "Allocate laptop for the new hire" },
+  { value: "equipment", label: "🖥️ Other Equipment", icon: "🖥️", description: "Allocate other hardware equipment" },
   { value: "workspace", label: "🪑 Workspace/Desk", icon: "🪑", description: "Reserve a desk or workspace for the new hire" },
   { value: "desk", label: "📋 Desk Assignment", icon: "📋", description: "Assign a specific desk number" },
   { value: "access_card", label: "🎫 Access Card", icon: "🎫", description: "Issue building access card" },
@@ -104,9 +107,19 @@ export default function EquipmentManagementPage() {
         // employeeId is now a string from the backend transformation
         const employeeId = onboarding.employeeId || employee?._id;
 
-        // Find Admin department tasks that are not completed
+        // Find equipment tasks that are not completed (ONB-012)
+        // HR Employee handles: laptop, equipment, workspace, desk, badge, access card
+        // Check by task NAME, not department (department might vary in old data)
         onboarding.tasks?.forEach((task: any, index: number) => {
-          if (task.department === 'Admin' && task.status !== 'COMPLETED' && task.status !== 'completed') {
+          const nameLower = task.name?.toLowerCase() || '';
+          const isEquipmentTask = nameLower.includes('laptop') || 
+            nameLower.includes('equipment') ||
+            nameLower.includes('workspace') ||
+            nameLower.includes('desk') ||
+            nameLower.includes('badge') ||
+            nameLower.includes('access card');
+          
+          if (isEquipmentTask && task.status !== 'COMPLETED' && task.status !== 'completed') {
             allPendingTasks.push({
               onboardingId: onboarding._id,
               taskIndex: index,
@@ -213,12 +226,26 @@ export default function EquipmentManagementPage() {
     }
   };
 
-  // CHANGED - Get Admin/IT tasks from onboarding
+  // CHANGED - Get equipment tasks from onboarding (ONB-012)
+  // HR Employee handles: laptop, equipment, workspace, desk, badge, access card
+  // System Admin handles: email, SSO, system access (IT department)
+  // Check by task NAME, not department
   const getEquipmentTasks = (onboarding: Onboarding) => {
     if (!onboarding.tasks) return [];
-    return onboarding.tasks.filter(
-      (task) => task.department === "Admin" || task.department === "IT"
-    );
+    return onboarding.tasks.filter((task) => {
+      const nameLower = task.name?.toLowerCase() || '';
+      // IT tasks (System Admin)
+      if (task.department === "IT") return true;
+      // Equipment tasks (HR Employee) - check by name
+      const isEquipmentTask = nameLower.includes('laptop') || 
+        nameLower.includes('equipment') ||
+        nameLower.includes('workspace') ||
+        nameLower.includes('desk') ||
+        nameLower.includes('badge') ||
+        nameLower.includes('access card');
+      if (isEquipmentTask) return true;
+      return false;
+    });
   };
 
   // CHANGED - Calculate equipment progress

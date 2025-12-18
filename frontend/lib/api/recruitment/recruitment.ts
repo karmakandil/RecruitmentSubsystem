@@ -296,6 +296,14 @@ export const recruitmentApi = {
     return await api.get(`/recruitment/onboarding/employee/${employeeId}`);
   },
 
+  // ONB-004: Candidates can view their onboarding after being hired
+  // This finds the employee profile linked to the candidate and returns their onboarding
+  getOnboardingByCandidateId: async (
+    candidateId: string
+  ): Promise<Onboarding> => {
+    return await api.get(`/recruitment/onboarding/candidate/${candidateId}`);
+  },
+
   // ✅ Accessible: No role restriction (for new hires to upload documents)
   uploadTaskDocument: async (
     onboardingId: string,
@@ -623,6 +631,13 @@ export const recruitmentApi = {
   // Only HR Employees and HR Managers can be panel members
   getHREmployeesForPanel: async (): Promise<any[]> => {
     return await api.get("/recruitment/hr-employees");
+  },
+
+  // CHANGED - New: Get eligible panel members based on interview stage
+  // HR_INTERVIEW: Only HR employees
+  // DEPARTMENT_INTERVIEW: HR employees + employees from the job's department
+  getEligiblePanelMembers: async (applicationId: string, stage: string): Promise<any[]> => {
+    return await api.get(`/recruitment/eligible-panel-members/${applicationId}/${stage}`);
   },
 
   // CHANGED - Added: Get employee by ID for access management

@@ -311,7 +311,14 @@ export default function MyApplicationsPage() {
 
                     {/* CHANGED - Action buttons */}
                     <div className="flex gap-3 pt-2 border-t">
-                      <Link href={`/dashboard/recruitment/jobs/${application.requisitionId}`} className="flex-1">
+                      <Link 
+                        href={`/dashboard/recruitment/jobs/${
+                          typeof application.requisitionId === 'object' 
+                            ? (application.requisitionId as any)?._id || (application.requisitionId as any)?.id
+                            : application.requisitionId
+                        }`} 
+                        className="flex-1"
+                      >
                         <Button variant="outline" className="w-full">
                           View Job Details
                         </Button>

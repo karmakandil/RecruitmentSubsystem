@@ -211,6 +211,18 @@ export class RecruitmentController {
     return this.service.getHREmployeesForPanel();
   }
 
+  // CHANGED - New endpoint to get eligible panel members based on interview stage
+  // Returns HR employees for HR_INTERVIEW, HR + department employees for DEPARTMENT_INTERVIEW
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN, SystemRole.RECRUITER)
+  @Get('eligible-panel-members/:applicationId/:stage')
+  getEligiblePanelMembers(
+    @Param('applicationId') applicationId: string,
+    @Param('stage') stage: string,
+  ) {
+    return this.service.getEligiblePanelMembers(applicationId, stage);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     SystemRole.HR_EMPLOYEE,
@@ -427,23 +439,48 @@ export class RecruitmentController {
     return this.service.getAllOnboardings();
   }
 
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
   @Get('onboarding/stats')
   async getOnboardingStats() {
     return this.service.getOnboardingStats();
   }
 
-  @UseGuards(RolesGuard)
-  @Get('onboarding/:id')
-  async getOnboardingById(@Param('id') id: string) {
-    return this.service.getOnboardingById(id);
+  // ONB-004: Candidate can view their onboarding after being hired
+  // When a candidate is hired (employee profile created), they can access
+  // their onboarding tasks by their candidate ID - the system finds the
+  // linked employee profile and returns that employee's onboarding
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.JOB_CANDIDATE)
+  @Get('onboarding/candidate/:candidateId')
+  async getOnboardingByCandidateId(@Param('candidateId') candidateId: string) {
+    return this.service.getOnboardingByCandidateId(candidateId);
   }
 
-  @UseGuards(RolesGuard)
+  // ONB-004: New hire can view their own onboarding tracker
+  // IMPORTANT: This specific route MUST come BEFORE the generic /:id route
+  // DEPARTMENT_EMPLOYEE allows new hires to view their onboarding tasks
+  // HR roles also have access for management purposes
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Get('onboarding/employee/:employeeId')
   async getOnboardingByEmployeeId(@Param('employeeId') employeeId: string) {
     return this.service.getOnboardingByEmployeeId(employeeId);
+  }
+
+  // ONB-004: HR can view any onboarding by ID
+  // IMPORTANT: Generic /:id route must come AFTER more specific routes like /employee/:id
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Get('onboarding/:id')
+  async getOnboardingById(@Param('id') id: string) {
+    return this.service.getOnboardingById(id);
   }
 
   // Check if employee already exists for an application
@@ -510,9 +547,16 @@ export class RecruitmentController {
   }
 
   // changed - modified to accept either file upload OR manual entry for testing
-  // ONB-007: New hires can upload their own documents for onboarding tasks
-  @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  // ONB-007: New hires (candidates) can upload their own documents for onboarding tasks
+  // JOB_CANDIDATE is allowed so candidates can upload ID, certifications, etc.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.JOB_CANDIDATE,
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Post('onboarding/:id/task/:taskIndex/upload')
   @UseInterceptors(FileInterceptor('file', multerConfig))
   async uploadTaskDocument(
@@ -542,7 +586,15 @@ export class RecruitmentController {
     );
   }
 
-  @UseGuards(RolesGuard)
+  // ONB-007: Allow candidates and employees to download their uploaded documents
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    SystemRole.JOB_CANDIDATE,
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.HR_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+  )
   @Get('document/:documentId/download')
   async downloadDocument(
     @Param('documentId') documentId: string,
