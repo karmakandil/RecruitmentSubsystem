@@ -138,7 +138,6 @@ export class LeaveController {
 
   @Post('request')
   @UseGuards(RolesGuard)
-<<<<<<< HEAD
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
@@ -151,9 +150,6 @@ export class LeaveController {
     SystemRole.FINANCE_STAFF,
     SystemRole.HR_ADMIN,
   )
-=======
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE)
->>>>>>> 8c3e51734308fdde3db42485939ee0012735b5c9
   async createLeaveRequest(
     @Body() createLeaveRequestDto: CreateLeaveRequestDto,
   ) {
@@ -177,11 +173,6 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
-<<<<<<< HEAD
-=======
-    SystemRole.HR_EMPLOYEE,
-    SystemRole.HR_ADMIN,
->>>>>>> 8c3e51734308fdde3db42485939ee0012735b5c9
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
@@ -454,7 +445,6 @@ export class LeaveController {
 
   @Post('request/:id/cancel')
   @UseGuards(RolesGuard)
-<<<<<<< HEAD
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
@@ -465,11 +455,6 @@ export class LeaveController {
   async cancelLeaveRequest(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId || req.user?._id || req.user?.id;
     return await this.leavesService.cancelLeaveRequest(id, userId);
-=======
-  @Roles(SystemRole.DEPARTMENT_EMPLOYEE, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN)
-  async cancelLeaveRequest(@Param('id') id: string) {
-    return await this.leavesService.cancelLeaveRequest(id);
->>>>>>> 8c3e51734308fdde3db42485939ee0012735b5c9
   }
 
   // REQ-031: Get detailed leave balance

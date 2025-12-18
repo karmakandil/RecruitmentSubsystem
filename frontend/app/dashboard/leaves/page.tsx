@@ -18,6 +18,11 @@ export default function LeavesPage() {
   const [delegatedPendingRequests, setDelegatedPendingRequests] = useState<LeaveRequest[]>([]);
   const [loadingDelegatedRequests, setLoadingDelegatedRequests] = useState(false);
 
+  // Set mounted to true after component mounts (client-side only)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Check if user is HR Admin, HR Manager, Department Head, or Payroll Manager
   useEffect(() => {
     // Wait for mount and auth initialization
@@ -119,25 +124,14 @@ export default function LeavesPage() {
   const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
   const isPayrollManager = roles.includes(SystemRole.PAYROLL_MANAGER);
 
-  // Show loading or redirect if not HR Admin, HR Manager, Department Head, or Payroll Manager
-  if (loading || !isAuthenticated || (!isHRAdmin && !isHRManager && !isDepartmentHead && !isPayrollManager)) {
+  // Show loading while checking authentication or if user doesn't have required role
+  // Wait for mounted to avoid hydration mismatch
+  if (!mounted || loading || !isAuthenticated || (!isHRAdmin && !isHRManager && !isDepartmentHead && !isPayrollManager)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  // If not HR role, the useEffect will redirect, but show loading in the meantime
-  if (!isHRAdmin && !isHRManager && !isDepartmentHead) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Redirecting...</p>
         </div>
       </div>
     );

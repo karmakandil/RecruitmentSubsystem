@@ -76,7 +76,7 @@ export default function ManagerLeaveReviewPage() {
   };
 
   const fetchPendingRequests = async (employeeId?: string) => {
-    // If no employeeId provided, check if user is a delegate and show delegated requests
+    // If no employeeId provided, check if user is a delegate, Payroll Manager, or Department Head
     if (!employeeId) {
       // Check if there's an employeeId in URL query params (for delegates clicking from dashboard)
       const urlParams = new URLSearchParams(window.location.search);
@@ -88,29 +88,63 @@ export default function ManagerLeaveReviewPage() {
         return;
       }
       
-      // If user is a delegate, fetch all pending requests for the manager's team
-      // The backend will handle this when userId is passed
-      // IMPORTANT: always prefer employee profile _id to match backend delegationMap
+      const roles = user?.roles || [];
+      const isPayrollManager = roles.includes(SystemRole.PAYROLL_MANAGER);
+      const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
       const userId = (user as any)?._id || user?.userId || (user as any)?.id;
+      
       if (userId) {
         setLoadingRequests(true);
         setError(null);
         setHasSearched(true);
         try {
-          console.log("Fetching delegated pending requests for user:", userId);
-          // Pass userId to backend - it will check if user is a delegate and return appropriate requests
-          const requests = await leavesApi.getEmployeeLeaveRequests(userId, {
-            status: "pending",
-          });
-          console.log("Received delegated requests:", requests);
-          const pendingOnly = requests.filter(
-            (req) => req.status?.toLowerCase() === "pending"
-          );
-          console.log("Filtered delegated pending requests:", pendingOnly);
-          setPendingRequests(pendingOnly);
+          // If Payroll Manager, fetch team leave requests using filterTeamLeaveData
+          if (isPayrollManager) {
+            console.log("Fetching team pending requests for Payroll Manager:", userId);
+            const result = await leavesApi.filterTeamLeaveData(userId, {
+              status: "pending",
+              limit: 1000, // Get all pending requests
+            });
+            console.log("Received team requests:", result);
+            const teamRequests = Array.isArray(result.items) ? result.items : [];
+            const pendingOnly = teamRequests.filter(
+              (req: any) => req.status?.toLowerCase() === "pending"
+            );
+            console.log("Filtered team pending requests:", pendingOnly);
+            setPendingRequests(pendingOnly);
+          } else if (isDepartmentHead) {
+            // Department Head: fetch team requests using filterTeamLeaveData
+            console.log("Fetching team pending requests for Department Head:", userId);
+            const result = await leavesApi.filterTeamLeaveData(userId, {
+              status: "pending",
+              limit: 1000,
+            });
+            console.log("Received team requests:", result);
+            const teamRequests = Array.isArray(result.items) ? result.items : [];
+            const pendingOnly = teamRequests.filter(
+              (req: any) => req.status?.toLowerCase() === "pending"
+            );
+            console.log("Filtered team pending requests:", pendingOnly);
+            setPendingRequests(pendingOnly);
+          } else {
+            // If user is a delegate, fetch all pending requests for the manager's team
+            // The backend will handle this when userId is passed
+            // IMPORTANT: always prefer employee profile _id to match backend delegationMap
+            console.log("Fetching delegated pending requests for user:", userId);
+            // Pass userId to backend - it will check if user is a delegate and return appropriate requests
+            const requests = await leavesApi.getEmployeeLeaveRequests(userId, {
+              status: "pending",
+            });
+            console.log("Received delegated requests:", requests);
+            const pendingOnly = requests.filter(
+              (req) => req.status?.toLowerCase() === "pending"
+            );
+            console.log("Filtered delegated pending requests:", pendingOnly);
+            setPendingRequests(pendingOnly);
+          }
         } catch (err: any) {
-          console.error("Error fetching delegated requests:", err);
-          // If error, user might not be a delegate - that's okay
+          console.error("Error fetching requests:", err);
+          // If error, user might not have access - that's okay
           setPendingRequests([]);
           setHasSearched(false);
         } finally {
@@ -171,6 +205,9 @@ export default function ManagerLeaveReviewPage() {
     // Refresh the list
     if (employeeIdFilter.trim()) {
       fetchPendingRequests(employeeIdFilter.trim());
+    } else {
+      // Refresh team requests if no specific employee filter
+      fetchPendingRequests();
     }
   };
 
@@ -179,6 +216,9 @@ export default function ManagerLeaveReviewPage() {
     // Refresh the list
     if (employeeIdFilter.trim()) {
       fetchPendingRequests(employeeIdFilter.trim());
+    } else {
+      // Refresh team requests if no specific employee filter
+      fetchPendingRequests();
     }
   };
 
@@ -349,11 +389,12 @@ export default function ManagerLeaveReviewPage() {
 
   const roles = user?.roles || [];
   const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
+  const isPayrollManager = roles.includes(SystemRole.PAYROLL_MANAGER);
   
-  // Allow access if user is department head OR if they have delegated requests
-  const hasDelegatedRequests = pendingRequests.length > 0 && !isDepartmentHead;
+  // Allow access if user is department head, Payroll Manager, OR if they have delegated requests
+  const hasDelegatedRequests = pendingRequests.length > 0 && !isDepartmentHead && !isPayrollManager;
   
-  if (!isDepartmentHead && !hasDelegatedRequests && hasSearched) {
+  if (!isDepartmentHead && !isPayrollManager && !hasDelegatedRequests && hasSearched) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
         <div className="rounded-md bg-yellow-50 p-4 border border-yellow-200">
@@ -378,6 +419,8 @@ export default function ManagerLeaveReviewPage() {
         <p className="text-gray-600 mt-1">
           {isDepartmentHead 
             ? "As a department head, review and approve or reject leave requests from your team members"
+            : isPayrollManager
+            ? "As a payroll manager, review and approve or reject leave requests from your team members"
             : "Review and approve or reject leave requests delegated to you"
           }
         </p>
