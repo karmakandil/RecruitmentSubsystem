@@ -4,11 +4,9 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-// CHANGED - Fixed port to match backend (5000)
-
-// Backend API runs on port 5000 by default (can be overridden with PORT env var or NEXT_PUBLIC_API_URL)
+// Backend API runs on port 6001 by default (can be overridden with NEXT_PUBLIC_API_URL)
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6001/api/v1";
 
 // CHANGED - Debug: Log the API base URL on load
 console.log("🔧 API_BASE_URL configured as:", API_BASE_URL);

@@ -305,13 +305,23 @@ export const timeManagementApi = {
   },
 
   // POST sync data
-  syncData: async (): Promise<any> => {
-    return await api.post("/time-management/sync-data");
+  syncData: async (body?: {
+    syncDate?: Date | string;
+    modules?: Array<'payroll' | 'leaves' | 'benefits'>;
+  }): Promise<any> => {
+    return await api.post("/time-management/sync-data", body || {});
   },
 
   // GET sync status
-  getSyncStatus: async (): Promise<any> => {
-    return await api.get("/time-management/sync-status");
+  getSyncStatus: async (filters?: {
+    startDate?: Date | string;
+    endDate?: Date | string;
+  }): Promise<any> => {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append("startDate", new Date(filters.startDate).toISOString());
+    if (filters?.endDate) params.append("endDate", new Date(filters.endDate).toISOString());
+    const qs = params.toString();
+    return await api.get(`/time-management/sync-status${qs ? `?${qs}` : ""}`);
   },
 
   // ===== Attendance CSV Import (for HR/System Admin) =====

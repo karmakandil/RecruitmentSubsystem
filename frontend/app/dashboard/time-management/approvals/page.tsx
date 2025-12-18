@@ -23,14 +23,17 @@ export default function LineManagerApprovalsPage() {
   const isDepartmentHead = user?.roles?.includes(SystemRole.DEPARTMENT_HEAD);
   const isPayrollOfficer = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
   const isSystemAdmin = user?.roles?.includes(SystemRole.SYSTEM_ADMIN);
+  const isHRAdmin = user?.roles?.includes(SystemRole.HR_ADMIN);
 
   const canApprove = isHRManager || isDepartmentHead;
   const canViewReports = isHRManager || isDepartmentHead || isPayrollOfficer;
-  const canSync = isSystemAdmin;
+  // BR-TM-22: HR Admin/HR Manager/System Admin can trigger sync
+  const canSync = isSystemAdmin || isHRAdmin || isHRManager;
 
   return (
     <ProtectedRoute
       allowedRoles={[
+        SystemRole.HR_ADMIN,
         SystemRole.HR_MANAGER,
         SystemRole.DEPARTMENT_HEAD,
         SystemRole.PAYROLL_SPECIALIST,
