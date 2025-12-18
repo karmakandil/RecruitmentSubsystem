@@ -2735,7 +2735,10 @@ export class TimeManagementService {
       employeeId: recordPunchWithMetadataDto.employeeId,
       punches: punchesWithDates,
       totalWorkMinutes: this.calculateWorkMinutesFromPunches(punchesWithDates),
-      hasMissedPunch: recordPunchWithMetadataDto.punches.length % 2 !== 0,
+      // Do NOT flag missed punches here: a single clock-in naturally makes punch count odd.
+      // Missed punches should be flagged by the missed-punch detection flow (end-of-day / policy check),
+      // or via explicit flagging endpoints.
+      hasMissedPunch: false,
       finalisedForPayroll: false,
       createdBy: currentUserId,
       updatedBy: currentUserId,
@@ -3640,10 +3643,34 @@ export class TimeManagementService {
     for (const record of attendanceRecords) {
       // Check if there's an odd number of punches (missing clock-out)
       // or if there are no punches at all
-      if (record.punches.length === 0 || record.punches.length % 2 !== 0) {
+      // Avoid duplicating alerts if it was already flagged earlier
+      if (
+        !record.hasMissedPunch &&
+        (record.punches.length === 0 || record.punches.length % 2 !== 0)
+      ) {
         record.hasMissedPunch = true;
         (record as any).updatedBy = currentUserId;
         await record.save();
+
+        const missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT' =
+          record.punches.length === 0 ? 'CLOCK_IN' : 'CLOCK_OUT';
+
+        // Send alerts to employee + line manager + payroll officers
+        try {
+          await this.notificationService.flagMissedPunchWithNotificationAuto(
+            record._id?.toString(),
+            record.employeeId?.toString(),
+            missedPunchType,
+            now,
+            currentUserId,
+          );
+        } catch (err) {
+          // Keep the record flagged even if notifications fail
+          console.error(
+            `[MISSED_PUNCH] Failed to send notifications for record ${record._id}:`,
+            err,
+          );
+        }
 
         missedPunchRecords.push(record);
       }

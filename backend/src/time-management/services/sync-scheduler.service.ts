@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { TimeManagementService } from './time-management.service';
+import { NotificationService } from './notification.service';
 
 /**
  * Sync Scheduler Service
@@ -16,6 +17,7 @@ export class SyncSchedulerService {
 
   constructor(
     private readonly timeManagementService: TimeManagementService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -61,6 +63,23 @@ export class SyncSchedulerService {
       if (syncResult.results?.benefits?.status === 'FAILED') {
         this.logger.error(
           `[SCHEDULED TASK] Benefits sync failed: ${syncResult.results.benefits.error}`,
+        );
+      }
+
+      // BR-TM-20 / Payroll Cut-off: auto-escalate pending items when approaching cut-off
+      try {
+        const escalationResult =
+          await this.notificationService.autoEscalateBeforePayrollCutoff(
+            {},
+            'system',
+          );
+        this.logger.log(
+          `[SCHEDULED TASK] Payroll cut-off auto-escalation result: ${escalationResult?.success ? 'success' : 'skipped'} (${escalationResult?.message || 'no message'})`,
+        );
+      } catch (escalationError: any) {
+        this.logger.error(
+          `[SCHEDULED TASK] Payroll cut-off auto-escalation failed: ${escalationError?.message || escalationError}`,
+          escalationError?.stack,
         );
       }
     } catch (error: any) {

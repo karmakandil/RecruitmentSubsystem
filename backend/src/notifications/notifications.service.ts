@@ -145,6 +145,51 @@ export class NotificationsService {
 
   // ===== TIME MANAGEMENT MODULE NOTIFICATIONS =====
 
+  private async getPayrollOfficerIds(): Promise<string[]> {
+    // "Payroll Officer" in this codebase maps to Payroll Specialist / Payroll Manager roles
+    const payrollRoles = await this.employeeSystemRoleModel
+      .find({
+        roles: { $in: [SystemRole.PAYROLL_SPECIALIST, SystemRole.PAYROLL_MANAGER] },
+        isActive: true,
+      })
+      .select('employeeProfileId')
+      .exec();
+
+    return payrollRoles
+      .map((r: any) => r.employeeProfileId?.toString())
+      .filter((id: any): id is string => !!id);
+  }
+
+  async getEmployeeAndLineManagerInfo(employeeId: string): Promise<{
+    employeeName: string;
+    managerId?: string;
+  }> {
+    const employee = await this.employeeProfileModel
+      .findById(employeeId)
+      .select('firstName lastName supervisorPositionId status')
+      .lean()
+      .exec();
+
+    const employeeName =
+      employee
+        ? `${(employee as any).firstName || ''} ${(employee as any).lastName || ''}`.trim() || 'Employee'
+        : 'Employee';
+
+    const supervisorPositionId = (employee as any)?.supervisorPositionId;
+    if (!supervisorPositionId) return { employeeName };
+
+    const manager = await this.employeeProfileModel
+      .findOne({
+        primaryPositionId: supervisorPositionId,
+        status: { $in: [EmployeeStatus.ACTIVE, EmployeeStatus.PROBATION] },
+      })
+      .select('_id')
+      .lean()
+      .exec();
+
+    return { employeeName, managerId: (manager as any)?._id?.toString() };
+  }
+
   /**
    * REQ: As an HR Admin, I want to be notified when a shift assignment is nearing expiry
    * so that schedules can be renewed or reassigned.
@@ -384,6 +429,44 @@ export class NotificationsService {
   }
 
   /**
+   * Send missed punch alert to Payroll Officers (Payroll Specialist/Manager)
+   */
+  async sendMissedPunchAlertToPayrollTeam(
+    employeeId: string,
+    employeeName: string,
+    attendanceRecordId: string,
+    missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT',
+    date: Date,
+    currentUserId: string,
+  ) {
+    const payrollOfficerIds = await this.getPayrollOfficerIds();
+    if (!payrollOfficerIds.length) {
+      return { success: false, notificationsCreated: 0, payrollOfficerIds: [] as string[] };
+    }
+
+    const message =
+      `Missed ${missedPunchType === 'CLOCK_IN' ? 'clock-in' : 'clock-out'} detected for ` +
+      `${employeeName} (${employeeId}) on ${date.toISOString().split('T')[0]}. ` +
+      `This may impact payroll; please follow up if unresolved.`;
+
+    const notifications = await Promise.all(
+      payrollOfficerIds.map((id) =>
+        this.notificationLogModel.create({
+          to: new Types.ObjectId(id),
+          type: NotificationType.MISSED_PUNCH_PAYROLL_ALERT,
+          message,
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      notificationsCreated: notifications.length,
+      payrollOfficerIds,
+    };
+  }
+
+  /**
    * Send bulk missed punch alerts
    */
   async sendBulkMissedPunchAlerts(
@@ -486,6 +569,7 @@ export class NotificationsService {
         $in: [
           NotificationType.MISSED_PUNCH_EMPLOYEE_ALERT,
           NotificationType.MISSED_PUNCH_MANAGER_ALERT,
+          NotificationType.MISSED_PUNCH_PAYROLL_ALERT,
         ],
       },
     };
