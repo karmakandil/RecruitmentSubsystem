@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import * as XLSX from 'xlsx';
 // Import schemas
 import { AttendanceRecord } from '../models/attendance-record.schema';
 import { AttendanceCorrectionRequest } from '../models/attendance-correction-request.schema';
@@ -828,9 +827,20 @@ export class TimeManagementService {
       return normalized;
     };
 
+    const sanitizedPunches = sanitizePunches(createAttendanceRecordDto?.punches);
+    if (
+      Array.isArray(createAttendanceRecordDto?.punches) &&
+      createAttendanceRecordDto.punches.length > 0 &&
+      sanitizedPunches.length === 0
+    ) {
+      throw new BadRequestException(
+        'Invalid punches payload: no valid punches could be parsed.',
+      );
+    }
+
     const newAttendanceRecord = new this.attendanceRecordModel({
       ...createAttendanceRecordDto,
-      punches: sanitizePunches(createAttendanceRecordDto?.punches),
+      punches: sanitizedPunches,
       createdBy: currentUserId,
       updatedBy: currentUserId,
     });
@@ -870,10 +880,30 @@ export class TimeManagementService {
       return normalized;
     };
 
+    const sanitizedPunches = updateAttendanceRecordDto?.punches
+      ? sanitizePunches(updateAttendanceRecordDto.punches)
+      : undefined;
+
+    if (
+      Array.isArray(updateAttendanceRecordDto?.punches) &&
+      updateAttendanceRecordDto.punches.length > 0 &&
+      (!sanitizedPunches || sanitizedPunches.length === 0)
+    ) {
+      // Prevent wiping punches (which causes ClockIn/ClockOut to become N/A)
+      // and make the issue visible immediately.
+      console.error('[Manual Attendance] Invalid punches payload received for update', {
+        recordId: id,
+        punchesSample: updateAttendanceRecordDto.punches?.slice?.(0, 3),
+      });
+      throw new BadRequestException(
+        'Invalid punches payload: no valid punches could be parsed.',
+      );
+    }
+
     const dto = {
       ...updateAttendanceRecordDto,
       ...(updateAttendanceRecordDto?.punches
-        ? { punches: sanitizePunches(updateAttendanceRecordDto.punches) }
+        ? { punches: sanitizedPunches }
         : {}),
     };
 
@@ -6265,6 +6295,18 @@ export class TimeManagementService {
     }
 
     try {
+      // Optional dependency: avoid build failure if xlsx isn't installed yet.
+      // If you want Excel import, install `xlsx` in backend dependencies.
+      let XLSX: any;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        XLSX = require('xlsx');
+      } catch (e) {
+        throw new BadRequestException(
+          'Excel import requires the backend dependency "xlsx". Please run: npm install xlsx',
+        );
+      }
+
       console.log('[Excel Import] Received base64 data length:', base64Data.length);
       
       // Decode base64 to buffer
