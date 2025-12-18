@@ -3,14 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "../stores/auth.store";
-import { getPrimaryDashboard } from "../utils/role-utils";
+import { getPrimaryDashboard, hasRoleAccess } from "../utils/role-utils";
 
 export const useAuth = () => {
   const store = useAuthStore();
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    store.initialize();
-  }, []);
+    // Initialize auth state from localStorage
+    if (!initialized) {
+      store.initialize();
+      setInitialized(true);
+    }
+  }, [initialized, store]);
 
   return store;
 };
@@ -24,67 +29,127 @@ export const useRequireAuth = (
   const { isAuthenticated, user, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [hasChecked, setHasChecked] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Ensure initialization runs
+  useEffect(() => {
+    const store = useAuthStore.getState();
+    store.initialize();
+    
+    // Give a small delay to ensure zustand store has initialized
+    const timer = setTimeout(() => {
+      setHasInitialized(true);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   const hasRequiredRole = useMemo(() => {
     if (!requiredRole) return true;
-    const roles = user?.roles || [];
+    if (!user) return false;
+    const roles = user.roles || [];
+    
+    // Convert roles to strings for comparison
+    const userRoleStrings = roles.map((r) => String(r).toLowerCase().trim());
+    
     if (Array.isArray(requiredRole)) {
-      return requiredRole.some((r) => roles.includes(r));
+      return requiredRole.some((r) => {
+        const requiredRoleStr = String(r).toLowerCase().trim();
+        return userRoleStrings.includes(requiredRoleStr);
+      });
     }
-    return roles.includes(requiredRole);
+    
+    const requiredRoleStr = String(requiredRole).toLowerCase().trim();
+    return userRoleStrings.includes(requiredRoleStr);
   }, [user, requiredRole]);
 
   useEffect(() => {
+    // Wait for initialization to complete
+    if (!hasInitialized) {
+      setHasChecked(false);
+      setIsLoading(true);
+      return;
+    }
+
     // Wait for loading to complete before making decisions
     if (loading) {
       setHasChecked(false);
+      setIsLoading(true);
       return;
     }
 
     // Mark that we've checked
     setHasChecked(true);
 
+    // Debug logging
+    if (requiredRole) {
+      console.log('🔍 Role Check:', {
+        requiredRole,
+        userRoles: user?.roles,
+        isAuthenticated,
+        hasRequiredRole,
+        userType: user?.userType,
+      });
+    }
+
     // Only redirect if we're certain after loading completes
     if (!isAuthenticated) {
+      console.log('❌ Not authenticated, redirecting to login');
       const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
       if (!currentPath.startsWith("/auth/login")) {
         // Small delay to prevent redirect loops
         const timer = setTimeout(() => {
           router.replace(redirectTo || "/auth/login");
         }, 100);
+        setIsLoading(false);
         return () => clearTimeout(timer);
       }
-    } else if (!hasRequiredRole) {
+    } else if (requiredRole && !hasRequiredRole) {
+      console.log('❌ Missing required role, redirecting to dashboard');
+      // Debug logging for role access issues
+      console.log("useRequireAuth: Access denied", {
+        requiredRole,
+        userRoles: user?.roles,
+        hasRequiredRole,
+        userId: user?.id || user?.userId,
+        username: user?.username,
+      });
       const fallback = getPrimaryDashboard(user);
+      console.log("useRequireAuth: Redirecting to", fallback);
       const timer = setTimeout(() => {
         router.replace(fallback);
       }, 100);
+      setIsLoading(false);
       return () => clearTimeout(timer);
     } else if (
       requiredUserType &&
       user?.userType &&
       user.userType !== requiredUserType
     ) {
+      console.log('❌ Wrong user type, redirecting to dashboard');
       const fallback = getPrimaryDashboard(user);
       const timer = setTimeout(() => {
         router.replace(fallback);
       }, 100);
+      setIsLoading(false);
       return () => clearTimeout(timer);
     }
     
     setIsLoading(false);
   }, [
     loading,
+    hasInitialized,
     isAuthenticated,
     hasRequiredRole,
+    requiredRole,
     requiredUserType,
     user?.userType,
+    user,
     redirectTo,
     router,
-    user,
   ]);
 
-  return { isLoading: isLoading || !hasChecked };
+  return { isLoading: isLoading || !hasChecked || !hasInitialized || loading };
 };
 
 export const useRequireUserType = (

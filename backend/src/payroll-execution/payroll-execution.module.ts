@@ -32,6 +32,7 @@ import { EmployeeProfileModule } from '../employee-profile/employee-profile.modu
 import { LeavesModule } from '../leaves/leaves.module';
 import { RecruitmentModule } from '../recruitment/recruitment.module';
 import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
+import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profil
       { name: terminationAndResignationBenefits.name, schema: terminationAndResignationBenefitsSchema },
       { name: employeePenalties.name, schema: employeePenaltiesSchema },
       { name: EmployeeSystemRole.name, schema: EmployeeSystemRoleSchema },
+      { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
     ]),
   ],
   controllers: [PayrollExecutionController],

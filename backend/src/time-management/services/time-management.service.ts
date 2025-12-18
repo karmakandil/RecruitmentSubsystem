@@ -689,23 +689,113 @@ export class TimeManagementService {
     console.log('📊 Records found with date filter:', records.length);
     console.log('📋 Sample records:', JSON.stringify(records.slice(0, 1), null, 2));
 
+    // Fetch any open correction requests for these records (so UI can show CORRECTION_PENDING)
+    const recordIds = records.map((r: any) => r?._id).filter(Boolean);
+    const openCorrectionStatuses = [
+      CorrectionRequestStatus.SUBMITTED,
+      CorrectionRequestStatus.IN_REVIEW,
+      CorrectionRequestStatus.ESCALATED,
+    ];
+    const openCorrections = recordIds.length
+      ? await this.correctionRequestModel
+          .find({
+            attendanceRecord: { $in: recordIds },
+            status: { $in: openCorrectionStatuses },
+          })
+          .select('_id attendanceRecord status reason')
+          .exec()
+      : [];
+    const correctionByRecordId = new Map<string, any>();
+    for (const c of openCorrections as any[]) {
+      const rid = c?.attendanceRecord?.toString?.() ?? c?.attendanceRecord;
+      if (rid && !correctionByRecordId.has(rid)) {
+        correctionByRecordId.set(rid, c);
+      }
+    }
+
     // Map to simple format
     const mappedRecords = records.map((record: any) => {
-      const clockInPunch = record.punches?.find((p: any) => p.type === PunchType.IN);
-      const clockOutPunch = [...(record.punches || [])].reverse().find((p: any) => p.type === PunchType.OUT);
+      const punchesRaw = Array.isArray(record.punches) ? record.punches : [];
+      // Some bad records have nested punches like `[[]]` — flatten one level and drop non-objects
+      const punches = (punchesRaw as any[])
+        .flatMap((p: any) => (Array.isArray(p) ? p : [p]))
+        .filter((p: any) => !!p && typeof p === 'object');
+
+      const normalizeType = (t: any): 'IN' | 'OUT' | 'UNKNOWN' => {
+        if (t === PunchType.IN) return 'IN';
+        if (t === PunchType.OUT) return 'OUT';
+        if (typeof t === 'string') {
+          const u = t.trim().toUpperCase();
+          if (u === 'IN' || u === 'CLOCK_IN') return 'IN';
+          if (u === 'OUT' || u === 'CLOCK_OUT') return 'OUT';
+        }
+        return 'UNKNOWN';
+      };
+
+      const punchesSorted = punches
+        .map((p: any) => ({
+          ...p,
+          time: p?.time ? new Date(p.time) : p?.time,
+        }))
+        .filter((p: any) => p?.time && !isNaN(new Date(p.time).getTime()))
+        .sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+      const clockInPunch =
+        punchesSorted.find((p: any) => normalizeType(p.type) === 'IN') ||
+        undefined;
+      const clockOutPunch =
+        punchesSorted
+          .slice()
+          .reverse()
+          .find((p: any) => normalizeType(p.type) === 'OUT') || undefined;
+
+      // Fallbacks: if types are inconsistent/missing, still show first/last punch times
+      const fallbackClockIn = punchesSorted[0];
+      const fallbackClockOut =
+        punchesSorted.length > 1 ? punchesSorted[punchesSorted.length - 1] : undefined;
       
-      // Extract date from _id ObjectId timestamp
-      const recordDate = record._id.getTimestamp();
+      // Prefer deriving the record "date" from the actual punches, not the MongoDB _id timestamp.
+      // `_id.getTimestamp()` is when the record was created (import/manual entry time), which can differ
+      // from the punch time, leading to confusing UI (e.g., Date=17/12 but ClockIn=25/12).
+      const recordDate =
+        clockInPunch?.time ||
+        clockOutPunch?.time ||
+        fallbackClockIn?.time ||
+        record._id.getTimestamp();
+
+      const openCorrection = correctionByRecordId.get(record._id.toString());
+      const derivedHasMissedPunch =
+        typeof record.hasMissedPunch === 'boolean'
+          ? record.hasMissedPunch
+          : punchesSorted.length > 0 && punchesSorted.length % 2 !== 0;
 
       return {
+        _id: record._id,
         id: record._id,
+        employeeId: record.employeeId?.toString?.() ?? record.employeeId,
         date: recordDate,
-        clockIn: clockInPunch?.time,
-        clockOut: clockOutPunch?.time,
-        punches: record.punches || [],
+        clockIn: (clockInPunch?.time || fallbackClockIn?.time) ?? undefined,
+        clockOut: (clockOutPunch?.time || fallbackClockOut?.time) ?? undefined,
+        punches,
         totalWorkMinutes: record.totalWorkMinutes || 0,
         totalWorkHours: Math.round((record.totalWorkMinutes || 0) / 60 * 100) / 100,
-        status: clockInPunch ? 'PRESENT' : 'ABSENT',
+        hasMissedPunch: derivedHasMissedPunch,
+        exceptionIds: (record.exceptionIds || []).map((x: any) => x?.toString?.() ?? x),
+        finalisedForPayroll: !!record.finalisedForPayroll,
+        status: openCorrection
+          ? 'CORRECTION_PENDING'
+          : punchesSorted.length === 0
+            ? 'INCOMPLETE'
+            : derivedHasMissedPunch
+              ? 'INCOMPLETE'
+              : 'COMPLETE',
+        correctionRequest: openCorrection
+          ? {
+              id: openCorrection._id,
+              status: openCorrection.status,
+              reason: openCorrection.reason,
+            }
+          : undefined,
       };
     });
 
@@ -722,8 +812,24 @@ export class TimeManagementService {
     createAttendanceRecordDto: any,
     currentUserId: string,
   ) {
+    const sanitizePunches = (raw: any): Array<{ type: any; time: Date }> => {
+      const arr = Array.isArray(raw) ? raw : [];
+      const flattened = arr.flatMap((p: any) => (Array.isArray(p) ? p : [p]));
+      const normalized = flattened
+        .map((p: any) => {
+          const type = p?.type;
+          const timeRaw = p?.time;
+          const time = timeRaw instanceof Date ? timeRaw : new Date(timeRaw);
+          if (!type || !timeRaw || isNaN(time.getTime())) return null;
+          return { type, time };
+        })
+        .filter(Boolean) as Array<{ type: any; time: Date }>;
+      return normalized;
+    };
+
     const newAttendanceRecord = new this.attendanceRecordModel({
       ...createAttendanceRecordDto,
+      punches: sanitizePunches(createAttendanceRecordDto?.punches),
       createdBy: currentUserId,
       updatedBy: currentUserId,
     });
@@ -748,14 +854,70 @@ export class TimeManagementService {
     updateAttendanceRecordDto: any,
     currentUserId: string,
   ) {
-    return this.attendanceRecordModel.findByIdAndUpdate(
+    const sanitizePunches = (raw: any): Array<{ type: any; time: Date }> => {
+      const arr = Array.isArray(raw) ? raw : [];
+      const flattened = arr.flatMap((p: any) => (Array.isArray(p) ? p : [p]));
+      const normalized = flattened
+        .map((p: any) => {
+          const type = p?.type;
+          const timeRaw = p?.time;
+          const time = timeRaw instanceof Date ? timeRaw : new Date(timeRaw);
+          if (!type || !timeRaw || isNaN(time.getTime())) return null;
+          return { type, time };
+        })
+        .filter(Boolean) as Array<{ type: any; time: Date }>;
+      return normalized;
+    };
+
+    const dto = {
+      ...updateAttendanceRecordDto,
+      ...(updateAttendanceRecordDto?.punches
+        ? { punches: sanitizePunches(updateAttendanceRecordDto.punches) }
+        : {}),
+    };
+
+    const updated = await this.attendanceRecordModel.findByIdAndUpdate(
       id,
       {
-        ...updateAttendanceRecordDto,
+        ...dto,
         updatedBy: currentUserId,
       },
       { new: true },
     );
+    // If this record had an open correction request, treat this manual update as resolving it.
+    // This keeps payroll finalisation and UI status consistent with the correction workflow.
+    try {
+      const openCorrectionStatuses = [
+        CorrectionRequestStatus.SUBMITTED,
+        CorrectionRequestStatus.IN_REVIEW,
+        CorrectionRequestStatus.ESCALATED,
+      ];
+      await this.correctionRequestModel.updateMany(
+        { attendanceRecord: id, status: { $in: openCorrectionStatuses } },
+        {
+          status: CorrectionRequestStatus.APPROVED,
+          reason:
+            updateAttendanceRecordDto?.reason ||
+            'Resolved via manual attendance update',
+          updatedBy: currentUserId,
+        },
+      );
+
+      const punchesRaw = Array.isArray((updated as any)?.punches)
+        ? (updated as any).punches
+        : [];
+      const punches = (punchesRaw as any[])
+        .flatMap((p: any) => (Array.isArray(p) ? p : [p]))
+        .filter((p: any) => !!p && typeof p === 'object');
+      const complete = punches.length > 0 && punches.length % 2 === 0;
+      await this.attendanceRecordModel.findByIdAndUpdate(id, {
+        finalisedForPayroll: complete,
+      });
+    } catch (e) {
+      // best-effort; don't block update
+    }
+
+    return updated;
   }
 
   // 5. Submit a correction request for an attendance record
@@ -772,7 +934,18 @@ export class TimeManagementService {
       createdBy: currentUserId,
       updatedBy: currentUserId,
     });
-    return newCorrectionRequest.save();
+    const saved = await newCorrectionRequest.save();
+    // Mark record as not finalised while correction is pending (schema comment)
+    try {
+      await this.attendanceRecordModel.findByIdAndUpdate(
+        submitCorrectionRequestDto.attendanceRecord,
+        { finalisedForPayroll: false },
+        { new: false },
+      );
+    } catch (e) {
+      // best-effort; do not block request creation
+    }
+    return saved;
   }
 
   // // 6. Get all correction requests by employee (filter by status if needed)
@@ -876,6 +1049,31 @@ export class TimeManagementService {
       throw new Error('Correction request not found');
     }
 
+    // If no other open correction requests remain for this attendance record, re-finalise it
+    try {
+      const openCorrectionStatuses = [
+        CorrectionRequestStatus.SUBMITTED,
+        CorrectionRequestStatus.IN_REVIEW,
+        CorrectionRequestStatus.ESCALATED,
+      ];
+      const attendanceRecordId =
+        (correctionRequest as any).attendanceRecord?.toString?.() ??
+        (correctionRequest as any).attendanceRecord;
+      if (attendanceRecordId) {
+        const stillOpen = await this.correctionRequestModel.exists({
+          attendanceRecord: attendanceRecordId,
+          status: { $in: openCorrectionStatuses },
+        });
+        if (!stillOpen) {
+          await this.attendanceRecordModel.findByIdAndUpdate(attendanceRecordId, {
+            finalisedForPayroll: true,
+          });
+        }
+      }
+    } catch (e) {
+      // best-effort; approval should still succeed
+    }
+
     return correctionRequest;
   }
 
@@ -899,6 +1097,31 @@ export class TimeManagementService {
 
     if (!correctionRequest) {
       throw new Error('Correction request not found');
+    }
+
+    // If no other open correction requests remain for this attendance record, re-finalise it
+    try {
+      const openCorrectionStatuses = [
+        CorrectionRequestStatus.SUBMITTED,
+        CorrectionRequestStatus.IN_REVIEW,
+        CorrectionRequestStatus.ESCALATED,
+      ];
+      const attendanceRecordId =
+        (correctionRequest as any).attendanceRecord?.toString?.() ??
+        (correctionRequest as any).attendanceRecord;
+      if (attendanceRecordId) {
+        const stillOpen = await this.correctionRequestModel.exists({
+          attendanceRecord: attendanceRecordId,
+          status: { $in: openCorrectionStatuses },
+        });
+        if (!stillOpen) {
+          await this.attendanceRecordModel.findByIdAndUpdate(attendanceRecordId, {
+            finalisedForPayroll: true,
+          });
+        }
+      }
+    } catch (e) {
+      // best-effort; rejection should still succeed
     }
 
     return correctionRequest;
@@ -2735,7 +2958,10 @@ export class TimeManagementService {
       employeeId: recordPunchWithMetadataDto.employeeId,
       punches: punchesWithDates,
       totalWorkMinutes: this.calculateWorkMinutesFromPunches(punchesWithDates),
-      hasMissedPunch: recordPunchWithMetadataDto.punches.length % 2 !== 0,
+      // Do NOT flag missed punches here: a single clock-in naturally makes punch count odd.
+      // Missed punches should be flagged by the missed-punch detection flow (end-of-day / policy check),
+      // or via explicit flagging endpoints.
+      hasMissedPunch: false,
       finalisedForPayroll: false,
       createdBy: currentUserId,
       updatedBy: currentUserId,
@@ -3640,10 +3866,34 @@ export class TimeManagementService {
     for (const record of attendanceRecords) {
       // Check if there's an odd number of punches (missing clock-out)
       // or if there are no punches at all
-      if (record.punches.length === 0 || record.punches.length % 2 !== 0) {
+      // Avoid duplicating alerts if it was already flagged earlier
+      if (
+        !record.hasMissedPunch &&
+        (record.punches.length === 0 || record.punches.length % 2 !== 0)
+      ) {
         record.hasMissedPunch = true;
         (record as any).updatedBy = currentUserId;
         await record.save();
+
+        const missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT' =
+          record.punches.length === 0 ? 'CLOCK_IN' : 'CLOCK_OUT';
+
+        // Send alerts to employee + line manager + payroll officers
+        try {
+          await this.notificationService.flagMissedPunchWithNotificationAuto(
+            record._id?.toString(),
+            record.employeeId?.toString(),
+            missedPunchType,
+            now,
+            currentUserId,
+          );
+        } catch (err) {
+          // Keep the record flagged even if notifications fail
+          console.error(
+            `[MISSED_PUNCH] Failed to send notifications for record ${record._id}:`,
+            err,
+          );
+        }
 
         missedPunchRecords.push(record);
       }
@@ -5672,8 +5922,16 @@ export class TimeManagementService {
 
   /**
    * Import attendance punches from a CSV string.
-   * The CSV is expected to have a header row with at least:
-   * employeeId, clockInTime, clockOutTime (optional), deviceId, source
+   * Supported CSV formats:
+   *
+   * 1) Punch rows (recommended):
+   *    employeeId, punchType, time
+   *    - punchType: IN | OUT
+   *    - time: ISO string
+   *    The importer groups punches by employee + day and creates one AttendanceRecord per day.
+   *
+   * 2) Legacy rows:
+   *    employeeId, clockInTime, clockOutTime (optional), deviceId, source
    *
    * We intentionally keep this logic self-contained and only use existing
    * models/enums. No new schemas or enums are introduced.
@@ -5700,14 +5958,21 @@ export class TimeManagementService {
       header.findIndex((h) => h.toLowerCase() === name.toLowerCase());
 
     const idxEmployeeId = getIndex('employeeId');
+    const idxPunchType = getIndex('punchType');
+    const idxTime = getIndex('time');
+
     const idxClockIn = getIndex('clockInTime');
     const idxClockOut = getIndex('clockOutTime');
     const idxDeviceId = getIndex('deviceId');
     const idxSource = getIndex('source');
 
-    if (idxEmployeeId === -1 || idxClockIn === -1) {
+    const isPunchRowFormat =
+      idxEmployeeId !== -1 && idxPunchType !== -1 && idxTime !== -1;
+    const isLegacyFormat = idxEmployeeId !== -1 && idxClockIn !== -1;
+
+    if (!isPunchRowFormat && !isLegacyFormat) {
       throw new BadRequestException(
-        'CSV header must include at least employeeId and clockInTime columns',
+        'CSV header must be either: employeeId,punchType,time OR employeeId,clockInTime,(clockOutTime optional)',
       );
     }
 
@@ -5719,76 +5984,97 @@ export class TimeManagementService {
     let missedPunches = 0;
     const errors: Array<{ line: number; error: string }> = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const raw = lines[i];
-      if (!raw) continue;
-      processed++;
+    if (isPunchRowFormat) {
+      // Group punch rows by employee + day
+      const grouped = new Map<
+        string,
+        { employeeId: string; punches: Array<{ type: PunchType; time: Date }> }
+      >();
 
-      const cols = raw.split(',').map((c) => c.trim());
-      const employeeId = cols[idxEmployeeId];
-      const clockInRaw = cols[idxClockIn];
-      const clockOutRaw = idxClockOut !== -1 ? cols[idxClockOut] || '' : '';
-      const deviceId = idxDeviceId !== -1 ? cols[idxDeviceId] || undefined : undefined;
-      const source = idxSource !== -1 ? cols[idxSource] || 'BIOMETRIC' : 'BIOMETRIC';
+      for (let i = 1; i < lines.length; i++) {
+        const raw = lines[i];
+        if (!raw) continue;
+        processed++;
 
-      try {
-        if (!employeeId || !clockInRaw) {
-          throw new Error('Missing employeeId or clockInTime');
-        }
+        const cols = raw.split(',').map((c) => c.trim());
+        const employeeId = cols[idxEmployeeId];
+        const punchTypeRaw = cols[idxPunchType];
+        const timeRaw = cols[idxTime];
 
-        if (!Types.ObjectId.isValid(employeeId)) {
-          throw new Error('Invalid employeeId format (expected MongoDB ObjectId)');
-        }
-
-        const clockIn = new Date(clockInRaw);
-        if (isNaN(clockIn.getTime())) {
-          throw new Error(`Invalid clockInTime: ${clockInRaw}`);
-        }
-
-        let clockOut: Date | null = null;
-        if (clockOutRaw) {
-          const parsed = new Date(clockOutRaw);
-          if (isNaN(parsed.getTime())) {
-            throw new Error(`Invalid clockOutTime: ${clockOutRaw}`);
+        try {
+          if (!employeeId || !punchTypeRaw || !timeRaw) {
+            throw new Error('Missing employeeId, punchType, or time');
           }
-          clockOut = parsed;
+          if (!Types.ObjectId.isValid(employeeId)) {
+            throw new Error('Invalid employeeId format (expected MongoDB ObjectId)');
+          }
+
+          const punchTypeUpper = punchTypeRaw.toUpperCase();
+          const punchType =
+            punchTypeUpper === 'IN'
+              ? PunchType.IN
+              : punchTypeUpper === 'OUT'
+                ? PunchType.OUT
+                : null;
+          if (!punchType) {
+            throw new Error(`Invalid punchType: ${punchTypeRaw} (expected IN or OUT)`);
+          }
+
+          const punchTime = new Date(timeRaw);
+          if (isNaN(punchTime.getTime())) {
+            throw new Error(`Invalid time: ${timeRaw}`);
+          }
+
+          const dayKey = punchTime.toISOString().split('T')[0]; // UTC day
+          const key = `${employeeId}|${dayKey}`;
+          if (!grouped.has(key)) {
+            grouped.set(key, { employeeId, punches: [] });
+          }
+          grouped.get(key)!.punches.push({ type: punchType, time: punchTime });
+        } catch (error: any) {
+          errors.push({ line: i + 1, error: error.message || 'Unknown error' });
         }
+      }
 
-        const punches: Array<{ type: PunchType; time: Date; source?: string; deviceId?: string }> = [];
-        punches.push({
-          type: PunchType.IN,
-          time: clockIn,
-          source,
-          deviceId,
-        } as any);
+      for (const [, group] of grouped.entries()) {
+        // Sort punches by time
+        const punchesSorted = group.punches
+          .slice()
+          .sort((a, b) => a.time.getTime() - b.time.getTime());
 
-        if (clockOut) {
-          punches.push({
-            type: PunchType.OUT,
-            time: clockOut,
-            source,
-            deviceId,
-          } as any);
-        }
-
+        // Compute total minutes by pairing IN->OUT
         let totalWorkMinutes = 0;
-        if (clockIn && clockOut) {
-          totalWorkMinutes = Math.max(
-            0,
-            Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)),
-          );
+        let openIn: Date | null = null;
+        let hasUnpairedOut = false;
+
+        for (const p of punchesSorted) {
+          if (p.type === PunchType.IN) {
+            openIn = p.time;
+          } else {
+            // OUT
+            if (openIn) {
+              totalWorkMinutes += Math.max(
+                0,
+                Math.round((p.time.getTime() - openIn.getTime()) / (1000 * 60)),
+              );
+              openIn = null;
+            } else {
+              hasUnpairedOut = true;
+            }
+          }
         }
 
-        const hasMissedPunch = !clockOut;
-        if (hasMissedPunch) {
-          missedPunches++;
-        }
+        const hasMissedPunch =
+          punchesSorted.length === 0 ||
+          !!openIn ||
+          hasUnpairedOut ||
+          punchesSorted[0]?.type === PunchType.OUT;
 
-        // For now, create a new attendance record per CSV row.
-        // This avoids changing existing models or adding complex merging rules.
+        if (hasMissedPunch) missedPunches++;
+
         const record = new this.attendanceRecordModel({
-          employeeId: new Types.ObjectId(employeeId),
-          punches: punches.map((p) => ({ type: p.type, time: p.time })),
+          employeeId: new Types.ObjectId(group.employeeId),
+          punches: punchesSorted.map((p) => ({ type: p.type, time: p.time })),
           totalWorkMinutes,
           hasMissedPunch,
           exceptionIds: [],
@@ -5797,11 +6083,144 @@ export class TimeManagementService {
 
         await record.save();
         created++;
-      } catch (error: any) {
-        errors.push({
-          line: i + 1,
-          error: error.message || 'Unknown error',
-        });
+
+        if (hasMissedPunch) {
+          // Decide which punch is missing to label the alert
+          const missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT' =
+            punchesSorted[0]?.type === PunchType.OUT || hasUnpairedOut
+              ? 'CLOCK_IN'
+              : 'CLOCK_OUT';
+
+          const notifyAt =
+            missedPunchType === 'CLOCK_IN'
+              ? punchesSorted[0]?.time || new Date()
+              : punchesSorted[punchesSorted.length - 1]?.time || new Date();
+
+          try {
+            await this.notificationService.flagMissedPunchWithNotificationAuto(
+              record._id?.toString(),
+              group.employeeId,
+              missedPunchType,
+              notifyAt,
+              currentUserId,
+            );
+          } catch (notifyErr) {
+            console.error(
+              `[ATTENDANCE_CSV_IMPORT] Failed to send missed punch alert for record ${record._id}:`,
+              notifyErr,
+            );
+          }
+        }
+      }
+    } else {
+      // Legacy format: employeeId, clockInTime, clockOutTime(optional), deviceId, source
+      for (let i = 1; i < lines.length; i++) {
+        const raw = lines[i];
+        if (!raw) continue;
+        processed++;
+
+        const cols = raw.split(',').map((c) => c.trim());
+        const employeeId = cols[idxEmployeeId];
+        const clockInRaw = cols[idxClockIn];
+        const clockOutRaw = idxClockOut !== -1 ? cols[idxClockOut] || '' : '';
+        const deviceId =
+          idxDeviceId !== -1 ? cols[idxDeviceId] || undefined : undefined;
+        const source =
+          idxSource !== -1 ? cols[idxSource] || 'BIOMETRIC' : 'BIOMETRIC';
+
+        try {
+          if (!employeeId || !clockInRaw) {
+            throw new Error('Missing employeeId or clockInTime');
+          }
+
+          if (!Types.ObjectId.isValid(employeeId)) {
+            throw new Error('Invalid employeeId format (expected MongoDB ObjectId)');
+          }
+
+          const clockIn = new Date(clockInRaw);
+          if (isNaN(clockIn.getTime())) {
+            throw new Error(`Invalid clockInTime: ${clockInRaw}`);
+          }
+
+          let clockOut: Date | null = null;
+          if (clockOutRaw) {
+            const parsed = new Date(clockOutRaw);
+            if (isNaN(parsed.getTime())) {
+              throw new Error(`Invalid clockOutTime: ${clockOutRaw}`);
+            }
+            clockOut = parsed;
+          }
+
+          const punches: Array<{
+            type: PunchType;
+            time: Date;
+            source?: string;
+            deviceId?: string;
+          }> = [];
+          punches.push({
+            type: PunchType.IN,
+            time: clockIn,
+            source,
+            deviceId,
+          } as any);
+
+          if (clockOut) {
+            punches.push({
+              type: PunchType.OUT,
+              time: clockOut,
+              source,
+              deviceId,
+            } as any);
+          }
+
+          let totalWorkMinutes = 0;
+          if (clockIn && clockOut) {
+            totalWorkMinutes = Math.max(
+              0,
+              Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)),
+            );
+          }
+
+          const hasMissedPunch = !clockOut;
+          if (hasMissedPunch) {
+            missedPunches++;
+          }
+
+          const record = new this.attendanceRecordModel({
+            employeeId: new Types.ObjectId(employeeId),
+            punches: punches.map((p) => ({ type: p.type, time: p.time })),
+            totalWorkMinutes,
+            hasMissedPunch,
+            exceptionIds: [],
+            finalisedForPayroll: false,
+          });
+
+          await record.save();
+          created++;
+
+          // If this row represents a missed punch (missing clock-out), immediately flag + notify
+          if (hasMissedPunch) {
+            try {
+              await this.notificationService.flagMissedPunchWithNotificationAuto(
+                record._id?.toString(),
+                employeeId,
+                'CLOCK_OUT',
+                clockIn,
+                currentUserId,
+              );
+            } catch (notifyErr) {
+              console.error(
+                `[ATTENDANCE_CSV_IMPORT] Failed to send missed punch alert for record ${record._id}:`,
+                notifyErr,
+              );
+            }
+          }
+        } catch (error: any) {
+          errors.push({
+            line: i + 1,
+            error: error.message || 'Unknown error',
+          });
+        }
       }
     }
 

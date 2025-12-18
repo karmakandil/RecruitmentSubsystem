@@ -66,6 +66,9 @@ export class EmployeeProfileController {
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_ADMIN,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
   )
   async findAll(@Query() query: QueryEmployeeDto, @CurrentUser() user: any) {
     const result = await this.employeeProfileService.findAll(
@@ -203,6 +206,31 @@ export class EmployeeProfileController {
       data: employees,
     };
   }
+
+ 
+  // CHANGED BY RECRUITMENT SUBSYSTEM - Talent Pool Feature (BR: Storage/upload of applications with resumes)
+  // This route was moved here from after @Get(':id') to fix route matching conflicts.
+  // The Talent Pool feature requires this endpoint to be accessible at /employee-profile/candidate
+  // without being intercepted by the @Get(':id') route handler.
+  // Purpose: Allows HR staff to browse and search all candidates with resumes in the organization's talent pool
+  // Related BR: "The system must support the storage/upload of applications with resumes, which creates the organization's talent pool"
+  @Get('candidate')
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.RECRUITER,
+  )
+  async findAllCandidates(@Query() query: any) {
+    const candidates =
+      await this.employeeProfileService.findAllCandidatesWithFilters(query);
+    return {
+      message: 'Candidates retrieved successfully',
+      data: candidates,
+    };
+  }
+//lghayet hena
+
 
   @Get(':id')
   async findOne(@Param('id') id: string) {
@@ -367,7 +395,7 @@ export class EmployeeProfileController {
     };
   }
 
-  @Get('candidate')
+  /*@Get('candidate')
   @Roles(
     SystemRole.SYSTEM_ADMIN,
     SystemRole.HR_MANAGER,
@@ -381,7 +409,7 @@ export class EmployeeProfileController {
       message: 'Candidates retrieved successfully',
       data: candidates,
     };
-  }
+  }*/
 
   @Get('candidate/:id')
   @Roles(

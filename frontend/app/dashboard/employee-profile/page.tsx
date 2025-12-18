@@ -281,6 +281,87 @@ export default function EmployeeProfileDashboardPage() {
             </Card>
           )}
 
+          {/* ADMIN/SYSTEM TOOLS - Only for HR Admin */}
+          {isHRAdmin && (
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>Admin</CardTitle>
+                <CardDescription>
+                  System administration and configuration
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/dashboard/admin"
+                  className="block w-full text-center bg-gray-600 text-white py-3 px-4 rounded-md hover:bg-gray-700 transition font-medium"
+                >
+                  Admin Console
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* HR Admin/Manager Features */}
+          {canManageAll && (
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>Employee Management</CardTitle>
+                <p className="text-sm text-gray-500">
+                  {isHRAdmin ? "HR Admin" : "HR Manager"} Access
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Link
+                  href="/dashboard/employee-profile/admin/search"
+                  className="block w-full text-center bg-purple-600 text-white py-2 px-4 rounded hover:bg-purple-700 transition"
+                >
+                  Search Employees
+                </Link>
+                {canApprove && (
+                  <Link
+                    href="/dashboard/employee-profile/admin/approvals"
+                    className="block w-full text-center border border-purple-600 text-purple-600 py-2 px-4 rounded hover:bg-purple-50 transition"
+                  >
+                    Approval Queue ({isHRAdmin ? "Admin" : "Manager"})
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ============================================================
+              CHANGED: Fixed JSX syntax errors
+              Issue: Missing closing tags for Link, CardContent, and Card
+              - Link tag starting at line 345 was never closed
+              - CardContent was never closed
+              - Card (Recruitment) was never closed
+              - Performance Card was incorrectly nested inside Link tag
+              Fix: Properly closed all tags and separated Performance Card
+              Date: Recent fix for React/JSX compilation errors
+              ============================================================ */}
+          {/* Recruitment - Show for all employees and department heads */}
+          <Card className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle>Recruitment</CardTitle>
+              <CardDescription>
+                {isDepartmentHead
+                  ? "Manage department interviews and clearance"
+                  : isEmployee
+                  ? "View referrals and manage resignation"
+                  : "Recruitment management"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                href="/dashboard/recruitment"
+                className="block w-full text-center bg-indigo-600 text-white py-2 px-4 rounded hover:bg-indigo-700 transition"
+              >
+                Open Recruitment
+              </Link>
+            </CardContent>
+          </Card>
+
+          {/* Performance - Show for all employees */}
           <Card>
             <CardHeader>
               <CardTitle>Performance</CardTitle>

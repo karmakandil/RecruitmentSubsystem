@@ -80,6 +80,14 @@ export class EmployeeProfileService {
       }
     }
 
+    // ============================================================
+    // CHANGED: Fixed duplicate variable declaration error
+    // Issue: hashedPassword was declared twice (lines 84 and 139)
+    // Fix: Removed duplicate 'let' declaration on line 139,
+    //      changed to assignment only, and added check to prevent
+    //      overwriting password already set from candidate logic
+    // Date: Recent fix for TypeScript compilation error
+    // ============================================================
     // Handle candidate password if candidateId is provided
     let hashedPassword: string | undefined;
     let candidateToUpdate: CandidateDocument | null = null;
@@ -115,8 +123,45 @@ export class EmployeeProfileService {
       hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
     }
 
-    // Generate employee number
-    const employeeNumber = await this.generateEmployeeNumber();
+    // ONB-004/ONB-005: Use provided employee number if given, otherwise generate one
+    let employeeNumber: string;
+    if (createEmployeeDto.employeeNumber) {
+      // Check if this employee number already exists
+      const existingWithNumber = await this.employeeModel
+        .findOne({ employeeNumber: createEmployeeDto.employeeNumber })
+        .exec();
+      if (existingWithNumber) {
+        throw new ConflictException(
+          `Employee number ${createEmployeeDto.employeeNumber} already exists. Please use a different employee number.`,
+        );
+      }
+      employeeNumber = createEmployeeDto.employeeNumber;
+    } else {
+      // Auto-generate employee number
+      employeeNumber = await this.generateEmployeeNumber();
+    }
+
+    // ============================================================
+    // CHANGED: Fixed duplicate variable declaration
+    // Original: Had duplicate 'let hashedPassword' declaration here
+    // Fix: Removed 'let' keyword, changed to assignment only,
+    //      and added condition to only process if not already set above
+    // ============================================================
+    // Hash password if provided and not already handled above
+    // Check if password is already hashed (bcrypt hashes start with $2a$ or $2b$)
+    // This allows transferring already-hashed passwords from candidate → employee
+    // Only process if hashedPassword wasn't already set from candidate logic above
+    if (!hashedPassword && createEmployeeDto.password) {
+      const isAlreadyHashed = createEmployeeDto.password.startsWith('$2a$') || 
+                               createEmployeeDto.password.startsWith('$2b$');
+      if (isAlreadyHashed) {
+        // Password is already hashed (e.g., transferred from candidate)
+        hashedPassword = createEmployeeDto.password;
+      } else {
+        // Plain text password - hash it
+        hashedPassword = await bcrypt.hash(createEmployeeDto.password, 10);
+      }
+    }
 
     // Create full name
     const fullName = [
@@ -219,8 +264,54 @@ export class EmployeeProfileService {
       this.employeeModel.countDocuments(filter).exec(),
     ]);
 
+    // Fetch system roles for all employees and attach them
+    const employeeIds = employees.map((emp: any) => {
+      // Handle both ObjectId and string formats
+      return emp._id instanceof Types.ObjectId ? emp._id : new Types.ObjectId(emp._id);
+    });
+    
+    const systemRoles = await this.systemRoleModel
+      .find({
+        employeeProfileId: { $in: employeeIds },
+        isActive: true,
+      })
+      .lean()
+      .exec();
+
+    // Create a map of employeeId -> system roles for quick lookup
+    const rolesMap = new Map<string, { roles: SystemRole[]; permissions: string[]; isActive: boolean }>();
+    systemRoles.forEach((role: any) => {
+      const empId = role.employeeProfileId 
+        ? (role.employeeProfileId instanceof Types.ObjectId 
+            ? role.employeeProfileId.toString() 
+            : String(role.employeeProfileId))
+        : null;
+      if (empId) {
+        rolesMap.set(empId, {
+          roles: role.roles || [],
+          permissions: role.permissions || [],
+          isActive: role.isActive,
+        });
+      }
+    });
+
+    // Attach system roles to each employee
+    const employeesWithRoles = employees.map((emp: any) => {
+      const empId = emp._id instanceof Types.ObjectId 
+        ? emp._id.toString() 
+        : String(emp._id);
+      const systemRole = rolesMap.get(empId);
+      return {
+        ...emp,
+        systemRoles: systemRole
+          ? systemRole.roles.map((role: SystemRole) => ({ role }))
+          : [],
+        roles: systemRole ? systemRole.roles : [],
+      };
+    });
+
     return {
-      data: employees,
+      data: employeesWithRoles,
       meta: {
         total,
         page,

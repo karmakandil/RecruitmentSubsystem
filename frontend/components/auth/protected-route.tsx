@@ -23,10 +23,15 @@ export function ProtectedRoute({
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Wait for loading to complete
-    if (loading) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    // Wait for mount and auth loading to complete
+    if (!mounted || loading) {
       setHasChecked(false);
       return;
     }
@@ -82,10 +87,10 @@ export function ProtectedRoute({
     }
 
     setIsAuthorized(true);
-  }, [user, loading, isAuthenticated, allowedRoles, requiredUserType, router, redirectTo]);
+  }, [mounted, user, loading, isAuthenticated, allowedRoles, requiredUserType, router, redirectTo]);
 
   // Show loading while checking auth or if not yet authorized
-  if (loading || !hasChecked || (!isAuthorized && hasChecked)) {
+  if (!mounted || loading || !hasChecked || (!isAuthorized && hasChecked)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

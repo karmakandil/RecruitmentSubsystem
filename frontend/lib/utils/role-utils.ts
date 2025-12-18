@@ -127,16 +127,19 @@ export function isAdmin(user: User | null): boolean {
   );
 }
 
+// CHANGED - Case-insensitive role matching for HR staff
 export function isHRStaff(user: User | null): boolean {
   if (!user) return false;
 
-  return user.roles.some((role) =>
-    [
-      SystemRole.HR_MANAGER,
-      SystemRole.HR_EMPLOYEE,
-      SystemRole.RECRUITER,
-      SystemRole.HR_ADMIN,
-    ].includes(role as SystemRole)
+  const hrRoles = [
+    "hr manager",
+    "hr employee", 
+    "recruiter",
+    "hr admin",
+  ];
+
+  return user.roles.some((role) => 
+    hrRoles.includes(String(role).toLowerCase())
   );
 }
 
@@ -166,8 +169,10 @@ export function getDashboardByRole(role: string): string {
       return "/dashboard/recruitment";
 
     case SystemRole.PAYROLL_MANAGER:
+      return "/dashboard/payroll-manager";
+
     case SystemRole.PAYROLL_SPECIALIST:
-      return "/dashboard/payroll";
+      return "/dashboard/payroll-specialist";
 
     case SystemRole.DEPARTMENT_HEAD:
     case SystemRole.DEPARTMENT_EMPLOYEE:
@@ -265,9 +270,9 @@ export function getPrimaryDashboard(user: User | null): string {
   if (roles.includes(SystemRole.SYSTEM_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_ADMIN)) return "/dashboard/admin";
   if (roles.includes(SystemRole.HR_MANAGER)) return "/dashboard/hr";
-  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard/payroll";
+  if (roles.includes(SystemRole.PAYROLL_MANAGER)) return "/dashboard/payroll-manager";
   if (roles.includes(SystemRole.PAYROLL_SPECIALIST))
-    return "/dashboard/payroll";
+    return "/dashboard/payroll-specialist";
   if (roles.includes(SystemRole.RECRUITER)) return "/dashboard/recruitment";
   if (roles.includes(SystemRole.DEPARTMENT_HEAD))
     return "/dashboard/employee-profile";
