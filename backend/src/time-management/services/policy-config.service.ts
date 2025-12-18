@@ -1478,4 +1478,55 @@ export class PolicyConfigService {
       .sort({ startDate: 1 })
       .exec();
   }
+
+  // ===== PERMISSION POLICY METHODS (In-memory storage, no schema) =====
+  private permissionPolicies: any[] = [];
+  private policyIdCounter = 1;
+
+  async createPermissionPolicy(data: any, currentUserId: string) {
+    const policy = {
+      _id: `policy_${this.policyIdCounter++}`,
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: currentUserId,
+    };
+    this.permissionPolicies.push(policy);
+    return policy;
+  }
+
+  async getPermissionPolicies(currentUserId: string) {
+    return this.permissionPolicies;
+  }
+
+  async getPermissionPolicyById(id: string, currentUserId: string) {
+    const policy = this.permissionPolicies.find((p) => p._id === id);
+    if (!policy) {
+      throw new Error('Permission policy not found');
+    }
+    return policy;
+  }
+
+  async updatePermissionPolicy(id: string, data: any, currentUserId: string) {
+    const index = this.permissionPolicies.findIndex((p) => p._id === id);
+    if (index === -1) {
+      throw new Error('Permission policy not found');
+    }
+    this.permissionPolicies[index] = {
+      ...this.permissionPolicies[index],
+      ...data,
+      updatedAt: new Date(),
+      updatedBy: currentUserId,
+    };
+    return this.permissionPolicies[index];
+  }
+
+  async deletePermissionPolicy(id: string, currentUserId: string) {
+    const index = this.permissionPolicies.findIndex((p) => p._id === id);
+    if (index === -1) {
+      throw new Error('Permission policy not found');
+    }
+    this.permissionPolicies.splice(index, 1);
+    return { message: 'Permission policy deleted successfully' };
+  }
 }
