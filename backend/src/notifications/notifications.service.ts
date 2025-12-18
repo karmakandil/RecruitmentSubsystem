@@ -250,24 +250,35 @@ export class NotificationsService {
 
     const notifications: any[] = [];
 
+    // Create individual notifications for each assignment per HR admin (for Manage button support)
     for (const hrAdminId of targetAdminIds) {
-      // Create summary message for HR Admin
-      const message =
-        `${expiringAssignments.length} shift assignment(s) expiring soon:\n` +
-        expiringAssignments
-          .map(
-            (a) =>
-              `- ${a.employeeName || a.employeeId}: ${a.shiftName || 'Shift'} expires in ${a.daysRemaining} days`,
-          )
-          .join('\n');
+      for (const assignment of expiringAssignments) {
+        const urgency =
+          assignment.daysRemaining <= 2
+            ? 'HIGH'
+            : assignment.daysRemaining <= 4
+              ? 'MEDIUM'
+              : 'LOW';
 
-      const notification = await this.notificationLogModel.create({
-        to: new Types.ObjectId(hrAdminId),
-        type: NotificationType.SHIFT_EXPIRY_BULK_ALERT,
-        message,
-      });
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrAdminId),
+          type: NotificationType.SHIFT_EXPIRY_ALERT,
+          message: `Shift assignment for ${assignment.employeeName || 'Unknown'} on shift "${assignment.shiftName || 'Unknown'}" expires in ${assignment.daysRemaining} days`,
+          title: `Shift Expiry Alert - ${assignment.daysRemaining} days remaining`,
+          data: {
+            assignmentId: assignment.assignmentId,
+            employeeId: assignment.employeeId,
+            employeeName: assignment.employeeName || 'Unknown Employee',
+            shiftName: assignment.shiftName || 'Unknown Shift',
+            endDate: assignment.endDate.toISOString(),
+            daysRemaining: assignment.daysRemaining,
+            urgency,
+          },
+          isRead: false,
+        });
 
-      notifications.push(notification);
+        notifications.push(notification);
+      }
     }
 
     return {
@@ -316,6 +327,33 @@ export class NotificationsService {
       to: new Types.ObjectId(recipientId),
       type: NotificationType.SHIFT_RENEWAL_CONFIRMATION,
       message,
+    });
+
+    return notification;
+  }
+
+  /**
+   * Send reassignment confirmation notification
+   * Sent when a shift assignment is reassigned to a different employee
+   */
+  async sendShiftReassignmentConfirmation(
+    newEmployeeId: string,
+    shiftAssignmentId: string,
+    shiftName: string,
+    endDate: Date,
+  ) {
+    const message = `You have been assigned to shift "${shiftName}". Assignment ends on ${endDate.toISOString().split('T')[0]}.`;
+
+    const notification = await this.notificationLogModel.create({
+      to: new Types.ObjectId(newEmployeeId),
+      type: NotificationType.SHIFT_REASSIGNMENT_CONFIRMATION,
+      message,
+      title: 'Shift Assignment',
+      data: {
+        assignmentId: shiftAssignmentId,
+        shiftName,
+        endDate: endDate.toISOString(),
+      },
     });
 
     return notification;
@@ -700,6 +738,15 @@ export class NotificationsService {
       console.log(
         `Found ${allNotifications.length} notifications for user ${userId}`,
       );
+      
+      // Debug: Log the first few shift expiry notifications to verify data field
+      const shiftExpiryNotifs = allNotifications.filter(
+        (n: any) => n.type === 'SHIFT_EXPIRY_ALERT' || n.type === 'SHIFT_EXPIRY_BULK_ALERT'
+      );
+      console.log(`[DEBUG] Found ${shiftExpiryNotifs.length} shift expiry notifications`);
+      if (shiftExpiryNotifs.length > 0) {
+        console.log('[DEBUG] First shift expiry notification:', JSON.stringify(shiftExpiryNotifs[0], null, 2));
+      }
 
       // Ensure isRead field is always present (default to false if not set)
       const transformed = allNotifications.map((notif: any) => ({
@@ -762,7 +809,7 @@ export class NotificationsService {
    * Runs every day at 9:00 AM
    * This ensures HR admins are notified of shifts expiring within 7 days
    */
-  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  @Cron('0 21 21 * * *') // Every day at 4:50 PM
   async handleShiftExpiryNotifications() {
     try {
       console.log(
@@ -810,11 +857,13 @@ export class NotificationsService {
         .populate('employeeProfileId', 'firstName lastName')
         .exec();
       
-      const hrAdmins = hrAdminRoles.map(role => ({
-        _id: role.employeeProfileId,
-        firstName: (role.employeeProfileId as any)?.firstName,
-        lastName: (role.employeeProfileId as any)?.lastName,
-      }));
+      const hrAdmins = hrAdminRoles
+        .filter(role => role.employeeProfileId != null)
+        .map(role => ({
+          _id: role.employeeProfileId,
+          firstName: (role.employeeProfileId as any)?.firstName,
+          lastName: (role.employeeProfileId as any)?.lastName,
+        }));
 
       if (!hrAdmins || hrAdmins.length === 0) {
         console.log('[SCHEDULED TASK] No HR admins found to notify');
@@ -847,7 +896,7 @@ export class NotificationsService {
               : 'Unknown Shift';
 
           const notification = {
-            recipientId: hrAdmin._id.toString(),
+            to: hrAdmin._id,
             type: NotificationType.SHIFT_EXPIRY_ALERT,
             message: `Shift assignment for ${employeeName} on shift "${shiftName}" expires in ${daysRemaining} days`,
             title: `Shift Expiry Alert - ${daysRemaining} days remaining`,
@@ -874,6 +923,9 @@ export class NotificationsService {
       }
 
       if (notifications.length > 0) {
+        // Debug: Log the first notification's data before saving
+        console.log('[DEBUG] First notification to save:', JSON.stringify(notifications[0], null, 2));
+        
         await this.notificationLogModel.insertMany(notifications);
         console.log(
           `[SCHEDULED TASK] Successfully created ${notifications.length} notifications`,

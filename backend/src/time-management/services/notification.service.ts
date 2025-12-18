@@ -1032,6 +1032,39 @@ export class NotificationService {
   }
 
   /**
+   * Send reassignment confirmation notification
+   * Sent when a shift assignment is reassigned to a different employee
+   * Now uses unified notification service
+   */
+  async sendShiftReassignmentConfirmation(
+    newEmployeeId: string,
+    shiftAssignmentId: string,
+    shiftName: string,
+    endDate: Date,
+    currentUserId: string,
+  ) {
+    const notification = await this.unifiedNotificationsService.sendShiftReassignmentConfirmation(
+      newEmployeeId,
+      shiftAssignmentId,
+      shiftName,
+      endDate,
+    );
+    
+    await this.logTimeManagementChange(
+      'SHIFT_REASSIGNMENT_NOTIFICATION_SENT',
+      {
+        newEmployeeId,
+        shiftAssignmentId,
+        shiftName,
+        endDate,
+      },
+      currentUserId,
+    );
+    
+    return notification;
+  }
+
+  /**
    * Send archive notification
    * Sent when a shift assignment is archived/expired
    * Now uses unified notification service
