@@ -200,8 +200,20 @@ export const leavesApi = {
   },
 
   // Reset Leave Balances
-  resetLeaveBalances: async (criterion?: string): Promise<{ message: string }> => {
-    return await api.post("/leaves/reset-leave-balances", { criterion });
+  resetLeaveBalances: async (criterion?: string, force?: boolean): Promise<{ message: string }> => {
+    return await api.post("/leaves/reset-leave-balances", { criterion, force });
+  },
+
+  resetLeaveBalancesForTest: async (): Promise<{ message: string; success: boolean }> => {
+    return await api.post("/leaves/reset-leave-balances-test", {}, {
+      timeout: 60000, // 60 seconds timeout for bulk operations
+    });
+  },
+
+  addAllEmployeesToEntitlements: async (): Promise<{ message: string; success: boolean }> => {
+    return await api.post("/leaves/add-all-employees-to-entitlements", {}, {
+      timeout: 120000, // 120 seconds timeout for bulk operations
+    });
   },
 
   // ============================================================================
