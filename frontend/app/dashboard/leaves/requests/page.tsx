@@ -159,25 +159,50 @@ export default function LeaveRequestsPage() {
       return false;
     }
     
-    // Find the first HR Manager entry index
-    const firstHrIndex = request.approvalFlow.findIndex(
-      (approval) => approval.role === "HR Manager"
-    );
-    
-    if (firstHrIndex === -1) {
-      return false;
-    }
-    
     // Check if the initial approval role is "HR Manager" (department head request)
     // If so, HR Manager approval is the initial approval, not an override
     const initialApproval = request.approvalFlow[0];
-    if (initialApproval?.role === "HR Manager") {
+    if (initialApproval?.role === "HR Manager" && hrManagerEntries.length === 1) {
       return false; // This is initial approval for department head, not an override
     }
     
-    // Check if there's a Department Head decision before the first HR Manager entry
+    // Find the LAST HR Manager entry index (overrides are added at the end)
+    let lastHrIndex = -1;
+    for (let i = request.approvalFlow.length - 1; i >= 0; i--) {
+      if (request.approvalFlow[i].role === "HR Manager") {
+        lastHrIndex = i;
+        break;
+      }
+    }
+    
+    if (lastHrIndex === -1) {
+      return false;
+    }
+    
+    // If there are multiple HR Manager entries, the last one is likely an override
+    // (HR Manager added a new entry after already having one)
+    if (hrManagerEntries.length > 1) {
+      // Check if there's a Department Head or other supervisor decision before the last HR Manager entry
+      const supervisorEntry = request.approvalFlow
+        .slice(0, lastHrIndex)
+        .reverse()
+        .find((approval) => 
+          approval.role === "Departement_Head" || 
+          approval.role === "Department Head" ||
+          approval.role === "HR Manager" ||
+          approval.role?.toLowerCase().includes("department") ||
+          approval.role?.toLowerCase().includes("manager")
+        );
+      
+      // If there's a supervisor decision before the last HR Manager entry, it's an override
+      if (supervisorEntry) {
+        return true;
+      }
+    }
+    
+    // Check if there's a Department Head decision before the last HR Manager entry
     const deptHeadEntry = request.approvalFlow
-      .slice(0, firstHrIndex)
+      .slice(0, lastHrIndex)
       .reverse()
       .find((approval) => 
         approval.role === "Departement_Head" || 
@@ -187,11 +212,12 @@ export default function LeaveRequestsPage() {
     
     if (!deptHeadEntry) {
       // No Department Head decision before HR Manager = it's an override
-      return true;
+      // But only if there are multiple HR Manager entries (meaning one was added for override)
+      return hrManagerEntries.length > 1;
     }
     
-    // Get the HR Manager entry and Department Head status
-    const hrEntry = request.approvalFlow[firstHrIndex];
+    // Get the LAST HR Manager entry and Department Head status
+    const hrEntry = request.approvalFlow[lastHrIndex];
     const deptHeadStatus = deptHeadEntry.status?.toLowerCase();
     const hrStatus = hrEntry.status?.toLowerCase();
     
@@ -201,12 +227,18 @@ export default function LeaveRequestsPage() {
     // Override: Any status change by HR Manager
     
     // If both are approved and Department Head approved first = finalization (not override)
-    if (deptHeadStatus === "approved" && hrStatus === "approved") {
+    // But only if there's only one HR Manager entry
+    if (deptHeadStatus === "approved" && hrStatus === "approved" && hrManagerEntries.length === 1) {
       return false; // This is finalization, not override
     }
     
     // If statuses don't match = override (HR changed the decision)
-    return true;
+    if (deptHeadStatus !== hrStatus) {
+      return true;
+    }
+    
+    // If there are multiple HR Manager entries, it's an override (HR Manager added a new entry)
+    return hrManagerEntries.length > 1;
   };
 
   const getStatusColor = (status: string) => {
@@ -259,7 +291,7 @@ export default function LeaveRequestsPage() {
     });
   };
 
-  // All roles except RECRUITER and JOB_CANDIDATE can create leave requests
+  // All roles except JOB_CANDIDATE can create leave requests
   const allowedRoles = [
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
@@ -271,6 +303,7 @@ export default function LeaveRequestsPage() {
     SystemRole.LEGAL_POLICY_ADMIN,
     SystemRole.FINANCE_STAFF,
     SystemRole.HR_ADMIN,
+    SystemRole.RECRUITER,
   ];
 
   const accessDeniedFallback = (

@@ -20,7 +20,7 @@ export default function CreateLeaveRequestPage() {
   // Require authentication - all roles except RECRUITER and JOB_CANDIDATE can create leave requests
   useRequireAuth();
 
-  // All roles except RECRUITER and JOB_CANDIDATE can create leave requests
+  // All roles except JOB_CANDIDATE can create leave requests
   const allowedRoles = [
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
@@ -32,6 +32,7 @@ export default function CreateLeaveRequestPage() {
     SystemRole.LEGAL_POLICY_ADMIN,
     SystemRole.FINANCE_STAFF,
     SystemRole.HR_ADMIN,
+    SystemRole.RECRUITER,
   ];
 
   const accessDeniedFallback = (

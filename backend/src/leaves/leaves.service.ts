@@ -928,6 +928,44 @@ export class LeavesService {
           'Only CEO (John Doe) can approve/reject HR Manager leave requests.',
         );
       }
+    } else if (approvalRole === 'Manager') {
+      // For regular requests, verify the approver is the direct supervisor of the employee
+      // This allows any supervisor (Department Head, Payroll Manager, HR Manager, etc.) to approve
+      // as long as they are the direct supervisor (their primaryPositionId matches employee's supervisorPositionId)
+      const employeeId = leaveRequest.employeeId.toString();
+      const approverProfile = await this.employeeProfileModel.findById(managerId).exec();
+      const employeeProfile = await this.employeeProfileModel.findById(employeeId).exec();
+      
+      if (!approverProfile || !employeeProfile) {
+        throw new BadRequestException(
+          'Unable to verify supervisor relationship. Please ensure both employee and approver profiles exist.',
+        );
+      }
+      
+      const approverPositionId = approverProfile.primaryPositionId;
+      const employeeSupervisorPositionId = (employeeProfile as any).supervisorPositionId;
+      
+      if (!approverPositionId || !employeeSupervisorPositionId) {
+        throw new BadRequestException(
+          'Unable to verify supervisor relationship. Employee or approver may not have position assignments.',
+        );
+      }
+      
+      // Use flexible comparison to handle both ObjectId and string formats
+      const approverPosIdStr = approverPositionId instanceof Types.ObjectId 
+        ? approverPositionId.toString() 
+        : String(approverPositionId);
+      const empSupervisorPosIdStr = employeeSupervisorPositionId instanceof Types.ObjectId
+        ? employeeSupervisorPositionId.toString()
+        : String(employeeSupervisorPositionId);
+      
+      const isDirectSupervisor = approverPosIdStr === empSupervisorPosIdStr;
+      
+      if (!isDirectSupervisor) {
+        throw new BadRequestException(
+          'Only the direct supervisor can approve/reject this leave request.',
+        );
+      }
     }
     
     // Prevent HR Admin from approving any requests (they can only view)
@@ -2170,21 +2208,14 @@ export class LeavesService {
 
     // For department head requests, they go directly to HR Manager, so no Department Head approval needed
     // For HR Manager requests, they go directly to CEO, so no HR Manager approval needed
-    // For regular requests, require Department Head approval before HR finalization
+    // For regular requests: If status is APPROVED, it means a supervisor (Department Head, Payroll Manager, HR Manager, or any direct supervisor) has already approved it
+    // HR Manager can finalize any approved request regardless of which supervisor approved it
     if (!isDepartmentHeadRequest && !isHRManagerRequest) {
-      const hasDepartmentHeadApproval = leaveRequest.approvalFlow.some(
-        (approval) =>
-          (approval.role === 'Departement_Head' ||
-           approval.role === 'Department Head' ||
-           approval.role?.toLowerCase().includes('department')) &&
-          approval.status === LeaveStatus.APPROVED,
-      );
-
-      if (!hasDepartmentHeadApproval) {
-        throw new BadRequestException(
-          'Leave request must be approved by Department Head before HR finalization.',
-        );
-      }
+      // The request status is already checked above (must be APPROVED)
+      // If we reach here and status is APPROVED, it means a supervisor has approved it
+      // HR Manager can finalize any approved request - no need to check specific supervisor role
+      // This allows any supervisor (Department Head, Payroll Manager, HR Manager as direct supervisor, etc.) to approve,
+      // and then HR Manager can finalize regardless of who approved it
     }
 
     // Step 4: REQ-028 - Verify medical documents if required
