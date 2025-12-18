@@ -201,7 +201,9 @@ export const leavesApi = {
 
   // Reset Leave Balances
   resetLeaveBalances: async (criterion?: string, force?: boolean): Promise<{ message: string }> => {
-    return await api.post("/leaves/reset-leave-balances", { criterion, force });
+    return await api.post("/leaves/reset-leave-balances", { criterion, force }, {
+      timeout: 120000, // 120 seconds timeout for bulk reset operations
+    });
   },
 
   resetLeaveBalancesForTest: async (): Promise<{ 

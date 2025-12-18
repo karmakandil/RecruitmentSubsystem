@@ -1721,8 +1721,52 @@ export class LeavesService {
     const leaveEntitlements: LeaveEntitlementDocument[] =
       await this.leaveEntitlementModel.find({}).exec();
 
+    if (leaveEntitlements.length === 0) {
+      return;
+    }
+
+    // OPTIMIZATION: Fetch all employees and policies upfront to avoid N+1 queries
+    const employeeIds = [...new Set(leaveEntitlements.map(e => e.employeeId.toString()))];
+    const leaveTypeIds = [...new Set(leaveEntitlements.map(e => e.leaveTypeId.toString()))];
+
+    // Fetch all employees in one query
+    const employees = await this.employeeProfileModel
+      .find({ _id: { $in: employeeIds.map(id => new Types.ObjectId(id)) } })
+      .exec();
+    const employeeMap = new Map(
+      employees.map(emp => [emp._id.toString(), emp])
+    );
+
+    // Fetch all policies in one query
+    const policies = await this.leavePolicyModel
+      .find({ leaveTypeId: { $in: leaveTypeIds.map(id => new Types.ObjectId(id)) } })
+      .exec();
+    const policyMap = new Map(
+      policies.map(policy => [policy.leaveTypeId.toString(), policy])
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Process entitlements and collect updates
+    const updates: Array<{
+      entitlement: LeaveEntitlementDocument;
+      updateData: UpdateLeaveEntitlementDto;
+      policy: any;
+    }> = [];
+
     for (const entitlement of leaveEntitlements) {
       try {
+        // Check if employee exists (using pre-fetched map)
+        const employee = employeeMap.get(entitlement.employeeId.toString());
+        
+        if (!employee) {
+          console.warn(
+            `Skipping entitlement ${entitlement._id}: Employee ${entitlement.employeeId} not found (orphaned entitlement)`,
+          );
+          continue; // Skip this entitlement and continue with the next one
+        }
+
         // Calculate reset date based on criterion
         const resetDate = await this.calculateResetDate(
           entitlement.employeeId.toString(),
@@ -1730,17 +1774,20 @@ export class LeavesService {
           entitlement.leaveTypeId.toString(),
         );
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const resetDateOnly = new Date(resetDate);
         resetDateOnly.setHours(0, 0, 0, 0);
 
-        // Check if reset date has passed, or if force is true
-        if (force || resetDateOnly <= today) {
-          // Get policy to check carry-forward settings
-          const leavePolicy = await this.leavePolicyModel
-            .findOne({ leaveTypeId: entitlement.leaveTypeId })
-            .exec();
+        // Check if the current anniversary date has passed
+        // calculateResetDate returns the NEXT anniversary, so we need to check if
+        // the CURRENT anniversary (one year before) has passed
+        const currentAnniversary = new Date(resetDate);
+        currentAnniversary.setFullYear(currentAnniversary.getFullYear() - 1);
+        currentAnniversary.setHours(0, 0, 0, 0);
+
+        // Check if current anniversary has passed, or if force is true
+        if (force || currentAnniversary <= today) {
+          // Get policy from pre-fetched map
+          const leavePolicy = policyMap.get(entitlement.leaveTypeId.toString());
 
           // Calculate carry forward amount before resetting
           let carryForwardAmount = 0;
@@ -1751,9 +1798,9 @@ export class LeavesService {
             carryForwardAmount = entitlement.carryForward;
           }
 
-          // Calculate next reset date (one year from current reset date)
+          // Calculate next reset date
+          // resetDate from calculateResetDate is already the NEXT anniversary, so use it directly
           const nextReset = new Date(resetDate);
-          nextReset.setFullYear(nextReset.getFullYear() + 1);
 
           // Reset all accrual-related fields
           // Business Rule: Employees accrue leave monthly/quarterly/yearly, not upfront
@@ -1762,15 +1809,23 @@ export class LeavesService {
           // They will accrue throughout the year via monthly/quarterly/yearly accruals
           const newRemaining = carryForwardAmount;
 
-          await this.updateLeaveEntitlement(entitlement._id.toString(), {
-            accruedActual: 0,
-            accruedRounded: 0,
-            carryForward: carryForwardAmount, // Keep carry-forward if allowed, otherwise 0
-            remaining: newRemaining, // Start with carry-forward only, accruals will add to this
-            taken: 0, // Reset taken
-            pending: 0, // Reset pending
-            lastAccrualDate: new Date(),
-            nextResetDate: nextReset,
+          // Apply rounding rule (since accruedActual is 0, accruedRounded will be 0)
+          const roundingRule = leavePolicy?.roundingRule || RoundingRule.NONE;
+          const accruedRounded = this.applyRoundingRule(0, roundingRule);
+
+          updates.push({
+            entitlement,
+            updateData: {
+              accruedActual: 0,
+              accruedRounded: accruedRounded,
+              carryForward: carryForwardAmount, // Keep carry-forward if allowed, otherwise 0
+              remaining: newRemaining, // Start with carry-forward only, accruals will add to this
+              taken: 0, // Reset taken
+              pending: 0, // Reset pending
+              lastAccrualDate: new Date(),
+              nextResetDate: nextReset,
+            },
+            policy: leavePolicy,
           });
         }
       } catch (error) {
@@ -1780,6 +1835,37 @@ export class LeavesService {
         );
         // Continue with next entitlement
       }
+    }
+
+    // OPTIMIZATION: Use bulkWrite for faster updates
+    if (updates.length > 0) {
+      const bulkOps = updates.map(({ entitlement, updateData }) => ({
+        updateOne: {
+          filter: { _id: entitlement._id },
+          update: {
+            $set: {
+              accruedActual: updateData.accruedActual,
+              accruedRounded: updateData.accruedRounded,
+              carryForward: updateData.carryForward,
+              remaining: updateData.remaining,
+              taken: updateData.taken,
+              pending: updateData.pending,
+              lastAccrualDate: updateData.lastAccrualDate,
+              nextResetDate: updateData.nextResetDate,
+            },
+          },
+        },
+      }));
+
+      await this.leaveEntitlementModel.bulkWrite(bulkOps);
+
+      // Log rounding applications (for debugging)
+      updates.forEach(({ entitlement, policy }) => {
+        const roundingRule = policy?.roundingRule || RoundingRule.NONE;
+        console.log(
+          `[updateLeaveEntitlement] Applied rounding: 0 -> 0 (rule: ${roundingRule}, entitlementId: ${entitlement._id})`,
+        );
+      });
     }
   }
 
