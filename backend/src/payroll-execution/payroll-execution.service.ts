@@ -1639,23 +1639,12 @@ export class PayrollExecutionService {
     const ContractModel = this.payrollRunModel.db.model('Contract');
     const OnboardingModel = this.payrollRunModel.db.model('Onboarding');
 
-    // Get all active employees using EmployeeProfileService
+    // Calculate the date 30 days ago
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
 
-    const employeesResult = await this.employeeProfileService.findAll({
-      status: EmployeeStatus.ACTIVE,
-      page: 1,
-      limit: 10000, // Get all active employees
-    } as any);
-    const allEmployees = Array.isArray(employeesResult)
-      ? employeesResult
-      : (employeesResult as any).data || [];
-
-    // Filter employees hired within last 30 days
-    const recentEmployees = allEmployees.filter((emp: any) => {
-      return emp.dateOfHire && new Date(emp.dateOfHire) >= thirtyDaysAgo;
-    });
+    console.log(`[processSigningBonuses] Looking for employees hired after: ${thirtyDaysAgo.toISOString()}`);
 
     // Get all approved signing bonuses using PayrollConfigurationService
     const signingBonusesResult = await this.payrollConfigurationService.findAllSigningBonuses({
@@ -1663,83 +1652,362 @@ export class PayrollExecutionService {
       limit: 1000 // Get all approved signing bonuses
     });
     const approvedSigningBonuses = signingBonusesResult?.data || [];
+    console.log(`[processSigningBonuses] Found ${approvedSigningBonuses.length} approved signing bonus configurations`);
+
+    // APPROACH: Query employees directly by dateOfHire OR contractStartDate (last 30 days)
+    // This catches all new hires regardless of status (ACTIVE, PROBATION, etc.)
+    // Check both dateOfHire and contractStartDate to catch all new hires
+    // Then check their contracts via onboarding records
+    const recentEmployees = await this.employeeProfileModel
+      .find({
+        $or: [
+          { dateOfHire: { $gte: thirtyDaysAgo } },
+          { contractStartDate: { $gte: thirtyDaysAgo } },
+        ],
+      })
+      .lean()
+      .exec();
+
+    console.log(`[processSigningBonuses] Found ${recentEmployees.length} employees hired in the last 30 days`);
+    
+    // Log all found employees for debugging
+    recentEmployees.forEach((emp: any) => {
+      const empName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.employeeNumber || 'Unknown';
+      console.log(`[processSigningBonuses] Found employee: ${empName} (ID: ${emp._id}, dateOfHire: ${emp.dateOfHire}, status: ${emp.status})`);
+    });
+
+    if (recentEmployees.length === 0) {
+      return []; // No employees hired in the last 30 days
+    }
 
     const processedBonuses: employeeSigningBonus[] = [];
+    // Convert all employee IDs to ObjectId for proper querying
+    const employeeIds = recentEmployees.map((emp: any) => {
+      if (emp._id instanceof Types.ObjectId) {
+        return emp._id;
+      }
+      return new Types.ObjectId(emp._id.toString());
+    });
 
+    // Find onboarding records for these employees
+    const onboardingRecords = await OnboardingModel.find({
+      employeeId: { $in: employeeIds },
+    })
+      .populate('contractId')
+      .lean()
+      .exec();
+
+    console.log(`[processSigningBonuses] Found ${onboardingRecords.length} onboarding records for recent employees`);
+    
+    // Log onboarding records found
+    onboardingRecords.forEach((onboarding: any) => {
+      const empId = onboarding.employeeId?._id?.toString() || onboarding.employeeId?.toString() || 'Unknown';
+      const contractId = onboarding.contractId?._id?.toString() || onboarding.contractId?.toString() || 'None';
+      console.log(`[processSigningBonuses] Onboarding record: employeeId=${empId}, contractId=${contractId}`);
+    });
+
+    // Create a map of employeeId -> onboarding for quick lookup
+    // Use normalized string IDs for both keys and lookups
+    const onboardingMap = new Map();
+    onboardingRecords.forEach((onboarding: any) => {
+      if (onboarding.employeeId) {
+        // Normalize employeeId to string for consistent lookup
+        let empId: string;
+        if (onboarding.employeeId._id) {
+          empId = onboarding.employeeId._id.toString();
+        } else if (onboarding.employeeId instanceof Types.ObjectId) {
+          empId = onboarding.employeeId.toString();
+        } else {
+          empId = onboarding.employeeId.toString();
+        }
+        if (!onboardingMap.has(empId)) {
+          onboardingMap.set(empId, onboarding);
+        }
+      }
+    });
+
+    // FALLBACK: Also find contracts directly by looking for contracts with acceptanceDate in last 30 days
+    // This catches cases where onboarding might not exist or contractId isn't set
+    const recentContracts = await ContractModel.find({
+      acceptanceDate: { $gte: thirtyDaysAgo },
+      signingBonus: { $exists: true, $ne: null, $gt: 0 },
+    })
+      .populate('offerId')
+      .lean()
+      .exec();
+
+    console.log(`[processSigningBonuses] Found ${recentContracts.length} contracts with signing bonuses accepted in last 30 days`);
+
+    // Create a map of contractId -> contract for fallback lookup
+    const contractMap = new Map();
+    recentContracts.forEach((contract: any) => {
+      if (contract._id) {
+        contractMap.set(contract._id.toString(), contract);
+      }
+    });
+
+    // Also try to map contracts to employees via offers -> candidates -> employees
+    // This is a fallback if onboarding doesn't have the link
+    const contractToEmployeeMap = new Map<string, string>(); // contractId -> employeeId
+    for (const contract of recentContracts) {
+      if (contract.offerId) {
+        try {
+          // Try to find employee via offer -> candidate -> employee email match
+          const offer = contract.offerId;
+          if (offer && (offer as any).candidateId) {
+            const candidate = await this.employeeProfileModel.db.model('Candidate').findById((offer as any).candidateId).lean().exec();
+            if (candidate && (candidate as any).personalEmail) {
+              const employee = await this.employeeProfileModel.findOne({
+                personalEmail: (candidate as any).personalEmail,
+              }).lean().exec();
+              if (employee && employee._id) {
+                contractToEmployeeMap.set(contract._id.toString(), employee._id.toString());
+              }
+            }
+          }
+        } catch (e) {
+          // Skip if can't resolve
+        }
+      }
+    }
+
+    let skippedNoOnboarding = 0;
+    let skippedNoContract = 0;
+    let skippedNoSigningBonus = 0;
+    let skippedNoPosition = 0;
+    let skippedNoConfig = 0;
+    let skippedAlreadyExists = 0;
+
+    // Process each recent employee
     for (const employee of recentEmployees) {
+      const employeeId: any = employee._id;
+      // Normalize employeeId to string for consistent lookup
+      const employeeIdString = employeeId instanceof Types.ObjectId 
+        ? employeeId.toString() 
+        : (employeeId ? new Types.ObjectId(employeeId.toString()).toString() : '');
+      const employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.employeeNumber || employeeIdString;
+
+      console.log(`[processSigningBonuses] Processing employee: ${employeeName} (ID: ${employeeIdString})`);
+
       // Check if signing bonus already exists for this employee
       const existingBonus = await this.employeeSigningBonusModel.findOne({
-        employeeId: employee._id,
+        employeeId: employeeId instanceof Types.ObjectId ? employeeId : new Types.ObjectId(employeeIdString),
       });
 
       if (existingBonus) {
+        skippedAlreadyExists++;
+        console.log(`[processSigningBonuses] Skipping ${employeeName}: Signing bonus already exists (ID: ${existingBonus._id})`);
         continue; // Skip if already processed
       }
 
-      // BR 24: Check if employee is eligible for signing bonus according to their contract
-      // Find contract via Onboarding (employeeId -> contractId)
-      const onboarding = await OnboardingModel.findOne({
-        employeeId: employee._id,
-      });
-      let isEligible = false;
-      let contractSigningBonus: number | undefined = undefined;
+      // Get contract for this employee - try multiple methods
+      let contract: any = null;
+      let contractSource = '';
 
+      // Method 1: Try onboarding record first
+      const onboarding = onboardingMap.get(employeeIdString);
       if (onboarding && onboarding.contractId) {
-        const contract = await ContractModel.findById(onboarding.contractId);
-        if (
-          contract &&
-          contract.signingBonus !== undefined &&
-          contract.signingBonus !== null &&
-          contract.signingBonus > 0
-        ) {
-          isEligible = true;
-          contractSigningBonus = contract.signingBonus;
+        if (typeof onboarding.contractId === 'object' && onboarding.contractId._id) {
+          // Already populated - use it directly
+          contract = onboarding.contractId;
+          contractSource = 'onboarding';
+        } else if (typeof onboarding.contractId === 'object' && !onboarding.contractId._id) {
+          // It's an ObjectId object, need to fetch
+          const contractId = onboarding.contractId.toString();
+          contract = await ContractModel.findById(contractId).lean().exec();
+          contractSource = 'onboarding';
+        } else {
+          // It's a string ID, need to fetch
+          contract = await ContractModel.findById(onboarding.contractId).lean().exec();
+          contractSource = 'onboarding';
         }
       }
 
-      // If contract doesn't have signingBonus or employee doesn't have onboarding, skip
-      if (!isEligible) {
-        continue; // Employee not eligible according to contract (BR 24)
+      // Method 2: Fallback - try to find contract via contractToEmployeeMap
+      if (!contract) {
+        for (const [contractId, empId] of contractToEmployeeMap.entries()) {
+          if (empId === employeeIdString) {
+            contract = contractMap.get(contractId);
+            if (contract) {
+              contractSource = 'contract-fallback';
+              break;
+            }
+          }
+        }
       }
 
-      // Get employee's position
-      if (!employee.primaryPositionId) {
-        continue;
+      // Method 3: Last resort - try to find contract by employee email via offer -> candidate
+      if (!contract) {
+        try {
+          if (employee.personalEmail) {
+            const candidate = await this.employeeProfileModel.db.model('Candidate').findOne({
+              personalEmail: employee.personalEmail,
+            }).lean().exec();
+            if (candidate && (candidate as any)._id) {
+              const offer = await this.employeeProfileModel.db.model('Offer').findOne({
+                candidateId: (candidate as any)._id,
+              }).lean().exec();
+              if (offer && (offer as any)._id) {
+                const foundContract = await ContractModel.findOne({
+                  offerId: (offer as any)._id,
+                  signingBonus: { $exists: true, $ne: null, $gt: 0 },
+                }).lean().exec();
+                if (foundContract) {
+                  contract = foundContract;
+                  contractSource = 'email-lookup';
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // Skip if lookup fails
+        }
       }
 
-      const position = await PositionModel.findById(employee.primaryPositionId);
-      if (!position) {
-        continue;
+      if (!contract) {
+        skippedNoContract++;
+        console.log(`[processSigningBonuses] Skipping ${employeeName}: No contract found via any method (onboarding, fallback, or email lookup)`);
+        continue; // Contract not found
       }
 
-      // Find matching signing bonus configuration by position title
-      const signingBonusConfig = approvedSigningBonuses.find(
-        (bonus: any) => bonus.positionName === (position as any).title,
-      );
+      console.log(`[processSigningBonuses] Found contract for ${employeeName} via: ${contractSource}`);
 
-      if (signingBonusConfig) {
-        const bonusData = signingBonusConfig as any;
-        // Use contract signingBonus amount if available, otherwise use configuration amount
-        // Priority: contract signingBonus > configuration amount
-        const finalAmount =
-          contractSigningBonus !== undefined
-            ? contractSigningBonus
-            : bonusData.amount;
-
-        // Create employee signing bonus record
-        const employeeBonus = new this.employeeSigningBonusModel({
-          employeeId: employee._id as any,
-          signingBonusId: bonusData._id as any,
-          givenAmount: finalAmount, // Use contract amount if available (BR 24), otherwise configuration amount
-          status: BonusStatus.PENDING,
-          createdBy: currentUserId,
-          updatedBy: currentUserId,
-        });
-
-        await employeeBonus.save();
-        processedBonuses.push(employeeBonus);
+      // BR 24: Check if employee is eligible for signing bonus
+      // Priority: contract.signingBonus > 0 (if exists), otherwise check position config
+      let contractSigningBonus: number | undefined = undefined;
+      if (
+        contract.signingBonus !== undefined &&
+        contract.signingBonus !== null &&
+        contract.signingBonus > 0
+      ) {
+        contractSigningBonus = contract.signingBonus;
+        console.log(`[processSigningBonuses] Contract has signingBonus: ${contractSigningBonus}`);
+      } else {
+        console.log(`[processSigningBonuses] Contract doesn't have signingBonus (${contract.signingBonus}), will use position config amount if match found`);
       }
+
+      // Get employee's position (if available)
+      // FLEXIBLE: Allow processing even if position is missing, as long as contract has signingBonus
+      let positionTitle: string | null = null;
+      let position: any = null;
+
+      if (employee.primaryPositionId) {
+        position = await PositionModel.findById(employee.primaryPositionId);
+        if (position) {
+          positionTitle = (position as any).title;
+          console.log(`[processSigningBonuses] Employee ${employeeName} has position: "${positionTitle}"`);
+        } else {
+          console.log(`[processSigningBonuses] ⚠ Employee ${employeeName} has primaryPositionId (${employee.primaryPositionId}) but position not found in database`);
+        }
+      } else {
+        console.log(`[processSigningBonuses] ⚠ Employee ${employeeName} has no primaryPositionId (incomplete contract data). Will process if contract has signingBonus.`);
+      }
+
+      console.log(`[processSigningBonuses] Processing ${employeeName} with position: "${positionTitle || 'N/A (incomplete contract)'}", contract signingBonus: ${contractSigningBonus}`);
+
+      // Find matching signing bonus configuration by position title (if position exists)
+      let signingBonusConfig: any = null;
+      
+      if (positionTitle) {
+        // Use case-insensitive matching and trim whitespace for flexibility
+        const normalizedPositionTitle = positionTitle.trim().toLowerCase();
+        console.log(`[processSigningBonuses] Normalized position title: "${normalizedPositionTitle}"`);
+        console.log(`[processSigningBonuses] Available configs: ${approvedSigningBonuses.map((b: any) => `"${b.positionName}"`).join(', ')}`);
+        
+        signingBonusConfig = approvedSigningBonuses.find(
+          (bonus: any) => {
+            const normalizedConfigName = (bonus.positionName || '').trim().toLowerCase();
+            const matches = normalizedConfigName === normalizedPositionTitle;
+            if (matches) {
+              console.log(`[processSigningBonuses] ✓ Exact match found: "${bonus.positionName}" matches "${positionTitle}"`);
+            }
+            return matches;
+          }
+        );
+
+        // If no exact match, try partial matching (contains)
+        if (!signingBonusConfig && normalizedPositionTitle) {
+          console.log(`[processSigningBonuses] No exact match, trying partial matching...`);
+          signingBonusConfig = approvedSigningBonuses.find(
+            (bonus: any) => {
+              const normalizedConfigName = (bonus.positionName || '').trim().toLowerCase();
+              const matches = normalizedConfigName.includes(normalizedPositionTitle) || 
+                     normalizedPositionTitle.includes(normalizedConfigName);
+              if (matches) {
+                console.log(`[processSigningBonuses] ✓ Partial match found: "${bonus.positionName}" partially matches "${positionTitle}"`);
+              }
+              return matches;
+            }
+          );
+        }
+      } else {
+        console.log(`[processSigningBonuses] No position title available, will use fallback config if contract has signingBonus`);
+      }
+
+      // Fallback logic: Process even with incomplete data if contract has signingBonus
+      if (!signingBonusConfig) {
+        if (contractSigningBonus !== undefined && contractSigningBonus > 0 && approvedSigningBonuses.length > 0) {
+          // Contract has signingBonus - use first config as fallback (even if no position or no match)
+          const fallbackReason = positionTitle 
+            ? `No match for position "${positionTitle}"`
+            : `No position assigned (incomplete contract data - missing primaryPositionId)`;
+          console.log(`[processSigningBonuses] ⚠ ${fallbackReason}, but contract has signingBonus (${contractSigningBonus}). Using first available config "${approvedSigningBonuses[0].positionName}" as fallback`);
+          signingBonusConfig = approvedSigningBonuses[0];
+        } else if (approvedSigningBonuses.length === 0) {
+          skippedNoConfig++;
+          console.log(`[processSigningBonuses] ❌ Skipping ${employeeName}: No signing bonus configs available in system. Contract signingBonus: ${contractSigningBonus}`);
+          continue;
+        } else if (!positionTitle && (!contractSigningBonus || contractSigningBonus <= 0)) {
+          skippedNoConfig++;
+          console.log(`[processSigningBonuses] ❌ Skipping ${employeeName}: No position assigned (incomplete contract) and contract has no signingBonus. Cannot determine bonus amount.`);
+          continue;
+        } else {
+          skippedNoConfig++;
+          console.log(`[processSigningBonuses] ❌ Skipping ${employeeName}: No matching config for position "${positionTitle || 'N/A'}" and contract has no signingBonus. Available configs: ${approvedSigningBonuses.map((b: any) => b.positionName).join(', ')}`);
+          continue;
+        }
+      }
+
+      const bonusData = signingBonusConfig as any;
+      // Use contract signingBonus amount if available, otherwise use configuration amount
+      // Priority: contract signingBonus > configuration amount (BR 24)
+      const finalAmount =
+        contractSigningBonus !== undefined && contractSigningBonus > 0
+          ? contractSigningBonus
+          : bonusData.amount;
+
+      console.log(`[processSigningBonuses] Creating signing bonus for ${employeeName}: Amount=${finalAmount}, Config=${bonusData.positionName} (matched from position: ${positionTitle || 'N/A - using fallback'})`);
+
+      // Create employee signing bonus record
+      // Ensure employeeId is properly formatted as ObjectId
+      const employeeIdForBonus = employeeId instanceof Types.ObjectId 
+        ? employeeId 
+        : new Types.ObjectId(employeeIdString);
+      
+      const employeeBonus = new this.employeeSigningBonusModel({
+        employeeId: employeeIdForBonus as any,
+        signingBonusId: bonusData._id as any,
+        givenAmount: finalAmount, // Use contract amount if available (BR 24), otherwise configuration amount
+        status: BonusStatus.PENDING,
+        createdBy: currentUserId,
+        updatedBy: currentUserId,
+      });
+
+      await employeeBonus.save();
+      processedBonuses.push(employeeBonus);
     }
+
+    console.log(`[processSigningBonuses] ========== SUMMARY ==========`);
+    console.log(`[processSigningBonuses] Total employees found: ${recentEmployees.length}`);
+    console.log(`[processSigningBonuses] Onboarding records found: ${onboardingRecords.length}`);
+    console.log(`[processSigningBonuses] Processed successfully: ${processedBonuses.length}`);
+    console.log(`[processSigningBonuses] Skipped - Already exists: ${skippedAlreadyExists}`);
+    console.log(`[processSigningBonuses] Skipped - No onboarding: ${skippedNoOnboarding}`);
+    console.log(`[processSigningBonuses] Skipped - No contract: ${skippedNoContract}`);
+    console.log(`[processSigningBonuses] Skipped - No signing bonus in contract: ${skippedNoSigningBonus}`);
+    console.log(`[processSigningBonuses] Skipped - No position: ${skippedNoPosition}`);
+    console.log(`[processSigningBonuses] Skipped - No matching config: ${skippedNoConfig}`);
+    console.log(`[processSigningBonuses] =============================`);
 
     return processedBonuses;
   }
