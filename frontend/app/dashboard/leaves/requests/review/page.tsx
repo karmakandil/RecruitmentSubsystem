@@ -34,6 +34,11 @@ export default function ManagerLeaveReviewPage() {
   const [selectedDelegate, setSelectedDelegate] = useState<{ [requestId: string]: string }>({});
   const [delegating, setDelegating] = useState<{ [requestId: string]: boolean }>({});
 
+  // State for document rejection
+  const [showRejectDocumentDialog, setShowRejectDocumentDialog] = useState<{ [requestId: string]: boolean }>({});
+  const [documentRejectionReason, setDocumentRejectionReason] = useState<{ [requestId: string]: string }>({});
+  const [rejectingDocument, setRejectingDocument] = useState<{ [requestId: string]: boolean }>({});
+
   // Allow both department heads and delegates to access this page
   // useRequireAuth(SystemRole.DEPARTMENT_HEAD); // Commented out to allow delegates
 
@@ -46,8 +51,10 @@ export default function ManagerLeaveReviewPage() {
 
   // NEW: Load employees for dropdown
   useEffect(() => {
-    loadEmployees();
-  }, []);
+    if (isAuthenticated && user) {
+      loadEmployees();
+    }
+  }, [isAuthenticated, user]);
 
   // Check if user is a delegate and auto-load delegated requests
   useEffect(() => {
@@ -60,16 +67,109 @@ export default function ManagerLeaveReviewPage() {
   const loadEmployees = async () => {
     try {
       setLoadingEmployees(true);
-      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
-      const employeesList = Array.isArray(response.data) ? response.data : [];
-      setEmployees(employeesList.map((emp: any) => ({
-        _id: emp._id,
-        employeeId: emp.employeeId || emp._id,
-        firstName: emp.firstName || '',
-        lastName: emp.lastName || '',
-      })));
+      const roles = user?.roles || [];
+      const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
+      const userId = (user as any)?._id || user?.userId || (user as any)?.id;
+      
+      let employeesList: any[] = [];
+      
+      if (isDepartmentHead && userId) {
+        // For department heads, use getMyTeam to get only team members
+        try {
+          console.log("📋 [loadEmployees] Loading team members for department head:", userId);
+          const teamResponse = await employeeProfileApi.getMyTeam();
+          console.log("📋 [loadEmployees] Team response received:", teamResponse);
+          console.log("📋 [loadEmployees] Team response type:", typeof teamResponse);
+          console.log("📋 [loadEmployees] Team response is array?", Array.isArray(teamResponse));
+          
+          // getMyTeam already returns an array (handles extraction internally)
+          if (Array.isArray(teamResponse)) {
+            employeesList = teamResponse;
+            console.log("✅ [loadEmployees] Team members loaded:", employeesList.length);
+          } else {
+            console.warn("⚠️ [loadEmployees] Team response is not an array:", teamResponse);
+            employeesList = [];
+          }
+        } catch (teamError: any) {
+          console.error("❌ [loadEmployees] Error loading team members:", teamError);
+          console.error("❌ [loadEmployees] Error details:", {
+            message: teamError.message,
+            status: teamError.status,
+            responseData: teamError.responseData,
+          });
+          
+          // Fallback: try to get team members from team leave data
+          try {
+            console.log("🔄 [loadEmployees] Trying fallback: filterTeamLeaveData");
+            const result = await leavesApi.filterTeamLeaveData(userId, { limit: 1000 });
+            const employeeMap = new Map<string, any>();
+            if (result.items && Array.isArray(result.items)) {
+              result.items.forEach((item: any) => {
+                const empId = item.employeeId?._id || item.employeeId;
+                if (empId && !employeeMap.has(empId.toString())) {
+                  const empInfo = item.employeeId;
+                  employeeMap.set(empId.toString(), {
+                    _id: empId,
+                    employeeId: empInfo?.employeeId || empId,
+                    firstName: empInfo?.firstName || 'Unknown',
+                    lastName: empInfo?.lastName || 'Employee',
+                  });
+                }
+              });
+            }
+            employeesList = Array.from(employeeMap.values());
+            console.log("✅ [loadEmployees] Fallback successful - Team members from leave data:", employeesList.length);
+          } catch (fallbackError) {
+            console.error("❌ [loadEmployees] Fallback also failed:", fallbackError);
+          }
+        }
+      } else {
+        // For other roles, try getAllEmployees
+        try {
+          const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+          employeesList = Array.isArray(response.data) ? response.data : [];
+          console.log("All employees loaded:", employeesList.length);
+        } catch (error: any) {
+          console.error("Failed to load employees:", error);
+          // If getAllEmployees fails, try getMyTeam as fallback
+          try {
+            const teamResponse = await employeeProfileApi.getMyTeam();
+            if (Array.isArray(teamResponse)) {
+              employeesList = teamResponse;
+            } else if (teamResponse && typeof teamResponse === 'object' && 'data' in teamResponse) {
+              employeesList = Array.isArray((teamResponse as any).data) ? (teamResponse as any).data : [];
+            }
+          } catch (fallbackError) {
+            console.error("Fallback also failed:", fallbackError);
+          }
+        }
+      }
+      
+      // Map employees to the expected format and filter out current user
+      const mappedEmployees = employeesList
+        .filter((emp: any) => {
+          if (!emp || (!emp._id && !emp.employeeId)) return false;
+          const empId = (emp._id || emp.employeeId)?.toString();
+          const currentUserId = userId?.toString();
+          return empId !== currentUserId; // Don't show self
+        })
+        .map((emp: any) => ({
+          _id: emp._id || emp.employeeId,
+          employeeId: emp.employeeId || emp._id,
+          firstName: emp.firstName || '',
+          lastName: emp.lastName || '',
+        }));
+      
+      console.log("Final employees list:", mappedEmployees.length);
+      setEmployees(mappedEmployees);
+      
+      if (mappedEmployees.length === 0) {
+        console.warn("⚠️ No employees loaded. Check console for errors above.");
+      }
     } catch (error: any) {
       console.error("Failed to load employees:", error);
+      setError(`Failed to load employees: ${error.message || 'Unknown error'}`);
+      setEmployees([]);
     } finally {
       setLoadingEmployees(false);
     }
@@ -274,6 +374,75 @@ export default function ManagerLeaveReviewPage() {
     }
   };
 
+  // NEW CODE: Handle document view
+  const handleViewDocument = async (request: LeaveRequest) => {
+    if (!request.attachmentId) {
+      setError("No attachment found for this leave request");
+      return;
+    }
+
+    try {
+      const attachmentId = typeof request.attachmentId === 'object' 
+        ? (request.attachmentId as any)._id || (request.attachmentId as any).toString()
+        : String(request.attachmentId);
+      
+      const blob = await leavesApi.downloadAttachment(attachmentId);
+      const url = window.URL.createObjectURL(blob);
+      
+      // Open in new tab
+      const newWindow = window.open(url, '_blank');
+      if (!newWindow) {
+        // If popup blocked, try downloading instead
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.click();
+      }
+      
+      // Clean up after a delay
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      console.error("Error viewing document:", err);
+      setError(err?.message || "Failed to view document. Please try again.");
+    }
+  };
+
+  // NEW CODE: Handle document rejection
+  const handleRejectDocument = async (requestId: string) => {
+    const rejectionReason = documentRejectionReason[requestId]?.trim();
+    if (!rejectionReason) {
+      setError("Please provide a reason for rejecting the document");
+      return;
+    }
+
+    setRejectingDocument(prev => ({ ...prev, [requestId]: true }));
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      await leavesApi.rejectDocumentByDepartmentHead(requestId, rejectionReason);
+      setSuccessMessage("Document rejected. The leave request has been automatically rejected.");
+      setShowRejectDocumentDialog(prev => ({ ...prev, [requestId]: false }));
+      setDocumentRejectionReason(prev => {
+        const newState = { ...prev };
+        delete newState[requestId];
+        return newState;
+      });
+      
+      // Refresh the list
+      if (employeeIdFilter.trim()) {
+        await fetchPendingRequests(employeeIdFilter.trim());
+      } else {
+        await fetchPendingRequests();
+      }
+    } catch (err: any) {
+      console.error("Error rejecting document:", err);
+      setError(err?.response?.data?.message || err?.message || "Failed to reject document");
+    } finally {
+      setRejectingDocument(prev => ({ ...prev, [requestId]: false }));
+    }
+  };
+
   const formatDate = (date: Date | string | undefined): string => {
     if (!date) return "N/A";
     const d = typeof date === "string" ? new Date(date) : date;
@@ -394,6 +563,7 @@ export default function ManagerLeaveReviewPage() {
   // Allow access if user is department head, Payroll Manager, OR if they have delegated requests
   const hasDelegatedRequests = pendingRequests.length > 0 && !isDepartmentHead && !isPayrollManager;
   
+  // Department heads always have access to this page
   if (!isDepartmentHead && !isPayrollManager && !hasDelegatedRequests && hasSearched) {
     return (
       <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -418,7 +588,7 @@ export default function ManagerLeaveReviewPage() {
         <h1 className="text-3xl font-bold text-gray-900">Review Leave Requests</h1>
         <p className="text-gray-600 mt-1">
           {isDepartmentHead 
-            ? "As a department head, review and approve or reject leave requests from your team members"
+            ? "As a department head, review and approve or reject leave requests from your team members. You can view documents, reject documents (which automatically rejects the request), and manage all team leave data."
             : isPayrollManager
             ? "As a payroll manager, review and approve or reject leave requests from your team members"
             : "Review and approve or reject leave requests delegated to you"
@@ -617,6 +787,86 @@ export default function ManagerLeaveReviewPage() {
                     )}
                   </div>
 
+                  {/* Document Section - Always visible for department heads */}
+                  <div className="mb-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg
+                          className="w-5 h-5 text-gray-600"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        <span className="text-sm font-medium text-gray-700">Document</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {request.attachmentId ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewDocument(request)}
+                              className="flex items-center gap-2"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                />
+                              </svg>
+                              View Document
+                            </Button>
+                            {request.status.toLowerCase() === "pending" && (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => setShowRejectDocumentDialog(prev => ({ ...prev, [request._id]: true }))}
+                                className="flex items-center gap-2"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                                Reject Document
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-sm text-gray-500 italic">No document attached</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Approval Actions */}
                   {request.status.toLowerCase() === "pending" && (
                     <div className="pt-4 border-t border-gray-200">
@@ -698,6 +948,54 @@ export default function ManagerLeaveReviewPage() {
                           </div>
                           <p className="mt-2 text-xs text-gray-500">
                             The selected employee will be able to approve leave requests on your behalf for the next 7 days.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Document Rejection Dialog */}
+                      {showRejectDocumentDialog[request._id] && (
+                        <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200">
+                          <div className="mb-3">
+                            <label className="block text-sm font-medium text-red-700 mb-2">
+                              Reason for rejecting the document:
+                            </label>
+                            <textarea
+                              value={documentRejectionReason[request._id] || ""}
+                              onChange={(e) => setDocumentRejectionReason(prev => ({
+                                ...prev,
+                                [request._id]: e.target.value
+                              }))}
+                              placeholder="Please provide a reason for rejecting this document. The leave request will be automatically rejected."
+                              className="w-full px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              rows={3}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleRejectDocument(request._id)}
+                              disabled={!documentRejectionReason[request._id]?.trim() || rejectingDocument[request._id]}
+                            >
+                              {rejectingDocument[request._id] ? "Rejecting..." : "Confirm Rejection"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setShowRejectDocumentDialog(prev => ({ ...prev, [request._id]: false }));
+                                setDocumentRejectionReason(prev => {
+                                  const newState = { ...prev };
+                                  delete newState[request._id];
+                                  return newState;
+                                });
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                          <p className="mt-2 text-xs text-red-600">
+                            ⚠️ Warning: Rejecting the document will automatically reject the leave request.
                           </p>
                         </div>
                       )}

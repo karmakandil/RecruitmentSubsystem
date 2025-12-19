@@ -1018,6 +1018,51 @@ export class LeavesService {
 
     leaveRequest.status = status; // Set the leave status to APPROVED or REJECTED
 
+    // Step 7.5: Automatically verify document when request is approved and has attachment
+    if (status === LeaveStatus.APPROVED && leaveRequest.attachmentId) {
+      // Check if document verification entry already exists
+      const existingVerification = leaveRequest.approvalFlow.find(
+        (approval) => 
+          approval.role === 'Department Head - Document Verification' ||
+          approval.role === 'HR Manager - Document Verification'
+      );
+
+      // Only add verification if it doesn't exist and hasn't been rejected
+      if (!existingVerification || existingVerification.status?.toLowerCase() !== 'rejected') {
+        // Determine the verification role based on who is approving
+        const verificationRole = approvalRole === 'HR Manager' 
+          ? 'HR Manager - Document Verification'
+          : 'Department Head - Document Verification';
+
+        // Check if there's already a verification entry for this role
+        const existingRoleVerification = leaveRequest.approvalFlow.find(
+          (approval) => approval.role === verificationRole
+        );
+
+        if (!existingRoleVerification) {
+          // Add document verification entry
+          leaveRequest.approvalFlow.push({
+            role: verificationRole,
+            status: 'verified',
+            decidedBy: new Types.ObjectId(managerId),
+            decidedAt: new Date(),
+          });
+          leaveRequest.markModified('approvalFlow');
+        } else if (existingRoleVerification.status?.toLowerCase() !== 'verified') {
+          // Update existing verification entry to verified
+          const verificationIndex = leaveRequest.approvalFlow.findIndex(
+            (approval) => approval.role === verificationRole
+          );
+          if (verificationIndex !== -1) {
+            leaveRequest.approvalFlow[verificationIndex].status = 'verified';
+            leaveRequest.approvalFlow[verificationIndex].decidedBy = new Types.ObjectId(managerId);
+            leaveRequest.approvalFlow[verificationIndex].decidedAt = new Date();
+            leaveRequest.markModified('approvalFlow');
+          }
+        }
+      }
+    }
+
     // Step 8: Save the updated leave request
     const updatedLeaveRequest = await leaveRequest.save();
 
@@ -2199,6 +2244,53 @@ export class LeavesService {
     };
   }
 
+  // Get all delegations for a manager
+  async getDelegations(managerId: string): Promise<any[]> {
+    const delegations = this.delegationMap.get(managerId) || [];
+    
+    // Populate delegate information
+    const populatedDelegations = await Promise.all(
+      delegations.map(async (del) => {
+        const delegate = await this.employeeProfileModel.findById(del.delegateId).exec();
+        const delegateData = delegate ? delegate.toObject() : null;
+        return {
+          ...del,
+          delegateName: delegateData ? `${delegateData.firstName} ${delegateData.lastName}` : 'Unknown',
+          delegateEmployeeId: (delegateData as any)?.employeeId || del.delegateId,
+        };
+      })
+    );
+    
+    return populatedDelegations;
+  }
+
+  // Revoke a delegation
+  async revokeDelegation(managerId: string, delegateId: string, startDate: Date, endDate: Date): Promise<{ message: string }> {
+    const delegations = this.delegationMap.get(managerId);
+    if (!delegations || delegations.length === 0) {
+      throw new NotFoundException('No delegations found for this manager.');
+    }
+
+    // Find and deactivate the matching delegation
+    const delegationIndex = delegations.findIndex(
+      (del) =>
+        del.delegateId === delegateId &&
+        del.startDate.getTime() === startDate.getTime() &&
+        del.endDate.getTime() === endDate.getTime() &&
+        del.isActive
+    );
+
+    if (delegationIndex === -1) {
+      throw new NotFoundException('Delegation not found or already revoked.');
+    }
+
+    delegations[delegationIndex].isActive = false;
+
+    return {
+      message: `Delegation revoked successfully. Employee ${delegateId} can no longer approve leave requests on behalf of manager ${managerId}.`,
+    };
+  }
+
   // Helper method to check if an employee is a delegated approver for a manager
   private isDelegatedApprover(employeeId: string, managerId: string): boolean {
     const delegations = this.delegationMap.get(managerId);
@@ -3303,12 +3395,13 @@ export class LeavesService {
       }
       
       // If user is a delegate, get requests for the manager's team members
-      // If department head is viewing their own ID, get team requests (excluding their own)
-      // Otherwise, get requests for the specified employeeId
+      // IMPORTANT: Only show delegated requests when user is actually a delegate
+      // DO NOT show team requests as delegated requests
       let query: any;
       
       if (isDelegate && actualManagerId) {
         // Delegate: Get all pending requests for the manager's team
+        // This is ONLY for actual delegates, not for managers viewing their own team
         const manager = await this.employeeProfileModel.findById(actualManagerId).exec();
         if (!manager || !manager.primaryPositionId) {
           return []; // Manager not found or has no position
@@ -3358,7 +3451,9 @@ export class LeavesService {
         };
         
         console.log(`[DELEGATE] Found ${teamMemberIds.length} team members for delegate to review (excluding ${excludedIds.length} excluded employee(s))`);
-      } else if (isDepartmentHeadViewingOwn) {
+      } else if (isDepartmentHeadViewingOwn && !isDelegate) {
+        // IMPORTANT: Only show team requests if user is NOT a delegate
+        // If user is a delegate, they should only see delegated requests, not their own team requests
         // Department head viewing their own ID: show team requests (excluding their own)
         const manager = await this.employeeProfileModel.findById(userId).exec();
         if (!manager || !manager.primaryPositionId) {
@@ -3509,6 +3604,7 @@ export class LeavesService {
             justification: req.justification,
             status: req.status,
             approvalFlow: req.approvalFlow,
+            attachmentId: req.attachmentId ? (req.attachmentId as any)._id?.toString() || req.attachmentId.toString() : undefined,
             createdAt: (req as any).createdAt,
             updatedAt: (req as any).updatedAt,
           };
@@ -4189,6 +4285,9 @@ export class LeavesService {
             durationDays: req.durationDays,
             status: req.status,
             createdAt: (req as any).createdAt,
+            attachmentId: req.attachmentId ? (req.attachmentId as any)._id?.toString() || req.attachmentId.toString() : undefined,
+            justification: req.justification,
+            approvalFlow: req.approvalFlow,
           };
         })),
       };
@@ -5503,6 +5602,269 @@ export class LeavesService {
     leaveRequest.justification = `[Document Rejected: ${rejectionReason}] ${existingJustification}`;
 
     return await leaveRequest.save();
+  }
+
+  // NEW CODE: Department Head reject document (also rejects the leave request)
+  async rejectDocumentByDepartmentHead(
+    leaveRequestId: string,
+    departmentHeadId: string,
+    rejectionReason: string,
+  ): Promise<LeaveRequestDocument> {
+    const requestId = this.toObjectId(leaveRequestId) as Types.ObjectId;
+    const deptHeadObjectId = this.toObjectId(departmentHeadId) as Types.ObjectId;
+
+    const leaveRequest = await this.leaveRequestModel.findById(requestId).exec();
+    if (!leaveRequest) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    // Ensure the leave request is in PENDING status
+    if (leaveRequest.status !== LeaveStatus.PENDING) {
+      throw new BadRequestException(
+        `Leave request has already been ${leaveRequest.status}`,
+      );
+    }
+
+    if (!leaveRequest.attachmentId) {
+      throw new BadRequestException('Leave request has no attachment to reject');
+    }
+
+    if (!rejectionReason || !rejectionReason.trim()) {
+      throw new BadRequestException('Rejection reason is required');
+    }
+
+    // Verify the user is a department head or HR Manager
+    const managerSystemRole = await this.systemRoleModel
+      .findOne({ employeeProfileId: deptHeadObjectId, isActive: true })
+      .exec();
+    const isDepartmentHead = managerSystemRole?.roles?.includes(SystemRole.DEPARTMENT_HEAD) || false;
+    const isHRManager = managerSystemRole?.roles?.includes(SystemRole.HR_MANAGER) || false;
+
+    if (!isDepartmentHead && !isHRManager) {
+      throw new BadRequestException('Only department heads and HR managers can reject documents');
+    }
+
+    // Find the pending approval that needs to be updated
+    // For HR Managers: look for Manager or HR Manager role
+    // For Department Heads: look for Manager or Department Head role
+    let pendingApproval;
+    if (isHRManager) {
+      pendingApproval = leaveRequest.approvalFlow.find(
+        (approval) => 
+          (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING) &&
+          (approval.role === 'Manager' || approval.role === 'HR Manager')
+      );
+    } else {
+      pendingApproval = leaveRequest.approvalFlow.find(
+        (approval) => 
+          (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING) &&
+          (approval.role === 'Manager' || approval.role === 'Department Head' || approval.role === 'Departement_Head')
+      );
+    }
+
+    // For HR Managers: allow rejecting documents for team members (HR Admin, Recruiter, HR Employee)
+    // For Department Heads: verify they are the direct supervisor
+    if (isHRManager) {
+      // HR Managers can reject documents for their team members
+      // Verify the employee is in the HR Manager's team (using filterTeamLeaveData logic)
+      const employeeId = leaveRequest.employeeId.toString();
+      const hrManagerProfile = await this.employeeProfileModel.findById(departmentHeadId).exec();
+      const employeeProfile = await this.employeeProfileModel.findById(employeeId).exec();
+      
+      if (!hrManagerProfile || !employeeProfile) {
+        throw new BadRequestException(
+          'Unable to verify team relationship. Please ensure both employee and HR manager profiles exist.',
+        );
+      }
+      
+      // Check if employee's supervisorPositionId matches HR Manager's primaryPositionId
+      const hrManagerPositionId = hrManagerProfile.primaryPositionId;
+      const employeeSupervisorPositionId = (employeeProfile as any).supervisorPositionId;
+      
+      if (!hrManagerPositionId || !employeeSupervisorPositionId) {
+        throw new BadRequestException(
+          'Unable to verify team relationship. Employee or HR manager may not have position assignments.',
+        );
+      }
+      
+      const hrManagerPosIdStr = hrManagerPositionId instanceof Types.ObjectId 
+        ? hrManagerPositionId.toString() 
+        : String(hrManagerPositionId);
+      const empSupervisorPosIdStr = employeeSupervisorPositionId instanceof Types.ObjectId
+        ? employeeSupervisorPositionId.toString()
+        : String(employeeSupervisorPositionId);
+      
+      const isTeamMember = hrManagerPosIdStr === empSupervisorPosIdStr;
+      
+      if (!isTeamMember) {
+        throw new BadRequestException(
+          'Only team members can have their documents rejected by HR Manager.',
+        );
+      }
+    } else {
+      // Department Head: verify they are the direct supervisor
+      if (!pendingApproval) {
+        throw new BadRequestException(
+          'This leave request is not pending your approval',
+        );
+      }
+
+      // Verify the department head is the direct supervisor of the employee
+      const employeeId = leaveRequest.employeeId.toString();
+      const deptHeadProfile = await this.employeeProfileModel.findById(departmentHeadId).exec();
+      const employeeProfile = await this.employeeProfileModel.findById(employeeId).exec();
+      
+      if (!deptHeadProfile || !employeeProfile) {
+        throw new BadRequestException(
+          'Unable to verify supervisor relationship. Please ensure both employee and department head profiles exist.',
+        );
+      }
+      
+      const deptHeadPositionId = deptHeadProfile.primaryPositionId;
+      const employeeSupervisorPositionId = (employeeProfile as any).supervisorPositionId;
+      
+      if (!deptHeadPositionId || !employeeSupervisorPositionId) {
+        throw new BadRequestException(
+          'Unable to verify supervisor relationship. Employee or department head may not have position assignments.',
+        );
+      }
+      
+      // Use flexible comparison to handle both ObjectId and string formats
+      const deptHeadPosIdStr = deptHeadPositionId instanceof Types.ObjectId 
+        ? deptHeadPositionId.toString() 
+        : String(deptHeadPositionId);
+      const empSupervisorPosIdStr = employeeSupervisorPositionId instanceof Types.ObjectId
+        ? employeeSupervisorPositionId.toString()
+        : String(employeeSupervisorPositionId);
+      
+      const isDirectSupervisor = deptHeadPosIdStr === empSupervisorPosIdStr;
+      
+      if (!isDirectSupervisor) {
+        throw new BadRequestException(
+          'Only the direct supervisor can reject documents for this leave request.',
+        );
+      }
+    }
+
+    // FIX: Use findByIdAndUpdate to avoid VersionError (handles concurrent modifications)
+    const rejectionRole = isHRManager 
+      ? 'HR Manager - Document Verification' 
+      : 'Department Head - Document Verification';
+    
+    const rejectedBy = isHRManager ? 'HR Manager' : 'Department Head';
+    const rejectionJustification = `[Request Rejected: Document was rejected by ${rejectedBy}. Reason: ${rejectionReason}]`;
+
+    // Release pending balance first (before updating leave request)
+    const entitlement = await this.getLeaveEntitlement(
+      leaveRequest.employeeId.toString(),
+      leaveRequest.leaveTypeId.toString(),
+    );
+    entitlement.pending = Math.max(
+      0,
+      entitlement.pending - leaveRequest.durationDays,
+    );
+    await this.updateLeaveEntitlement(entitlement._id.toString(), {
+      pending: entitlement.pending,
+    });
+
+    // Reload the document fresh to avoid version conflicts
+    const freshLeaveRequest = await this.leaveRequestModel.findById(requestId).exec();
+    if (!freshLeaveRequest) {
+      throw new NotFoundException('Leave request not found');
+    }
+
+    // Verify request is still pending
+    if (freshLeaveRequest.status !== LeaveStatus.PENDING) {
+      throw new BadRequestException(
+        `Leave request has already been ${freshLeaveRequest.status}`,
+      );
+    }
+
+    // Update pending approval if found
+    if (pendingApproval) {
+      const pendingIndex = freshLeaveRequest.approvalFlow.findIndex(
+        (approval) => 
+          approval.role === pendingApproval.role && 
+          (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING)
+      );
+      
+      if (pendingIndex !== -1) {
+        freshLeaveRequest.approvalFlow[pendingIndex].status = LeaveStatus.REJECTED;
+        freshLeaveRequest.approvalFlow[pendingIndex].decidedBy = deptHeadObjectId;
+        freshLeaveRequest.approvalFlow[pendingIndex].decidedAt = new Date();
+        freshLeaveRequest.markModified('approvalFlow');
+      }
+    }
+
+    // Add document rejection entry
+    freshLeaveRequest.approvalFlow.push({
+      role: rejectionRole,
+      status: 'rejected',
+      decidedBy: deptHeadObjectId,
+      decidedAt: new Date(),
+    });
+
+    // Set the leave status to REJECTED
+    freshLeaveRequest.status = LeaveStatus.REJECTED;
+
+    // Store rejection reason in justification
+    const existingJustification = freshLeaveRequest.justification || '';
+    freshLeaveRequest.justification = `${rejectionJustification} ${existingJustification}`.trim();
+
+    // Save the updated leave request with retry logic for version conflicts
+    let updatedLeaveRequest: LeaveRequestDocument;
+    try {
+      updatedLeaveRequest = await freshLeaveRequest.save();
+    } catch (error: any) {
+      // If version error, reload and retry once
+      if (error.name === 'VersionError') {
+        const retryLeaveRequest = await this.leaveRequestModel.findById(requestId).exec();
+        if (!retryLeaveRequest) {
+          throw new NotFoundException('Leave request not found on retry');
+        }
+        if (retryLeaveRequest.status !== LeaveStatus.PENDING) {
+          throw new BadRequestException(
+            `Leave request has already been ${retryLeaveRequest.status}`,
+          );
+        }
+
+        // Re-apply updates
+        if (pendingApproval) {
+          const retryPendingIndex = retryLeaveRequest.approvalFlow.findIndex(
+            (approval) => 
+              approval.role === pendingApproval.role && 
+              (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING)
+          );
+          
+          if (retryPendingIndex !== -1) {
+            retryLeaveRequest.approvalFlow[retryPendingIndex].status = LeaveStatus.REJECTED;
+            retryLeaveRequest.approvalFlow[retryPendingIndex].decidedBy = deptHeadObjectId;
+            retryLeaveRequest.approvalFlow[retryPendingIndex].decidedAt = new Date();
+            retryLeaveRequest.markModified('approvalFlow');
+          }
+        }
+
+        retryLeaveRequest.approvalFlow.push({
+          role: rejectionRole,
+          status: 'rejected',
+          decidedBy: deptHeadObjectId,
+          decidedAt: new Date(),
+        });
+
+        retryLeaveRequest.status = LeaveStatus.REJECTED;
+        const retryExistingJustification = retryLeaveRequest.justification || '';
+        retryLeaveRequest.justification = `${rejectionJustification} ${retryExistingJustification}`.trim();
+
+        updatedLeaveRequest = await retryLeaveRequest.save();
+      } else {
+        throw error;
+      }
+    }
+
+    // Notify employee that the request was rejected
+    await this.notifyStakeholders(updatedLeaveRequest, 'rejected');
+
+    return updatedLeaveRequest;
   }
 
   // ==================== AUTOMATED SCHEDULED TASKS ====================

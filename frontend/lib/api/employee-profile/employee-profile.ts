@@ -145,11 +145,29 @@ export const employeeProfileApi = {
 
   // Get team members (for department heads/managers)
   getMyTeam: async () => {
-    const response = await api.get<TeamMember[]>(
-      "/employee-profile/team/members"
-    );
-    const data = extractData<TeamMember[]>(response);
-    return Array.isArray(data) ? data : [];
+    try {
+      console.log("🔍 getMyTeam: Calling API...");
+      const response = await api.get<TeamMember[]>(
+        "/employee-profile/team/members"
+      );
+      console.log("🔍 getMyTeam: Raw API response:", response);
+      console.log("🔍 getMyTeam: Response type:", typeof response);
+      console.log("🔍 getMyTeam: Is array?", Array.isArray(response));
+      console.log("🔍 getMyTeam: Has data property?", response && typeof response === "object" && "data" in response);
+      
+      const data = extractData<TeamMember[]>(response);
+      console.log("🔍 getMyTeam: Extracted data:", data);
+      console.log("🔍 getMyTeam: Extracted data type:", typeof data);
+      console.log("🔍 getMyTeam: Extracted data is array?", Array.isArray(data));
+      
+      const result = Array.isArray(data) ? data : [];
+      console.log("✅ getMyTeam: Returning", result.length, "team members");
+      return result;
+    } catch (error: any) {
+      console.error("❌ getMyTeam: Error:", error);
+      console.error("❌ getMyTeam: Error response:", error.response);
+      throw error;
+    }
   },
 
   // Get team statistics

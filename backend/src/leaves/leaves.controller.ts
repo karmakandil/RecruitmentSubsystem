@@ -817,6 +817,42 @@ export class LeaveController {
     );
   }
 
+  // Get delegations for current manager
+  @Get('delegations')
+  @UseGuards(RolesGuard)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
+  async getDelegations(@Req() req: any) {
+    const managerId = req.user.userId || req.user._id || req.user.id;
+    return await this.leavesService.getDelegations(managerId);
+  }
+
+  // Revoke a delegation
+  @Delete('delegate')
+  @UseGuards(RolesGuard)
+  @Roles(
+    SystemRole.DEPARTMENT_HEAD,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.HR_ADMIN,
+  )
+  async revokeDelegation(
+    @Body() body: { delegateId: string; startDate: Date; endDate: Date },
+    @Req() req: any,
+  ) {
+    const managerId = req.user.userId || req.user._id || req.user.id;
+    return await this.leavesService.revokeDelegation(
+      managerId,
+      body.delegateId,
+      body.startDate,
+      body.endDate,
+    );
+  }
+
   // NEW CODE: Upload attachment for leave request
   @Post('attachment/upload')
   @UseGuards(RolesGuard)
@@ -934,6 +970,23 @@ export class LeaveController {
     return await this.leavesService.rejectDocument(
       id,
       hrUserId,
+      body.rejectionReason,
+    );
+  }
+
+  // NEW CODE: Department Head/HR Manager reject document (also rejects the leave request)
+  @Post('request/:id/reject-document-dept-head')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER)
+  async rejectDocumentByDepartmentHead(
+    @Param('id') id: string,
+    @Body() body: { rejectionReason: string },
+    @Req() req: any,
+  ) {
+    const managerId = req.user.userId || req.user._id || req.user.id;
+    return await this.leavesService.rejectDocumentByDepartmentHead(
+      id,
+      managerId,
       body.rejectionReason,
     );
   }
