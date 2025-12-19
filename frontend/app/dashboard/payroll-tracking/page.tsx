@@ -16,22 +16,10 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Allow all employee roles to access this page (all roles are employees and need to check their salary, claims, etc.)
+  // Allow ALL authenticated users to access this page (all roles are employees and need to check their salary, claims, etc.)
   // Staff roles (Payroll Specialist, Payroll Manager, Finance Staff, System Admin) can access any employee's data
-  const hasAccess = user?.roles?.some(
-    (role) => 
-      role === SystemRole.DEPARTMENT_EMPLOYEE || 
-      role === SystemRole.DEPARTMENT_HEAD ||
-      role === SystemRole.HR_MANAGER ||
-      role === SystemRole.HR_EMPLOYEE ||
-      role === SystemRole.HR_ADMIN ||
-      role === SystemRole.RECRUITER ||
-      role === SystemRole.LEGAL_POLICY_ADMIN ||
-      role === SystemRole.FINANCE_STAFF || 
-      role === SystemRole.PAYROLL_SPECIALIST ||
-      role === SystemRole.PAYROLL_MANAGER ||
-      role === SystemRole.SYSTEM_ADMIN
-  );
+  // But all users should be able to access their own payroll-tracking information
+  // No need for hasAccess variable - all authenticated users have access
 
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -44,21 +32,17 @@ export default function PayrollPage() {
     // Wait for mount and auth initialization before redirecting
     if (!mounted || authLoading) return;
     
+    // All authenticated users have access (all roles are employees)
     if (!isAuthenticated) {
       router.replace("/auth/login");
       return;
     }
-    
-    if (!hasAccess) {
-      router.replace("/dashboard");
-      return;
-    }
-  }, [mounted, hasAccess, isAuthenticated, authLoading, router]);
+  }, [mounted, isAuthenticated, authLoading, router]);
 
   useEffect(() => {
     const fetchPayslips = async () => {
-      // Only fetch data if user is authenticated and has access
-      if (authLoading || !isAuthenticated || !hasAccess) {
+      // Only fetch data if user is authenticated (all authenticated users have access)
+      if (authLoading || !isAuthenticated) {
         return;
       }
 
@@ -92,7 +76,7 @@ export default function PayrollPage() {
     };
 
     fetchPayslips();
-  }, [user, isAuthenticated, hasAccess, authLoading]);
+  }, [user, isAuthenticated, authLoading]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";

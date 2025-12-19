@@ -26,25 +26,14 @@ export default function PayrollManagerDashboardPage() {
     }
   }, [user]);
   
-  // Allow employees, payroll specialists, payroll managers, finance staff, and system admins
-  // For Payroll Manager specifically, use stricter auth
+  // Allow ALL authenticated users to access payroll (all roles are employees and need to check their payroll)
+  // For Payroll Manager specifically, show full dashboard
   const isPayrollManager = user?.roles?.includes(SystemRole.PAYROLL_MANAGER);
-  const { isLoading: isAuthLoading } = useRequireAuth(
-    isPayrollManager 
-      ? SystemRole.PAYROLL_MANAGER 
-      : [
-          SystemRole.DEPARTMENT_EMPLOYEE,
-          SystemRole.PAYROLL_SPECIALIST,
-          SystemRole.PAYROLL_MANAGER,
-          SystemRole.FINANCE_STAFF,
-          SystemRole.SYSTEM_ADMIN
-        ]
-  );
 
 
   // Show loading state while checking authentication
   // Don't render until auth is fully checked to prevent redirect flicker
-  if (loading || isAuthLoading || !isAuthenticated || !user) {
+  if (loading || !isAuthenticated || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -55,26 +44,8 @@ export default function PayrollManagerDashboardPage() {
     );
   }
 
-  // Double-check that user has the required role before rendering
+  // All authenticated users have access (all roles are employees)
   const hasPayrollManagerRole = user?.roles?.includes(SystemRole.PAYROLL_MANAGER);
-  const hasPayrollAccess = user?.roles?.some(
-    (role) =>
-      role === SystemRole.PAYROLL_SPECIALIST ||
-      role === SystemRole.PAYROLL_MANAGER ||
-      role === SystemRole.FINANCE_STAFF ||
-      role === SystemRole.SYSTEM_ADMIN ||
-      role === SystemRole.DEPARTMENT_EMPLOYEE
-  );
-
-  if (!hasPayrollAccess) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-gray-600">You don't have permission to access this page.</p>
-        </div>
-      </div>
-    );
-  }
 
   // If Payroll Manager, show the full dashboard with leave management
   if (hasPayrollManagerRole) {

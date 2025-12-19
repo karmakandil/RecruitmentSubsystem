@@ -119,6 +119,12 @@ export default function DisputeDetailsPage() {
       setShowApproveModal(false);
       setApproveComment("");
       await fetchDispute(); // Refresh dispute data
+      // Redirect to pending disputes page after successful approval
+      setTimeout(() => {
+        if (isPayrollSpecialist) {
+          router.push("/dashboard/payroll-tracking/pending-disputes");
+        }
+      }, 1500);
     } catch (err: any) {
       setError(getErrorMessage(err));
     } finally {
@@ -147,6 +153,12 @@ export default function DisputeDetailsPage() {
       setShowRejectModal(false);
       setRejectReason("");
       await fetchDispute(); // Refresh dispute data
+      // Redirect to pending disputes page after successful rejection
+      setTimeout(() => {
+        if (isPayrollSpecialist) {
+          router.push("/dashboard/payroll-tracking/pending-disputes");
+        }
+      }, 1500);
     } catch (err: any) {
       setError(getErrorMessage(err));
     } finally {
@@ -169,7 +181,15 @@ export default function DisputeDetailsPage() {
       });
       setShowConfirmModal(false);
       setConfirmComment("");
+      // Show success message
+      alert(`Dispute ${dispute.disputeId} has been confirmed and forwarded to Finance for refund processing. Finance staff have been notified.`);
       await fetchDispute(); // Refresh dispute data
+      // Redirect to manager disputes page after successful confirmation
+      setTimeout(() => {
+        if (isPayrollManager) {
+          router.push("/dashboard/payroll-tracking/manager-disputes");
+        }
+      }, 2000);
     } catch (err: any) {
       setError(getErrorMessage(err));
     } finally {

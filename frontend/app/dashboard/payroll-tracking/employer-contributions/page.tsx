@@ -36,13 +36,8 @@ export default function EmployerContributionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useRequireAuth([
-    SystemRole.DEPARTMENT_EMPLOYEE,
-    SystemRole.PAYROLL_SPECIALIST,
-    SystemRole.PAYROLL_MANAGER,
-    SystemRole.FINANCE_STAFF,
-    SystemRole.SYSTEM_ADMIN,
-  ]);
+  // All authenticated users can view their own employer contributions (all roles are employees)
+  // No need for restrictive useRequireAuth
 
   useEffect(() => {
     const fetchEmployerContributions = async () => {

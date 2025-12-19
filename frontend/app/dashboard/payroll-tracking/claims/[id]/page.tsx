@@ -135,6 +135,12 @@ export default function ClaimDetailsPage() {
       setApproveComment("");
       setApprovedAmount("");
       await fetchClaim(); // Refresh claim data
+      // Redirect to pending claims page after successful approval
+      setTimeout(() => {
+        if (isPayrollSpecialist) {
+          router.push("/dashboard/payroll-tracking/pending-claims");
+        }
+      }, 1500);
     } catch (err: any) {
       setError(getErrorMessage(err));
     } finally {
@@ -163,6 +169,12 @@ export default function ClaimDetailsPage() {
       setShowRejectModal(false);
       setRejectReason("");
       await fetchClaim(); // Refresh claim data
+      // Redirect to pending claims page after successful rejection
+      setTimeout(() => {
+        if (isPayrollSpecialist) {
+          router.push("/dashboard/payroll-tracking/pending-claims");
+        }
+      }, 1500);
     } catch (err: any) {
       setError(getErrorMessage(err));
     } finally {
