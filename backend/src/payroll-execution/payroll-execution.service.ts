@@ -2607,7 +2607,7 @@ export class PayrollExecutionService {
         .find(query)
         .populate('employeeId', 'firstName lastName employeeNumber _id')
         .populate('benefitId', 'name amount')
-        .populate('terminationId', 'reason type')
+        .populate('terminationId', 'reason initiator')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -2636,7 +2636,7 @@ export class PayrollExecutionService {
       .findById(id)
       .populate('employeeId', 'firstName lastName employeeNumber _id')
       .populate('benefitId', 'name amount')
-      .populate('terminationId', 'reason type')
+      .populate('terminationId', 'reason initiator')
       .exec();
 
     if (!terminationBenefit) {
