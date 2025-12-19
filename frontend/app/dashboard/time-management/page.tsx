@@ -588,20 +588,69 @@ export default function TimeManagementPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-                  <CardTitle>Repeated Lateness</CardTitle>
-                  <CardDescription>Monitor repeated lateness for disciplinary tracking</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link 
-                    href="/dashboard/time-management/repeated-lateness" 
-                className="text-blue-600 hover:underline font-medium"
-              >
-                    View Lateness Report →
-              </Link>
-            </CardContent>
-          </Card>
+          {isHRAdmin && (
+            <Card className="border-l-4 border-l-red-500">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Repeated Lateness Tracking
+                </CardTitle>
+                <CardDescription>Flag and track employees with repeated lateness for disciplinary action</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link 
+                  href="/dashboard/time-management/repeated-lateness" 
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                >
+                  Manage Lateness Flags →
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+            {/* Leave-Attendance Integration Card */}
+            <Card className="border-l-4 border-l-teal-500">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Leave-Attendance Integration
+                </CardTitle>
+                <CardDescription>View how approved leaves are automatically reflected in attendance records</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link 
+                  href="/dashboard/time-management/leave-attendance" 
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                >
+                  View Integration →
+                </Link>
+              </CardContent>
+            </Card>
+
+            {/* Payroll Cut-off Escalation Card */}
+            <Card className="border-l-4 border-l-rose-500">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Payroll Cut-off Escalation
+                </CardTitle>
+                <CardDescription>Monitor and escalate pending time requests before monthly payroll cut-off</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link 
+                  href="/dashboard/time-management/payroll-escalation" 
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
+                >
+                  View Status →
+                </Link>
+              </CardContent>
+            </Card>
             </div>
           </div>
 

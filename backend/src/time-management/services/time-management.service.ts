@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 // Import schemas
@@ -6,6 +6,7 @@ import { AttendanceRecord } from '../models/attendance-record.schema';
 import { AttendanceCorrectionRequest } from '../models/attendance-correction-request.schema';
 import { TimeException } from '../models/time-exception.schema';
 import { ShiftAssignment } from '../models/shift-assignment.schema';
+import { EmployeeProfile } from '../../employee-profile/models/employee-profile.schema';
 // Import enums
 import {
   TimeExceptionStatus,
@@ -35,6 +36,7 @@ import { Inject, forwardRef, BadRequestException, NotFoundException } from '@nes
 
 @Injectable()
 export class TimeManagementService {
+  private readonly logger = new Logger(TimeManagementService.name);
   private readonly auditLogs: Array<{
     entity: string;
     changeSet: Record<string, unknown>;
@@ -51,6 +53,8 @@ export class TimeManagementService {
     private timeExceptionModel: Model<TimeException>,
     @InjectModel(ShiftAssignment.name)
     private shiftAssignmentModel: Model<ShiftAssignment>,
+    @InjectModel(EmployeeProfile.name)
+    private employeeProfileModel: Model<EmployeeProfile>,
     @Inject(forwardRef(() => LeavesService))
     private leavesService: LeavesService,
     @Inject(forwardRef(() => NotificationService))
@@ -187,6 +191,48 @@ export class TimeManagementService {
       },
       currentUserId,
     );
+
+    // AUTO-DETECT LATENESS: Check if clock-in is late compared to shift start
+    try {
+      if (shiftAssignments.length > 0) {
+        const assignment = shiftAssignments[0] as any;
+        const shift = assignment.shiftId;
+        
+        if (shift && shift.startTime) {
+          // Parse shift start time (format: "HH:MM" or "HH:MM:SS")
+          const [hours, minutes] = shift.startTime.split(':').map(Number);
+          const shiftStartMinutes = hours * 60 + minutes;
+          
+          // Get clock-in time in minutes (UTC)
+          const clockInMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+          
+          // Apply grace period (default 15 minutes if not set)
+          const graceMinutes = shift.graceInMinutes || 15;
+          const lateThreshold = shiftStartMinutes + graceMinutes;
+          
+          // Calculate lateness
+          const lateMinutes = clockInMinutes - lateThreshold;
+          
+          if (lateMinutes > 0) {
+            this.logger.log(`[AUTO-LATENESS] Employee ${employeeId} is ${lateMinutes} minutes late (clocked in at ${clockInMinutes} min, threshold was ${lateThreshold} min, shift start: ${shiftStartMinutes} min)`);
+            
+            // Create the LATE exception
+            await this.autoCreateLatenessException(
+              employeeId,
+              (saved as any)._id.toString(),
+              currentUserId,
+              lateMinutes,
+              currentUserId,
+            );
+          } else {
+            this.logger.log(`[AUTO-LATENESS] Employee ${employeeId} clocked in on time (${clockInMinutes} min vs threshold ${lateThreshold} min)`);
+          }
+        }
+      }
+    } catch (error: any) {
+      // Log but don't fail the clock-in if lateness detection fails
+      this.logger.warn(`[AUTO-LATENESS] Detection failed for employee ${employeeId}: ${error.message}`);
+    }
 
     return saved;
   }
@@ -351,6 +397,19 @@ export class TimeManagementService {
       },
       currentUserId,
     );
+
+    // BR-TM-09: Auto-detect lateness and create LATE exception if needed
+    try {
+      await this.checkAndCreateLatenessException(
+        employeeId,
+        (saved as any)._id.toString(),
+        now,
+        currentUserId,
+      );
+    } catch (error: any) {
+      // Log but don't fail the clock-in if lateness detection fails
+      this.logger.warn(`[AUTO-LATENESS] Detection failed for employee ${employeeId}: ${error.message}`);
+    }
 
     return {
       attendanceRecord: saved,
@@ -2231,6 +2290,200 @@ export class TimeManagementService {
     return exception;
   }
 
+  /**
+   * Scan existing attendance records and create LATE exceptions for past late clock-ins
+   * This is used to retroactively flag lateness for records created before automatic detection was added
+   */
+  async scanAndFlagExistingLateness(
+    employeeId: string | undefined,
+    days: number,
+    currentUserId: string,
+  ) {
+    this.logger.log(`[SCAN-LATENESS] Starting scan for existing late clock-ins (last ${days} days)...`);
+    
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Build query for attendance records - filter by punch time since there's no createdAt
+    const query: any = {
+      'punches.time': { $gte: startDate },
+    };
+    
+    if (employeeId) {
+      query.employeeId = new Types.ObjectId(employeeId);
+    }
+
+    // Get all attendance records in the period
+    const attendanceRecords = await this.attendanceRecordModel.find(query).exec();
+    this.logger.log(`[SCAN-LATENESS] Found ${attendanceRecords.length} attendance records to scan`);
+
+    let flaggedCount = 0;
+    let skippedCount = 0;
+    const results: any[] = [];
+
+    for (const record of attendanceRecords) {
+      const recordEmployeeId = (record as any).employeeId?.toString();
+      const recordId = (record as any)._id?.toString();
+      
+      // Skip records with invalid data
+      if (!recordEmployeeId || !recordId) {
+        continue;
+      }
+      
+      // Validate employeeId is a valid ObjectId (24 hex characters)
+      if (!/^[0-9a-fA-F]{24}$/.test(recordEmployeeId)) {
+        this.logger.warn(`[SCAN-LATENESS] Record ${recordId}: Invalid employeeId "${recordEmployeeId}", skipping`);
+        continue;
+      }
+      
+      // Find IN punches in this record
+      const inPunches = (record.punches || []).filter((p: any) => p.type === PunchType.IN);
+      
+      if (inPunches.length === 0) {
+        continue; // No clock-in, skip silently
+      }
+      
+      // Processing silently - will log only when late
+
+      // Get the employee's shift assignment at the time of the record
+      // Use the first IN punch time since there's no createdAt field
+      const firstInPunchTime = inPunches[0]?.time ? new Date(inPunches[0].time) : new Date();
+      const recordDate = firstInPunchTime;
+      
+      let assignment;
+      try {
+        // Find any active shift assignment for this employee at the time of the punch
+        // Try APPROVED status first, then any status if not found
+        assignment = await this.shiftAssignmentModel
+          .findOne({
+            employeeId: new Types.ObjectId(recordEmployeeId),
+            status: { $in: ['APPROVED', 'PENDING'] }, // Include PENDING since some might not be approved yet
+            startDate: { $lte: recordDate },
+            $or: [
+              { endDate: { $gte: recordDate } },
+              { endDate: null },
+              { endDate: { $exists: false } },
+            ],
+          })
+          .populate('shiftId')
+          .exec();
+        
+        // If still not found, try without status filter at all
+        if (!assignment) {
+          assignment = await this.shiftAssignmentModel
+            .findOne({
+              employeeId: new Types.ObjectId(recordEmployeeId),
+              startDate: { $lte: recordDate },
+              $or: [
+                { endDate: { $gte: recordDate } },
+                { endDate: null },
+                { endDate: { $exists: false } },
+              ],
+            })
+            .populate('shiftId')
+            .exec();
+        }
+        
+        // If still not found, just try to find ANY assignment for this employee
+        if (!assignment) {
+          assignment = await this.shiftAssignmentModel
+            .findOne({
+              employeeId: new Types.ObjectId(recordEmployeeId),
+            })
+            .populate('shiftId')
+            .exec();
+            
+          if (assignment) {
+            this.logger.log(`[SCAN-LATENESS] Found assignment but date range doesn't match. Assignment: startDate=${assignment.startDate}, endDate=${assignment.endDate}, punchDate=${recordDate}`);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`[SCAN-LATENESS] Record ${recordId}: Error finding shift assignment: ${err.message}`);
+        continue;
+      }
+
+      if (!assignment) {
+        this.logger.log(`[SCAN-LATENESS] No shift assignment found for employee ${recordEmployeeId}`);
+        continue;
+      }
+      
+      if (!assignment.shiftId) {
+        this.logger.log(`[SCAN-LATENESS] Shift assignment found but shiftId is missing for employee ${recordEmployeeId}`);
+        continue;
+      }
+
+      const shift = assignment.shiftId as any;
+      if (!shift.startTime) {
+        continue; // No shift start time, skip
+      }
+      
+      this.logger.log(`[SCAN-LATENESS] Found shift "${shift.name}" (start: ${shift.startTime}) for employee ${recordEmployeeId}`);
+
+      // Parse shift start time
+      const [hours, minutes] = shift.startTime.split(':').map(Number);
+      const shiftStartMinutes = hours * 60 + minutes;
+      const graceMinutes = shift.graceInMinutes || 15;
+      const lateThreshold = shiftStartMinutes + graceMinutes;
+
+      // Check the first IN punch
+      const firstInPunch = inPunches[0];
+      const punchTime = new Date(firstInPunch.time);
+      const punchMinutes = punchTime.getUTCHours() * 60 + punchTime.getUTCMinutes();
+      
+      // Calculate lateness
+      const lateMinutes = punchMinutes - lateThreshold;
+
+        this.logger.log(`[SCAN-LATENESS] Checking: punchMinutes=${punchMinutes}, shiftStart=${shiftStartMinutes}, grace=${graceMinutes}, threshold=${lateThreshold}, late=${lateMinutes}`);
+      
+      if (lateMinutes > 0) {
+        // Check if a LATE exception already exists for this record
+        const existingException = await this.timeExceptionModel.findOne({
+          attendanceRecordId: recordId,
+          type: TimeExceptionType.LATE,
+        }).exec();
+
+        if (existingException) {
+          skippedCount++;
+          this.logger.log(`[SCAN-LATENESS] Record ${recordId}: Already flagged, skipping`);
+          continue; // Already flagged
+        }
+
+        // Create LATE exception
+        await this.autoCreateLatenessException(
+          recordEmployeeId,
+          recordId,
+          currentUserId,
+          lateMinutes,
+          currentUserId,
+        );
+
+        flaggedCount++;
+        results.push({
+          employeeId: recordEmployeeId,
+          recordId,
+          punchTime: punchTime.toISOString(),
+          lateMinutes,
+          shiftStart: shift.startTime,
+        });
+
+        this.logger.log(`[SCAN-LATENESS] ✓ Flagged record ${recordId}: ${lateMinutes} minutes late`);
+      } else {
+        this.logger.log(`[SCAN-LATENESS] Record ${recordId}: On time or early`);
+      }
+    }
+
+    this.logger.log(`[SCAN-LATENESS] Scan complete. Flagged: ${flaggedCount}, Skipped (already flagged): ${skippedCount}`);
+
+    return {
+      success: true,
+      message: `Scanned ${attendanceRecords.length} records. Created ${flaggedCount} new LATE exceptions.`,
+      flaggedCount,
+      skippedCount,
+      results,
+    };
+  }
+
   // 25. Get pending exceptions for a specific handler (assignedTo)
   // BR-TM-09: Support workflow - handlers see their assigned exceptions
   async getPendingExceptionsForHandler(assignedTo: string, currentUserId: string) {
@@ -3220,7 +3473,96 @@ export class TimeManagementService {
       currentUserId,
     );
 
+    // AUTO-DETECT LATENESS: Check if any IN punch is late
+    try {
+      const clockInPunch = punchesWithDates.find(p => p.type === PunchType.IN);
+      if (clockInPunch) {
+        await this.checkAndCreateLatenessException(
+          recordPunchWithMetadataDto.employeeId,
+          (attendanceRecord as any)._id.toString(),
+          clockInPunch.time,
+          currentUserId,
+        );
+      }
+    } catch (error: any) {
+      // Log but don't fail the punch recording if lateness detection fails
+      this.logger.warn(`Lateness detection failed for employee ${recordPunchWithMetadataDto.employeeId}: ${error.message}`);
+    }
+
     return attendanceRecord;
+  }
+
+  /**
+   * Check if a clock-in time is late compared to shift schedule and create LATE exception if needed
+   */
+  private async checkAndCreateLatenessException(
+    employeeId: string,
+    attendanceRecordId: string,
+    clockInTime: Date,
+    currentUserId: string,
+  ) {
+    // Get the employee's active shift assignment for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const assignment = await this.shiftAssignmentModel
+      .findOne({
+        employeeId,
+        isActive: true,
+        startDate: { $lte: today },
+        $or: [
+          { endDate: { $gte: today } },
+          { endDate: null },
+        ],
+      })
+      .populate('shiftId')
+      .exec();
+
+    if (!assignment || !assignment.shiftId) {
+      this.logger.log(`No active shift assignment found for employee ${employeeId}, skipping lateness check`);
+      return null;
+    }
+
+    const shift = assignment.shiftId as any;
+    if (!shift.startTime) {
+      this.logger.log(`Shift has no start time defined, skipping lateness check`);
+      return null;
+    }
+
+    // Parse shift start time (format: "HH:MM" or "HH:MM:SS")
+    const [hours, minutes] = shift.startTime.split(':').map(Number);
+    const shiftStartMinutes = hours * 60 + minutes;
+
+    // Get clock-in time in minutes
+    const clockInMinutes = clockInTime.getUTCHours() * 60 + clockInTime.getUTCMinutes();
+
+    // Apply grace period (default 15 minutes if not set)
+    const graceMinutes = shift.graceInMinutes || 15;
+    const lateThreshold = shiftStartMinutes + graceMinutes;
+
+    // Calculate lateness
+    const lateMinutes = clockInMinutes - lateThreshold;
+
+    if (lateMinutes > 0) {
+      this.logger.log(`[AUTO-LATENESS] Employee ${employeeId} is ${lateMinutes} minutes late (clocked in at ${clockInMinutes} min, threshold was ${lateThreshold} min)`);
+      
+      // Assign to the current user (HR admin or system) for review
+      const assignedTo = currentUserId;
+
+      // Create the LATE exception
+      return this.autoCreateLatenessException(
+        employeeId,
+        attendanceRecordId,
+        assignedTo,
+        lateMinutes,
+        currentUserId,
+      );
+    }
+
+    this.logger.log(`[AUTO-LATENESS] Employee ${employeeId} clocked in on time (${clockInMinutes} min vs threshold ${lateThreshold} min)`);
+    return null;
   }
 
   async recordPunchFromDevice(
@@ -3542,21 +3884,18 @@ export class TimeManagementService {
     currentUserId: string,
   ) {
     // Query for disciplinary flags - using LATE type with reason filter to identify disciplinary flags
-    // Note: DISCIPLINARY_FLAG is not in enum, so we use LATE type and filter by reason containing "disciplinary flag"
+    // Note: Flags are created with "REPEATED LATENESS FLAG" in the reason text
     const query: any = {
       type: TimeExceptionType.LATE,
-      reason: { $regex: /disciplinary flag/i }, // Filter to find disciplinary flags by reason text
+      reason: { $regex: /REPEATED LATENESS FLAG/i }, // Filter to find disciplinary flags by reason text
     };
     
     if (params.status) {
       query.status = params.status;
     }
     
-    if (params.startDate || params.endDate) {
-      query.createdAt = {};
-      if (params.startDate) query.createdAt.$gte = params.startDate;
-      if (params.endDate) query.createdAt.$lte = params.endDate;
-    }
+    // Date filtering removed - flags are checked for all time
+    // HR can run "Check Now" periodically to flag repeat offenders
     
     const flags = await this.timeExceptionModel
       .find(query)
@@ -3576,7 +3915,8 @@ export class TimeManagementService {
         employeeId: flag.employeeId,
         status: flag.status,
         reason: flag.reason,
-        createdAt: (flag as any).createdAt,
+        // Extract timestamp from ObjectId since schema doesn't have createdAt
+        createdAt: (flag as any)._id?.getTimestamp?.() || new Date(),
       })),
     };
   }
@@ -6785,5 +7125,349 @@ export class TimeManagementService {
     });
 
     return syncResults;
+  }
+
+  // ===== US16: VACATION PACKAGE - ATTENDANCE INTEGRATION =====
+  // BR-TM-19: Vacation packages must be linked to shift schedules
+  // Auto-reflect approved leave in attendance records
+
+  /**
+   * Create attendance records for approved leave period
+   * Called when a leave request is finalized/approved
+   * Creates attendance records with ON_LEAVE status for each working day
+   */
+  async createLeaveAttendanceRecords(params: {
+    employeeId: string;
+    leaveRequestId: string;
+    startDate: Date;
+    endDate: Date;
+    leaveType: string;
+    durationDays: number;
+  }, currentUserId: string) {
+    const { employeeId, leaveRequestId, startDate, endDate, leaveType, durationDays } = params;
+    const { Types } = require('mongoose');
+
+    this.logger.log(`[LEAVE-ATTENDANCE] Creating attendance records for employee ${employeeId} from ${startDate} to ${endDate}`);
+
+    const createdRecords: any[] = [];
+    const skippedDates: string[] = [];
+    const currentDate = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Get employee's shift assignment to know rest days
+    const shiftAssignment = await this.shiftAssignmentModel
+      .findOne({
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'APPROVED',
+        startDate: { $lte: end },
+        $or: [{ endDate: { $gte: startDate } }, { endDate: null }],
+      })
+      .populate('shiftId')
+      .exec();
+
+    // Default rest days (Saturday, Sunday) if no shift found
+    let restDays = [0, 6]; // Sunday = 0, Saturday = 6
+    if (shiftAssignment && (shiftAssignment.shiftId as any)?.restDays) {
+      restDays = (shiftAssignment.shiftId as any).restDays;
+    }
+
+    while (currentDate <= end) {
+      const dayOfWeek = currentDate.getDay();
+      const dateStr = currentDate.toISOString().split('T')[0];
+
+      // Skip rest days
+      if (restDays.includes(dayOfWeek)) {
+        skippedDates.push(`${dateStr} (rest day)`);
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+
+      // Check if a holiday
+      const isHoliday = await this.checkIfHolidayOrRestDay(new Date(currentDate));
+      if (isHoliday.isHoliday) {
+        skippedDates.push(`${dateStr} (holiday: ${isHoliday.holidayName})`);
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+
+      // Check if attendance record already exists for this date
+      const dayStart = this.convertDateToUTCStart(new Date(currentDate));
+      const dayEnd = this.convertDateToUTCEnd(new Date(currentDate));
+
+      const existingRecord = await this.attendanceRecordModel.findOne({
+        employeeId: new Types.ObjectId(employeeId),
+        'punches.0.time': { $gte: dayStart, $lte: dayEnd },
+      }).exec();
+
+      if (existingRecord) {
+        // Check if already marked as leave
+        const hasLeaveException = await this.timeExceptionModel.findOne({
+          attendanceRecordId: existingRecord._id,
+          type: TimeExceptionType.MANUAL_ADJUSTMENT,
+          reason: { $regex: /\[APPROVED_LEAVE\]/i },
+        }).exec();
+
+        if (hasLeaveException) {
+          skippedDates.push(`${dateStr} (already has leave record)`);
+          currentDate.setDate(currentDate.getDate() + 1);
+          continue;
+        }
+
+        // Existing record but not leave - update it
+        this.logger.log(`[LEAVE-ATTENDANCE] Updating existing attendance record for ${dateStr}`);
+      }
+
+      // Create new attendance record for leave day
+      const leaveRecord = new this.attendanceRecordModel({
+        employeeId: new Types.ObjectId(employeeId),
+        punches: [], // No punches for leave day
+        totalWorkMinutes: 0,
+        hasMissedPunch: false, // Not a missed punch - it's approved leave
+        finalisedForPayroll: false, // Needs payroll processing
+        createdBy: currentUserId,
+        updatedBy: currentUserId,
+      });
+
+      const savedRecord = await leaveRecord.save();
+
+      // Create time exception to mark this as approved leave
+      const leaveException = new this.timeExceptionModel({
+        employeeId: new Types.ObjectId(employeeId),
+        type: TimeExceptionType.MANUAL_ADJUSTMENT,
+        attendanceRecordId: savedRecord._id,
+        assignedTo: new Types.ObjectId(currentUserId),
+        status: TimeExceptionStatus.APPROVED,
+        reason: `[APPROVED_LEAVE] ${leaveType} - Leave Request ID: ${leaveRequestId} - Date: ${dateStr}`,
+      });
+
+      await leaveException.save();
+
+      // Link exception to attendance record
+      savedRecord.exceptionIds = [leaveException._id];
+      await savedRecord.save();
+
+      createdRecords.push({
+        date: dateStr,
+        attendanceRecordId: savedRecord._id,
+        exceptionId: leaveException._id,
+      });
+
+      this.logger.log(`[LEAVE-ATTENDANCE] Created leave attendance record for ${dateStr}`);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Log the operation
+    await this.logAttendanceChange(
+      employeeId,
+      'LEAVE_ATTENDANCE_CREATED',
+      {
+        leaveRequestId,
+        leaveType,
+        startDate,
+        endDate,
+        recordsCreated: createdRecords.length,
+        skippedDates,
+      },
+      currentUserId,
+    );
+
+    return {
+      success: true,
+      message: `Created ${createdRecords.length} leave attendance records`,
+      employeeId,
+      leaveRequestId,
+      period: { startDate, endDate },
+      leaveType,
+      records: createdRecords,
+      skipped: skippedDates,
+      totalDaysRequested: durationDays,
+      workingDaysMarked: createdRecords.length,
+    };
+  }
+
+  /**
+   * Get employee's leave-attendance integration status
+   * Shows all attendance records marked as leave and upcoming leave periods
+   */
+  async getEmployeeLeaveAttendanceStatus(employeeId: string, startDate?: Date, endDate?: Date) {
+    const { Types } = require('mongoose');
+    const start = startDate || new Date(new Date().setDate(new Date().getDate() - 30));
+    const end = endDate || new Date(new Date().setDate(new Date().getDate() + 30));
+
+    // Get all leave-related exceptions for this employee
+    const leaveExceptions = await this.timeExceptionModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      type: TimeExceptionType.MANUAL_ADJUSTMENT,
+      reason: { $regex: /\[APPROVED_LEAVE\]/i },
+    }).populate('attendanceRecordId').exec();
+
+    // Get upcoming approved leaves from LeavesService
+    let upcomingLeaves: any[] = [];
+    try {
+      const allLeaves = await this.leavesService.getPastLeaveRequests(employeeId, {
+        fromDate: new Date(),
+        toDate: end,
+        status: 'APPROVED',
+      });
+      upcomingLeaves = allLeaves.filter((leave: any) => new Date(leave.dates.from) >= new Date());
+    } catch (error) {
+      this.logger.warn(`[LEAVE-ATTENDANCE] Could not fetch upcoming leaves: ${error}`);
+    }
+
+    // Parse leave dates from exceptions
+    const leaveDates = leaveExceptions.map((exc: any) => {
+      const dateMatch = exc.reason?.match(/Date: (\d{4}-\d{2}-\d{2})/);
+      const leaveTypeMatch = exc.reason?.match(/\[APPROVED_LEAVE\] ([^-]+)/);
+      return {
+        date: dateMatch ? dateMatch[1] : 'Unknown',
+        leaveType: leaveTypeMatch ? leaveTypeMatch[1].trim() : 'Unknown',
+        exceptionId: exc._id,
+        attendanceRecordId: exc.attendanceRecordId?._id,
+        status: exc.status,
+      };
+    });
+
+    return {
+      employeeId,
+      period: { startDate: start, endDate: end },
+      leaveAttendanceRecords: leaveDates,
+      totalLeaveDaysRecorded: leaveDates.length,
+      upcomingLeaves: upcomingLeaves.map((leave: any) => ({
+        leaveRequestId: leave._id,
+        leaveType: leave.leaveTypeId?.name || 'Unknown',
+        startDate: leave.dates?.from,
+        endDate: leave.dates?.to,
+        durationDays: leave.durationDays,
+        status: leave.status,
+      })),
+      summary: {
+        totalRecordedLeaveDays: leaveDates.length,
+        upcomingLeaveDays: upcomingLeaves.reduce((sum: number, l: any) => sum + (l.durationDays || 0), 0),
+      },
+    };
+  }
+
+  /**
+   * Validate shift assignment against approved leaves
+   * Returns conflicts if shift dates overlap with approved leave
+   */
+  async validateShiftAgainstApprovedLeave(params: {
+    employeeId: string;
+    shiftStartDate: Date;
+    shiftEndDate: Date;
+  }) {
+    const { employeeId, shiftStartDate, shiftEndDate } = params;
+
+    // Get approved leaves that overlap with shift period
+    let overlappingLeaves: any[] = [];
+    try {
+      const leaves = await this.leavesService.getPastLeaveRequests(employeeId, {
+        fromDate: shiftStartDate,
+        toDate: shiftEndDate,
+        status: 'APPROVED',
+      });
+
+      overlappingLeaves = leaves.filter((leave: any) => {
+        const leaveStart = new Date(leave.dates.from);
+        const leaveEnd = new Date(leave.dates.to);
+        return leaveStart <= shiftEndDate && leaveEnd >= shiftStartDate;
+      });
+    } catch (error) {
+      this.logger.warn(`[LEAVE-VALIDATION] Could not check for overlapping leaves: ${error}`);
+    }
+
+    const hasConflict = overlappingLeaves.length > 0;
+
+    return {
+      isValid: !hasConflict,
+      hasLeaveConflict: hasConflict,
+      conflicts: overlappingLeaves.map((leave: any) => ({
+        leaveRequestId: leave._id,
+        leaveType: leave.leaveTypeId?.name || 'Unknown',
+        startDate: leave.dates?.from,
+        endDate: leave.dates?.to,
+        durationDays: leave.durationDays,
+      })),
+      message: hasConflict
+        ? `Shift dates conflict with ${overlappingLeaves.length} approved leave request(s)`
+        : 'No conflicts with approved leaves',
+    };
+  }
+
+  /**
+   * Get department vacation-attendance summary
+   * For HR dashboard showing department-wide leave status
+   */
+  async getDepartmentVacationAttendanceSummary(departmentId: string, month?: number, year?: number) {
+    const { Types } = require('mongoose');
+    const targetMonth = month || new Date().getMonth() + 1;
+    const targetYear = year || new Date().getFullYear();
+    
+    const startOfMonth = new Date(targetYear, targetMonth - 1, 1);
+    const endOfMonth = new Date(targetYear, targetMonth, 0);
+
+    // Get all employees in department
+    const departmentEmployees = await this.employeeProfileModel.find({
+      department: new Types.ObjectId(departmentId),
+      status: { $ne: 'TERMINATED' },
+    }).select('_id firstName lastName').exec();
+
+    const employeeIds = departmentEmployees.map(e => e._id);
+
+    // Get all leave exceptions for these employees in the month
+    const leaveExceptions = await this.timeExceptionModel.find({
+      employeeId: { $in: employeeIds },
+      type: TimeExceptionType.MANUAL_ADJUSTMENT,
+      reason: { $regex: /\[APPROVED_LEAVE\]/i },
+    }).exec();
+
+    // Group by employee
+    const employeeLeaveSummary: Record<string, any> = {};
+    for (const emp of departmentEmployees) {
+      const empId = emp._id.toString();
+      const empExceptions = leaveExceptions.filter(
+        (exc: any) => exc.employeeId.toString() === empId
+      );
+
+      // Parse dates from exceptions
+      const leaveDates = empExceptions.map((exc: any) => {
+        const dateMatch = exc.reason?.match(/Date: (\d{4}-\d{2}-\d{2})/);
+        return dateMatch ? dateMatch[1] : null;
+      }).filter(Boolean);
+
+      // Filter to target month
+      const monthLeaveDates = leaveDates.filter((d: string) => {
+        const date = new Date(d);
+        return date >= startOfMonth && date <= endOfMonth;
+      });
+
+      employeeLeaveSummary[empId] = {
+        employeeId: empId,
+        employeeName: `${emp.firstName} ${emp.lastName}`,
+        leaveDaysInMonth: monthLeaveDates.length,
+        leaveDates: monthLeaveDates,
+      };
+    }
+
+    const totalLeaveDays = Object.values(employeeLeaveSummary)
+      .reduce((sum: number, e: any) => sum + e.leaveDaysInMonth, 0);
+
+    return {
+      departmentId,
+      period: {
+        month: targetMonth,
+        year: targetYear,
+        startDate: startOfMonth,
+        endDate: endOfMonth,
+      },
+      summary: {
+        totalEmployees: departmentEmployees.length,
+        totalLeaveDaysInMonth: totalLeaveDays,
+        averageLeaveDaysPerEmployee: departmentEmployees.length > 0
+          ? Math.round((totalLeaveDays / departmentEmployees.length) * 10) / 10
+          : 0,
+      },
+      employees: Object.values(employeeLeaveSummary),
+    };
   }
 }

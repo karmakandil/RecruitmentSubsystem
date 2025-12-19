@@ -1123,6 +1123,72 @@ export class NotificationService {
     return this.unifiedNotificationsService.getAllShiftNotifications(hrAdminId);
   }
 
+  /**
+   * Send repeated lateness flag notification to HR admins
+   * BR-TM-09: Notify HR when employee is flagged for repeated lateness
+   */
+  async sendRepeatedLatenessFlagNotification(
+    employeeId: string,
+    occurrenceCount: number,
+    status: string,
+    currentUserId: string,
+  ) {
+    const notification = await this.unifiedNotificationsService.sendRepeatedLatenessFlagNotification(
+      employeeId,
+      occurrenceCount,
+      status,
+    );
+    
+    await this.logTimeManagementChange(
+      'REPEATED_LATENESS_FLAG_NOTIFICATION_SENT',
+      {
+        employeeId,
+        occurrenceCount,
+      },
+      currentUserId,
+    );
+    
+    return notification;
+  }
+
+  /**
+   * Send payroll cut-off escalation notification to HR admins
+   * US18: Notify HR when requests are auto-escalated due to approaching payroll cut-off
+   */
+  async sendPayrollCutoffEscalationNotification(
+    hrAdminIds: string[],
+    escalatedExceptions: number,
+    escalatedCorrections: number,
+    pendingLeaves: number,
+    payrollCutoffDate: Date,
+    daysUntilCutoff: number,
+    currentUserId: string,
+  ) {
+    const result = await this.unifiedNotificationsService.sendPayrollCutoffEscalationNotification(
+      hrAdminIds,
+      escalatedExceptions,
+      escalatedCorrections,
+      pendingLeaves,
+      payrollCutoffDate,
+      daysUntilCutoff,
+    );
+    
+    await this.logTimeManagementChange(
+      'PAYROLL_CUTOFF_ESCALATION_NOTIFICATION_SENT',
+      {
+        hrAdminIds,
+        escalatedExceptions,
+        escalatedCorrections,
+        pendingLeaves,
+        payrollCutoffDate,
+        daysUntilCutoff,
+      },
+      currentUserId,
+    );
+    
+    return result;
+  }
+
   // ===== US8: MISSED PUNCH MANAGEMENT & ALERTS =====
   // BR-TM-14: Missed punches/late sign-ins must be handled via auto-flagging, notifications, or payroll blocking
 
