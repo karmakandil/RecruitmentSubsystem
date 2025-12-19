@@ -60,6 +60,11 @@ export default function HRManagerLeavePage() {
   const [documentRejectionReason, setDocumentRejectionReason] = useState<{ [requestId: string]: string }>({});
   const [rejectingDocument, setRejectingDocument] = useState<{ [requestId: string]: boolean }>({});
 
+  // NEW: State for delegate selection per request
+  const [showDelegateDropdown, setShowDelegateDropdown] = useState<{ [requestId: string]: boolean }>({});
+  const [selectedDelegate, setSelectedDelegate] = useState<{ [requestId: string]: string }>({});
+  const [delegating, setDelegating] = useState<{ [requestId: string]: boolean }>({});
+
   // NEW CODE: Role-based access control - HR_MANAGER and HR_ADMIN can access
   useEffect(() => {
     if (!loading && isAuthenticated && user) {
@@ -354,6 +359,56 @@ export default function HRManagerLeavePage() {
     setError(errorMessage);
   };
 
+  // NEW: Handle delegate selection
+  const handleDelegateClick = (requestId: string) => {
+    setShowDelegateDropdown(prev => ({
+      ...prev,
+      [requestId]: !prev[requestId]
+    }));
+  };
+
+  const handleDelegateSelect = (requestId: string, delegateId: string) => {
+    setSelectedDelegate(prev => ({
+      ...prev,
+      [requestId]: delegateId
+    }));
+  };
+
+  const handleDelegateSubmit = async (requestId: string) => {
+    const delegateId = selectedDelegate[requestId];
+    if (!delegateId) {
+      setError("Please select a delegate");
+      return;
+    }
+
+    setDelegating(prev => ({ ...prev, [requestId]: true }));
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      // Create delegation for 7 days from now
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 7);
+
+      await leavesApi.delegateApprovalAuthority(delegateId, startDate, endDate);
+      
+      setSuccessMessage(`Delegation created successfully. The selected employee can now approve leave requests on your behalf for the next 7 days.`);
+      setShowDelegateDropdown(prev => ({ ...prev, [requestId]: false }));
+      setSelectedDelegate(prev => {
+        const newState = { ...prev };
+        delete newState[requestId];
+        return newState;
+      });
+    } catch (err: any) {
+      console.error("Error delegating approval authority:", err);
+      const errorMessage = err?.response?.data?.message || err?.message || "Failed to delegate approval authority";
+      setError(errorMessage);
+    } finally {
+      setDelegating(prev => ({ ...prev, [requestId]: false }));
+    }
+  };
+
   // NEW CODE: Open override dialog for a specific request
   const handleOpenOverride = (request: LeaveRequest) => {
     setSelectedRequestForOverride(request);
@@ -598,14 +653,28 @@ export default function HRManagerLeavePage() {
     <div className="container mx-auto px-4 py-6 max-w-7xl">
       {/* Header Section */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          {user?.roles?.includes(SystemRole.HR_ADMIN) ? "HR Admin - Leave Requests" : "HR Manager - Leave Requests"}
-        </h1>
-        <p className="text-gray-600">
-          {user?.roles?.includes(SystemRole.HR_ADMIN) 
-            ? "View leave requests (HR Admin can only view, not approve)"
-            : "Manage leave requests: approve department head and HR Admin requests, finalize approved requests, override decisions, and process in bulk"}
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {user?.roles?.includes(SystemRole.HR_ADMIN) ? "HR Admin - Leave Requests" : "HR Manager - Leave Requests"}
+            </h1>
+            <p className="text-gray-600">
+              {user?.roles?.includes(SystemRole.HR_ADMIN) 
+                ? "View leave requests (HR Admin can only view, not approve)"
+                : "Manage leave requests: approve department head and HR Admin requests, finalize approved requests, override decisions, and process in bulk"}
+            </p>
+          </div>
+          {!user?.roles?.includes(SystemRole.HR_ADMIN) && (
+            <Link href="/dashboard/leaves/delegates">
+              <Button variant="outline" className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Manage Delegates
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -1063,6 +1132,17 @@ export default function HRManagerLeavePage() {
                             variant="danger"
                             size="sm"
                           />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelegateClick(request._id)}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Choose Delegate
+                          </Button>
                         </>
                       )}
                       {/* Finalize button for approved requests */}
@@ -1103,6 +1183,63 @@ export default function HRManagerLeavePage() {
                         return null;
                       })()}
                     </div>
+                    
+                    {/* Delegate Selection Dropdown */}
+                    {showDelegateDropdown[request._id] && (
+                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 w-full">
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Select an employee to delegate approval authority:
+                          </label>
+                          <Select
+                            label=""
+                            value={selectedDelegate[request._id] || ""}
+                            onChange={(e) => handleDelegateSelect(request._id, e.target.value)}
+                            options={
+                              employees.length > 0
+                                ? employees
+                                    .filter(emp => {
+                                      const currentUserId = user?.userId || (user as any)?._id || (user as any)?.id;
+                                      return emp._id !== currentUserId;
+                                    }) // Don't show self
+                                    .map((emp) => ({
+                                      value: emp._id,
+                                      label: `${emp.firstName} ${emp.lastName} (${emp.employeeId || emp._id})`,
+                                    }))
+                                : [{ value: "", label: loadingEmployees ? "Loading employees..." : "No employees available" }]
+                            }
+                            placeholder="Select an employee to delegate to"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleDelegateSubmit(request._id)}
+                            disabled={!selectedDelegate[request._id] || delegating[request._id]}
+                          >
+                            {delegating[request._id] ? "Delegating..." : "Confirm Delegate"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setShowDelegateDropdown(prev => ({ ...prev, [request._id]: false }));
+                              setSelectedDelegate(prev => {
+                                const newState = { ...prev };
+                                delete newState[request._id];
+                                return newState;
+                              });
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          The selected employee will be able to approve leave requests on your behalf for the next 7 days.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>

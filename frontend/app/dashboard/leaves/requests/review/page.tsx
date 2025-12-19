@@ -51,10 +51,8 @@ export default function ManagerLeaveReviewPage() {
 
   // NEW: Load employees for dropdown
   useEffect(() => {
-    if (isAuthenticated && user) {
-      loadEmployees();
-    }
-  }, [isAuthenticated, user]);
+    loadEmployees();
+  }, []);
 
   // Check if user is a delegate and auto-load delegated requests
   useEffect(() => {
@@ -67,109 +65,16 @@ export default function ManagerLeaveReviewPage() {
   const loadEmployees = async () => {
     try {
       setLoadingEmployees(true);
-      const roles = user?.roles || [];
-      const isDepartmentHead = roles.includes(SystemRole.DEPARTMENT_HEAD);
-      const userId = (user as any)?._id || user?.userId || (user as any)?.id;
-      
-      let employeesList: any[] = [];
-      
-      if (isDepartmentHead && userId) {
-        // For department heads, use getMyTeam to get only team members
-        try {
-          console.log("📋 [loadEmployees] Loading team members for department head:", userId);
-          const teamResponse = await employeeProfileApi.getMyTeam();
-          console.log("📋 [loadEmployees] Team response received:", teamResponse);
-          console.log("📋 [loadEmployees] Team response type:", typeof teamResponse);
-          console.log("📋 [loadEmployees] Team response is array?", Array.isArray(teamResponse));
-          
-          // getMyTeam already returns an array (handles extraction internally)
-          if (Array.isArray(teamResponse)) {
-            employeesList = teamResponse;
-            console.log("✅ [loadEmployees] Team members loaded:", employeesList.length);
-          } else {
-            console.warn("⚠️ [loadEmployees] Team response is not an array:", teamResponse);
-            employeesList = [];
-          }
-        } catch (teamError: any) {
-          console.error("❌ [loadEmployees] Error loading team members:", teamError);
-          console.error("❌ [loadEmployees] Error details:", {
-            message: teamError.message,
-            status: teamError.status,
-            responseData: teamError.responseData,
-          });
-          
-          // Fallback: try to get team members from team leave data
-          try {
-            console.log("🔄 [loadEmployees] Trying fallback: filterTeamLeaveData");
-            const result = await leavesApi.filterTeamLeaveData(userId, { limit: 1000 });
-            const employeeMap = new Map<string, any>();
-            if (result.items && Array.isArray(result.items)) {
-              result.items.forEach((item: any) => {
-                const empId = item.employeeId?._id || item.employeeId;
-                if (empId && !employeeMap.has(empId.toString())) {
-                  const empInfo = item.employeeId;
-                  employeeMap.set(empId.toString(), {
-                    _id: empId,
-                    employeeId: empInfo?.employeeId || empId,
-                    firstName: empInfo?.firstName || 'Unknown',
-                    lastName: empInfo?.lastName || 'Employee',
-                  });
-                }
-              });
-            }
-            employeesList = Array.from(employeeMap.values());
-            console.log("✅ [loadEmployees] Fallback successful - Team members from leave data:", employeesList.length);
-          } catch (fallbackError) {
-            console.error("❌ [loadEmployees] Fallback also failed:", fallbackError);
-          }
-        }
-      } else {
-        // For other roles, try getAllEmployees
-        try {
-          const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
-          employeesList = Array.isArray(response.data) ? response.data : [];
-          console.log("All employees loaded:", employeesList.length);
-        } catch (error: any) {
-          console.error("Failed to load employees:", error);
-          // If getAllEmployees fails, try getMyTeam as fallback
-          try {
-            const teamResponse = await employeeProfileApi.getMyTeam();
-            if (Array.isArray(teamResponse)) {
-              employeesList = teamResponse;
-            } else if (teamResponse && typeof teamResponse === 'object' && 'data' in teamResponse) {
-              employeesList = Array.isArray((teamResponse as any).data) ? (teamResponse as any).data : [];
-            }
-          } catch (fallbackError) {
-            console.error("Fallback also failed:", fallbackError);
-          }
-        }
-      }
-      
-      // Map employees to the expected format and filter out current user
-      const mappedEmployees = employeesList
-        .filter((emp: any) => {
-          if (!emp || (!emp._id && !emp.employeeId)) return false;
-          const empId = (emp._id || emp.employeeId)?.toString();
-          const currentUserId = userId?.toString();
-          return empId !== currentUserId; // Don't show self
-        })
-        .map((emp: any) => ({
-          _id: emp._id || emp.employeeId,
-          employeeId: emp.employeeId || emp._id,
-          firstName: emp.firstName || '',
-          lastName: emp.lastName || '',
-        }));
-      
-      console.log("Final employees list:", mappedEmployees.length);
-      setEmployees(mappedEmployees);
-      
-      if (mappedEmployees.length === 0) {
-        console.warn("⚠️ No employees loaded. Check console for errors above.");
-      }
+      const response = await employeeProfileApi.getAllEmployees({ limit: 1000 });
+      const employeesList = Array.isArray(response.data) ? response.data : [];
+      setEmployees(employeesList.map((emp: any) => ({
+        _id: emp._id,
+        employeeId: emp.employeeId || emp._id,
+        firstName: emp.firstName || '',
+        lastName: emp.lastName || '',
+      })));
     } catch (error: any) {
       console.error("Failed to load employees:", error);
-      setError(`Failed to load employees: ${error.message || 'Unknown error'}`);
-      setEmployees([]);
     } finally {
       setLoadingEmployees(false);
     }
@@ -198,21 +103,66 @@ export default function ManagerLeaveReviewPage() {
         setError(null);
         setHasSearched(true);
         try {
-          // If Payroll Manager, fetch team leave requests using filterTeamLeaveData
-          if (isPayrollManager) {
-            console.log("Fetching team pending requests for Payroll Manager:", userId);
-            const result = await leavesApi.filterTeamLeaveData(userId, {
+          // First check if user is a delegate (for Payroll Managers or others)
+          // Delegates should fetch delegated requests, not team requests
+          let isDelegate = false;
+          try {
+            const delegateRequests = await leavesApi.getEmployeeLeaveRequests(userId, {
               status: "pending",
-              limit: 1000, // Get all pending requests
             });
-            console.log("Received team requests:", result);
-            const teamRequests = Array.isArray(result.items) ? result.items : [];
-            const pendingOnly = teamRequests.filter(
-              (req: any) => req.status?.toLowerCase() === "pending"
-            );
-            console.log("Filtered team pending requests:", pendingOnly);
-            setPendingRequests(pendingOnly);
-          } else if (isDepartmentHead) {
+            // If we get requests and user is not a Department Head, they might be a delegate
+            // Check if requests exist and don't belong to the user
+            const normalizedUserId = userId.toString();
+            const hasDelegatedRequests = Array.isArray(delegateRequests) && delegateRequests.some((req: any) => {
+              const rawEmployeeId: any = req.employeeId;
+              let employeeIdStr: string | null = null;
+              if (typeof rawEmployeeId === "string") {
+                employeeIdStr = rawEmployeeId;
+              } else if (rawEmployeeId && typeof rawEmployeeId === "object") {
+                employeeIdStr = rawEmployeeId._id || rawEmployeeId.id || (typeof rawEmployeeId.toString === "function" ? rawEmployeeId.toString() : null);
+              }
+              return employeeIdStr && employeeIdStr !== normalizedUserId && req.status?.toLowerCase() === "pending";
+            });
+            
+            if (hasDelegatedRequests) {
+              isDelegate = true;
+              console.log("User is a delegate, fetching delegated requests");
+              const pendingOnly = delegateRequests.filter(
+                (req: any) => {
+                  if (req.status?.toLowerCase() !== "pending") return false;
+                  const rawEmployeeId: any = req.employeeId;
+                  let employeeIdStr: string | null = null;
+                  if (typeof rawEmployeeId === "string") {
+                    employeeIdStr = rawEmployeeId;
+                  } else if (rawEmployeeId && typeof rawEmployeeId === "object") {
+                    employeeIdStr = rawEmployeeId._id || rawEmployeeId.id || (typeof rawEmployeeId.toString === "function" ? rawEmployeeId.toString() : null);
+                  }
+                  return employeeIdStr && employeeIdStr !== normalizedUserId;
+                }
+              );
+              setPendingRequests(pendingOnly);
+            }
+          } catch (delegateErr) {
+            // Not a delegate or error fetching, continue to team requests
+            console.log("User is not a delegate or error checking:", delegateErr);
+          }
+          
+          // If not a delegate, fetch team requests for Payroll Managers or Department Heads
+          if (!isDelegate) {
+            if (isPayrollManager) {
+              console.log("Fetching team pending requests for Payroll Manager:", userId);
+              const result = await leavesApi.filterTeamLeaveData(userId, {
+                status: "pending",
+                limit: 1000, // Get all pending requests
+              });
+              console.log("Received team requests:", result);
+              const teamRequests = Array.isArray(result.items) ? result.items : [];
+              const pendingOnly = teamRequests.filter(
+                (req: any) => req.status?.toLowerCase() === "pending"
+              );
+              console.log("Filtered team pending requests:", pendingOnly);
+              setPendingRequests(pendingOnly);
+            } else if (isDepartmentHead) {
             // Department Head: fetch team requests using filterTeamLeaveData
             console.log("Fetching team pending requests for Department Head:", userId);
             const result = await leavesApi.filterTeamLeaveData(userId, {
@@ -224,23 +174,22 @@ export default function ManagerLeaveReviewPage() {
             const pendingOnly = teamRequests.filter(
               (req: any) => req.status?.toLowerCase() === "pending"
             );
-            console.log("Filtered team pending requests:", pendingOnly);
-            setPendingRequests(pendingOnly);
-          } else {
-            // If user is a delegate, fetch all pending requests for the manager's team
-            // The backend will handle this when userId is passed
-            // IMPORTANT: always prefer employee profile _id to match backend delegationMap
-            console.log("Fetching delegated pending requests for user:", userId);
-            // Pass userId to backend - it will check if user is a delegate and return appropriate requests
-            const requests = await leavesApi.getEmployeeLeaveRequests(userId, {
-              status: "pending",
-            });
-            console.log("Received delegated requests:", requests);
-            const pendingOnly = requests.filter(
-              (req) => req.status?.toLowerCase() === "pending"
-            );
-            console.log("Filtered delegated pending requests:", pendingOnly);
-            setPendingRequests(pendingOnly);
+              console.log("Filtered team pending requests:", pendingOnly);
+              setPendingRequests(pendingOnly);
+            } else {
+              // For other users (not Payroll Manager or Department Head), try fetching delegated requests
+              // The backend will handle this when userId is passed
+              console.log("Fetching delegated pending requests for user:", userId);
+              const requests = await leavesApi.getEmployeeLeaveRequests(userId, {
+                status: "pending",
+              });
+              console.log("Received delegated requests:", requests);
+              const pendingOnly = requests.filter(
+                (req) => req.status?.toLowerCase() === "pending"
+              );
+              console.log("Filtered delegated pending requests:", pendingOnly);
+              setPendingRequests(pendingOnly);
+            }
           }
         } catch (err: any) {
           console.error("Error fetching requests:", err);
