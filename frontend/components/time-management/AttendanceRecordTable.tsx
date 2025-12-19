@@ -34,9 +34,11 @@ export function AttendanceRecordTable({
   };
 
   const formatDuration = (minutes?: number) => {
-    if (!minutes) return '-';
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    if (minutes === undefined || minutes === null) return '-';
+    // Round to avoid floating point display issues
+    const totalMinutes = Math.round(minutes);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
     return `${hours}h ${mins}m`;
   };
 
