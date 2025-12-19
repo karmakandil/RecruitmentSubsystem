@@ -159,9 +159,16 @@ export class OrganizationStructureController {
 
   /**
    * REQ-SANV-01: View positions (All authenticated users)
+   * Payroll Specialists and Managers need access to view positions for signing bonus configuration
    */
   @Get('positions')
-  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.PAYROLL_SPECIALIST,
+  )
   async getAllPositions(
     @CurrentUser() user: any,
     @Query('departmentId') departmentId?: string,
@@ -175,9 +182,16 @@ export class OrganizationStructureController {
 
   /**
    * REQ-SANV-01: View specific position details
+   * Payroll Specialists and Managers need access to view position details for signing bonus configuration
    */
   @Get('positions/:id')
-  @Roles(SystemRole.SYSTEM_ADMIN, SystemRole.HR_ADMIN, SystemRole.HR_MANAGER)
+  @Roles(
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.HR_ADMIN,
+    SystemRole.HR_MANAGER,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.PAYROLL_SPECIALIST,
+  )
   async getPositionById(
     @Param('id') id: string,
     @CurrentUser() user: any,

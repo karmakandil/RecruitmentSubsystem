@@ -45,14 +45,8 @@ export default function TaxDocumentsPage() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
   // Allow employees, payroll specialists, payroll managers, finance staff, and system admins
-  const allowedRoles = [
-    SystemRole.DEPARTMENT_EMPLOYEE,
-    SystemRole.PAYROLL_SPECIALIST,
-    SystemRole.PAYROLL_MANAGER,
-    SystemRole.FINANCE_STAFF,
-    SystemRole.SYSTEM_ADMIN,
-  ];
-  useRequireAuth(allowedRoles);
+  // All authenticated users can view their own tax documents (all roles are employees)
+  // No need for restrictive useRequireAuth
 
   useEffect(() => {
     const fetchTaxDocuments = async () => {

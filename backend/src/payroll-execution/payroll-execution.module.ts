@@ -31,6 +31,8 @@ import { TimeManagementModule } from '../time-management/time-management.module'
 import { EmployeeProfileModule } from '../employee-profile/employee-profile.module';
 import { LeavesModule } from '../leaves/leaves.module';
 import { RecruitmentModule } from '../recruitment/recruitment.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ExtendedNotification, ExtendedNotificationSchema } from '../notifications/models/extended-notification.schema';
 import { EmployeeSystemRole, EmployeeSystemRoleSchema } from '../employee-profile/models/employee-system-role.schema';
 import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/models/employee-profile.schema';
 
@@ -42,6 +44,7 @@ import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/mode
     EmployeeProfileModule,
     LeavesModule,
     forwardRef(() => RecruitmentModule),
+    NotificationsModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-secret-key',
       signOptions: { expiresIn: '1h' },
@@ -56,6 +59,7 @@ import { EmployeeProfile, EmployeeProfileSchema } from '../employee-profile/mode
       { name: employeePenalties.name, schema: employeePenaltiesSchema },
       { name: EmployeeSystemRole.name, schema: EmployeeSystemRoleSchema },
       { name: EmployeeProfile.name, schema: EmployeeProfileSchema },
+      { name: 'ExtendedNotification', schema: ExtendedNotificationSchema },
     ]),
   ],
   controllers: [PayrollExecutionController],

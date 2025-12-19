@@ -99,6 +99,8 @@ export default function PayrollSpecialistDashboardPage() {
               <p className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-200 via-purple-200 to-pink-200 bg-clip-text text-transparent">
               {mounted ? `Welcome back, ${user?.fullName || "Specialist"}!` : 'Welcome back!'}
             </p>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Create and manage payroll configurations (all in draft status requiring manager approval). Process payroll, review disputes and claims, and generate reports.
             </div>
             <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
               Create and manage payroll configurations with comprehensive tools and intuitive workflows.
@@ -132,6 +134,8 @@ export default function PayrollSpecialistDashboardPage() {
               <div className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 shadow-lg">
                 <Sparkles className="w-5 h-5 text-white" />
             </div>
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+              Configure company-level payroll policies, pay grades, allowances, tax rules, and benefits. All configurations are created in draft status and require Payroll Manager approval before publishing. Editing is only allowed for draft status configurations.
               <div className="h-1.5 w-32 md:w-48 bg-gradient-to-l from-transparent via-purple-500 to-pink-500 rounded-full shadow-lg shadow-purple-500/50"></div>
             </div>
             <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
@@ -151,6 +155,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <FileText className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Payroll Policies</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Configure company-level payroll policies (Create, Edit, View) - Status: Draft (requires manager approval)
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Payroll Policies</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Configure company-level payroll policies and rules
@@ -180,6 +187,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <DollarSign className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Pay Grades</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Define pay grades (Position, Gross Salary = Base Pay + Allowances) - Create, Edit, View - Status: Draft
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Pay Grades</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Define pay grades, salary, and compensation limits
@@ -209,6 +219,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Briefcase className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Pay Types</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Define employee pay types (hourly, daily, weekly, monthly, contract-based) - Create, Edit, View - Status: Draft
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Pay Types</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Define employee pay types (hourly, daily, weekly, monthly)
@@ -238,6 +251,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Gift className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Allowances</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Set allowances (transportation, housing, etc.) - Create, Edit, View - Status: Draft
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Allowances</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Set allowances (transportation, housing, etc.)
@@ -267,6 +283,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Shield className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Tax Rules</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Define tax rules and laws (progressive rates, exemptions, thresholds) - Create, View - Status: Draft (Legal & Policy Admin can edit when laws change)
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Tax Rules</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Define tax rules and laws (progressive rates, exemptions)
@@ -296,6 +315,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Users className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Signing Bonuses</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Configure policies for signing bonuses - Create, Edit, View - Status: Draft
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Signing Bonuses</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Configure policies for signing bonuses
@@ -325,6 +347,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Shield className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Termination Benefits</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Configure resignation and termination benefits and their terms - Create, Edit, View - Status: Draft
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Termination Benefits</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Configure resignation and termination benefits
@@ -354,6 +379,9 @@ export default function PayrollSpecialistDashboardPage() {
                     <Shield className="w-10 h-10 text-white" />
                   </div>
                 </div>
+                <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Insurance Brackets</CardTitle>
+                <CardDescription className="text-gray-600 text-sm leading-relaxed">
+                  Configure insurance brackets with defined salary ranges and contribution percentages (employer & employee) - Create, Edit, View - Status: Draft (requires HR Manager approval)
                 <CardTitle className="text-2xl font-bold text-white mb-3 drop-shadow-lg">Insurance Brackets</CardTitle>
                 <CardDescription className="text-white/90 text-base leading-relaxed font-medium">
                   Configure insurance brackets with salary ranges
@@ -990,6 +1018,8 @@ export default function PayrollSpecialistDashboardPage() {
             <div className="p-2 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
               <Sparkles className="w-5 h-5 text-white" />
           </div>
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            Approve/reject disputes and expense claims (approved items escalate to Payroll Manager for confirmation). Generate department reports and track status of claims, disputes, and refunds.
             <div className="h-1.5 w-32 md:w-48 bg-gradient-to-l from-transparent via-purple-500 to-pink-500 rounded-full shadow-lg shadow-purple-500/50"></div>
           </div>
           <p className="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
