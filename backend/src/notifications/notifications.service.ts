@@ -422,6 +422,132 @@ export class NotificationsService {
   }
 
   /**
+   * Send repeated lateness flag notification to HR admins
+   * BR-TM-09: Notify HR when employee is flagged for repeated lateness
+   */
+  async sendRepeatedLatenessFlagNotification(
+    employeeId: string,
+    occurrenceCount: number,
+    status: string,
+  ) {
+    // Get all HR Admins to notify
+    const hrAdminRoles = await this.employeeSystemRoleModel
+      .find({
+        role: 'HR_ADMIN',
+      })
+      .exec();
+
+    // Filter out roles with null employeeProfileId
+    const hrAdmins = hrAdminRoles
+      .filter((role) => role.employeeProfileId)
+      .map((role) => role.employeeProfileId!.toString());
+
+    if (hrAdmins.length === 0) {
+      console.log('[REPEATED LATENESS] No HR admins found to notify');
+      return null;
+    }
+
+    // Get employee name for the message
+    let employeeName = 'Unknown Employee';
+    try {
+      const employee = await this.employeeProfileModel.findById(employeeId).exec();
+      if (employee) {
+        employeeName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || 'Unknown Employee';
+      }
+    } catch (err) {
+      console.error('[REPEATED LATENESS] Failed to get employee name:', err);
+    }
+
+    const message = `⚠️ Repeated Lateness: Employee ${employeeName} has been flagged with ${occurrenceCount} late arrivals in the last 30 days. Please review for disciplinary tracking.`;
+
+    const notifications: any[] = [];
+    for (const hrAdminId of hrAdmins) {
+      try {
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrAdminId),
+          type: NotificationType.REPEATED_LATENESS_FLAGGED,
+          message,
+          title: `Repeated Lateness: ${employeeName}`,
+          isRead: false,
+          data: {
+            employeeId,
+            employeeName,
+            occurrenceCount,
+            flaggedAt: new Date().toISOString(),
+          },
+        });
+        notifications.push(notification);
+      } catch (err) {
+        console.error(`[REPEATED LATENESS] Failed to notify HR admin ${hrAdminId}:`, err);
+      }
+    }
+
+    console.log(`[REPEATED LATENESS] Sent ${notifications.length} notifications for employee ${employeeName}`);
+    return notifications;
+  }
+
+  /**
+   * Send payroll cut-off escalation notification to HR admins
+   * US18: Notify HR when requests are auto-escalated due to approaching payroll cut-off
+   */
+  async sendPayrollCutoffEscalationNotification(
+    hrAdminIds: string[],
+    escalatedExceptions: number,
+    escalatedCorrections: number,
+    pendingLeaves: number,
+    payrollCutoffDate: Date,
+    daysUntilCutoff: number,
+  ): Promise<{ notificationsSent: number; notifications: any[] }> {
+    const notifications: any[] = [];
+    const totalEscalated = escalatedExceptions + escalatedCorrections;
+    const urgency = daysUntilCutoff <= 1 ? 'CRITICAL' : 'HIGH';
+
+    let message = `⚠️ PAYROLL CUTOFF ALERT [${urgency}]: `;
+    
+    if (totalEscalated > 0) {
+      message += `${totalEscalated} time request(s) auto-escalated (${escalatedExceptions} exception(s), ${escalatedCorrections} correction(s)). `;
+    }
+    
+    if (pendingLeaves > 0) {
+      message += `${pendingLeaves} leave request(s) pending review. `;
+    }
+    
+    message += `Payroll cut-off: ${payrollCutoffDate.toLocaleDateString()}. ${daysUntilCutoff} day(s) remaining. Immediate review required.`;
+
+    const title = `Payroll Cut-off Alert: ${daysUntilCutoff} day(s) remaining`;
+
+    for (const hrAdminId of hrAdminIds) {
+      try {
+        const notification = await this.notificationLogModel.create({
+          to: new Types.ObjectId(hrAdminId),
+          type: NotificationType.PAYROLL_CUTOFF_ESCALATION_ALERT,
+          message,
+          title,
+          isRead: false,
+          data: {
+            payrollCutoffDate: payrollCutoffDate.toISOString(),
+            daysUntilCutoff,
+            escalatedExceptions,
+            escalatedCorrections,
+            pendingLeaves,
+            urgency,
+            escalatedAt: new Date().toISOString(),
+          },
+        });
+        notifications.push(notification);
+      } catch (err) {
+        console.error(`[PAYROLL CUTOFF] Failed to notify HR admin ${hrAdminId}:`, err);
+      }
+    }
+
+    console.log(`[PAYROLL CUTOFF] Sent ${notifications.length} notifications to HR admins`);
+    return {
+      notificationsSent: notifications.length,
+      notifications,
+    };
+  }
+
+  /**
    * REQ: Missed punches/late sign-ins must be handled via auto-flagging, notifications, or payroll blocking.
    * Send missed punch alert to employee
    */

@@ -17,6 +17,12 @@ export enum NotificationType {
   MISSED_PUNCH = 'missed_punch',
   MISSED_PUNCH_EMPLOYEE_ALERT = 'MISSED_PUNCH_EMPLOYEE_ALERT',
   MISSED_PUNCH_MANAGER_ALERT = 'MISSED_PUNCH_MANAGER_ALERT',
+  
+  // Repeated Lateness Notifications
+  REPEATED_LATENESS_FLAGGED = 'REPEATED_LATENESS_FLAGGED',
+  
+  // Payroll Cut-off Escalation Notifications
+  PAYROLL_CUTOFF_ESCALATION_ALERT = 'PAYROLL_CUTOFF_ESCALATION_ALERT',
 
   // Recruitment Module Notifications - Interview Panel
   INTERVIEW_PANEL_INVITATION = 'INTERVIEW_PANEL_INVITATION',

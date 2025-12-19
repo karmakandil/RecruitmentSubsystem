@@ -79,6 +79,10 @@ export class OrganizationStructureController {
     SystemRole.HR_MANAGER,
     SystemRole.HR_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.LEGAL_POLICY_ADMIN,
   )
   async getAllDepartments(
     @CurrentUser() user: any,

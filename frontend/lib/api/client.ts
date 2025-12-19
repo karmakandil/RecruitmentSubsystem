@@ -140,8 +140,17 @@ api.interceptors.response.use(
     const isNotificationsTimeout = (error.message?.includes('timeout') || error.code === 'ECONNABORTED') && 
       (url.includes('/notifications') || url.includes('notification'));
     
-    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
-      // Silently handle these errors - they're expected for optional features or unimplemented endpoints
+    // Suppress permission errors for getAllEmployees and getDepartmentEmployees when called by regular employees
+    // These are expected when employees try to find their manager - the code handles these gracefully
+    const errorData = error.response?.data;
+    const permissionErrorMsg = errorData?.message || error.message || '';
+    const isExpectedPermissionError = 
+      status === 403 && 
+      (permissionErrorMsg.includes('Access denied') || permissionErrorMsg.includes('permission')) &&
+      (url.includes('/employee-profile') && (url.includes('?') || url.includes('/department/') || url.includes('/employee-profile')));
+    
+    if (isBackup404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout || isExpectedPermissionError) {
+      // Silently handle these errors - they're expected for optional features, unimplemented endpoints, or permission checks
       // Browser console will show the network error, but we don't treat it as an app error
       // Return a clean error that can be caught and handled gracefully
     } else {

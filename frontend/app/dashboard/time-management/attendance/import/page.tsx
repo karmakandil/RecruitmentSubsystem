@@ -259,6 +259,11 @@ export default function AttendanceImportPage() {
                       <li>Created records: {result.summary?.created ?? 0}</li>
                       <li>Updated records: {result.summary?.updated ?? 0}</li>
                       <li>Missed punches flagged: {result.summary?.missedPunches ?? 0}</li>
+                      {(result.summary?.leaveConflicts ?? 0) > 0 && (
+                        <li className="text-orange-600 font-semibold">
+                          Leave conflicts detected: {result.summary.leaveConflicts}
+                        </li>
+                      )}
                       <li>Errors: {result.summary?.errorCount ?? 0}</li>
                     </ul>
                   </div>

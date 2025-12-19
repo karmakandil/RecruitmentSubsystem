@@ -503,7 +503,24 @@ export default function ManualAttendancePage() {
                           safeDate((record as any).clockOut) || derived.clockOut;
                         const clockIn = clockInValue ? clockInValue.toLocaleString() : "N/A";
                         const clockOut = clockOutValue ? clockOutValue.toLocaleString() : "N/A";
-                        const hours = record.totalWorkMinutes ? (record.totalWorkMinutes / 60).toFixed(2) : "0.00";
+                        
+                        // Calculate duration: use totalWorkMinutes if available, otherwise calculate from times
+                        let workMinutes = record.totalWorkMinutes;
+                        if (!workMinutes || workMinutes <= 0) {
+                          if (clockInValue && clockOutValue) {
+                            const diffMs = clockOutValue.getTime() - clockInValue.getTime();
+                            if (diffMs > 0) {
+                              workMinutes = Math.floor(diffMs / (1000 * 60));
+                            }
+                          }
+                        }
+                        const hours = workMinutes ? (workMinutes / 60).toFixed(2) : "-";
+                        
+                        // Determine status: if clock out is missing, show "MISSED PUNCH"
+                        let displayStatus: string = (record.status as string) || 'N/A';
+                        if (!clockOutValue) {
+                          displayStatus = 'MISSED PUNCH';
+                        }
                         
                         return (
                           <tr key={record._id || record.id}>
@@ -517,19 +534,21 @@ export default function ManualAttendancePage() {
                               {clockOut}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {hours} hrs
+                              {hours} {hours !== "-" ? "hrs" : ""}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`px-2 py-1 text-xs rounded-full ${
-                                record.status === 'COMPLETE' 
+                                displayStatus === 'COMPLETE' 
                                   ? 'bg-green-100 text-green-800'
-                                  : record.status === 'INCOMPLETE'
+                                  : displayStatus === 'MISSED PUNCH'
+                                  ? 'bg-red-100 text-red-800'
+                                  : displayStatus === 'INCOMPLETE'
                                   ? 'bg-yellow-100 text-yellow-800'
-                                  : record.status === 'CORRECTION_PENDING'
+                                  : displayStatus === 'CORRECTION_PENDING'
                                   ? 'bg-orange-100 text-orange-800'
                                   : 'bg-red-100 text-red-800'
                               }`}>
-                                {record.status || 'N/A'}
+                                {displayStatus}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
