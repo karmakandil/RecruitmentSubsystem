@@ -105,6 +105,21 @@ export default function OnboardingPage() {
     return Math.round((completed / onboarding.tasks.length) * 100);
   };
 
+//typescript build error zawed dol
+  const isOnboardingCompleted = (): boolean => {
+    if (!onboarding) return false;
+    // Check if all tasks are completed
+    if (onboarding.tasks.length > 0) {
+      return onboarding.tasks.every(
+        (task) => task.status === OnboardingTaskStatus.COMPLETED
+      );
+    }
+    // Fallback: check status or completionDate
+    return onboarding.status === 'completed' || !!onboarding.completionDate;
+  };
+
+  //lghayet hena
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -265,7 +280,7 @@ export default function OnboardingPage() {
         ) : (
           <div className="space-y-6">
             {/* Info Banner for Candidates */}
-            {!onboarding.completed && (user?.userType === "candidate" || user?.roles?.includes(SystemRole.JOB_CANDIDATE)) && (
+            {!isOnboardingCompleted() && (user?.userType === "candidate" || user?.roles?.includes(SystemRole.JOB_CANDIDATE)) && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">💼</span>
@@ -333,7 +348,7 @@ export default function OnboardingPage() {
             </Card>
 
             {/* Onboarding Complete Message - Show when all tasks done */}
-            {onboarding.completed && (
+            {isOnboardingCompleted() && (
               <Card className="border-2 border-green-500 bg-green-50">
                 <CardContent className="py-6">
                   <div className="flex items-start gap-4">
