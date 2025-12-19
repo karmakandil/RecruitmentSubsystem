@@ -384,7 +384,7 @@ export default function HRInterviewsPage() {
       if (job?.template?.skills && job.template.skills.length > 0) {
         // Use skills from job template as assessment criteria
         setAssessmentCriteria(job.template.skills);
-      } else if (job?.templateId?.skills && job.templateId.skills.length > 0) {
+      } else if (job?.templateId && typeof job.templateId === 'object' && job.templateId.skills && job.templateId.skills.length > 0) {
         // Backend might return templateId instead of template
         setAssessmentCriteria(job.templateId.skills);
       } else if (job?.template?.qualifications && job.template.qualifications.length > 0) {
