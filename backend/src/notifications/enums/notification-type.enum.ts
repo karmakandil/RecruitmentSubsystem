@@ -99,4 +99,21 @@ export enum NotificationType {
   CLAIM_APPROVED = 'claim_approved',
   DISPUTE_REJECTED = 'dispute_rejected',
   CLAIM_REJECTED = 'claim_rejected',
+
+  // =============================================================================
+  // PAYROLL EXECUTION MODULE NOTIFICATIONS
+  // =============================================================================
+  PAYROLL_INITIATION_CREATED = 'payroll_initiation_created',
+  PAYROLL_INITIATION_APPROVED = 'payroll_initiation_approved',
+  PAYROLL_INITIATION_REJECTED = 'payroll_initiation_rejected',
+  PAYROLL_SENT_FOR_APPROVAL = 'payroll_sent_for_approval',
+  PAYROLL_MANAGER_APPROVED = 'payroll_manager_approved',
+  PAYROLL_MANAGER_REJECTED = 'payroll_manager_rejected',
+  PAYROLL_FINANCE_APPROVED = 'payroll_finance_approved',
+  PAYROLL_FINANCE_REJECTED = 'payroll_finance_rejected',
+  PAYROLL_LOCKED = 'payroll_locked',
+  PAYROLL_UNLOCKED = 'payroll_unlocked',
+  PAYROLL_PAYSLIPS_GENERATED = 'payroll_payslips_generated',
+  PAYROLL_IRREGULARITY_FLAGGED = 'payroll_irregularity_flagged',
+  PAYROLL_IRREGULARITY_RESOLVED = 'payroll_irregularity_resolved',
 }
