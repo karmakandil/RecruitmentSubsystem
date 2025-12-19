@@ -15,17 +15,18 @@ export default function ShiftsPage() {
   const isAdmin = user?.roles?.includes(SystemRole.HR_ADMIN) || 
                   user?.roles?.includes(SystemRole.SYSTEM_ADMIN) || 
                   user?.roles?.includes(SystemRole.HR_MANAGER);
+  const isDepartmentHead = user?.roles?.includes(SystemRole.DEPARTMENT_HEAD);
   
   // Employee shift assignments state
   const [myAssignments, setMyAssignments] = useState<ShiftAssignment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load employee's shift assignments
+  // Load employee's shift assignments - allow department heads to see their own shifts
   useEffect(() => {
-    if (!isAdmin && user?.id) {
+    if ((!isAdmin || isDepartmentHead) && user?.id) {
       loadMyAssignments();
     }
-  }, [user?.id, isAdmin]);
+  }, [user?.id, isAdmin, isDepartmentHead]);
 
   const loadMyAssignments = async () => {
     try {

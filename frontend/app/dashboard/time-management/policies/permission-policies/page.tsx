@@ -15,6 +15,7 @@ export default function PermissionPoliciesPage() {
   useRequireAuth(SystemRole.HR_ADMIN);
   const { toast, showToast, hideToast } = useToast();
 
+  const [mounted, setMounted] = useState(false);
   const [policies, setPolicies] = useState<PermissionPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPolicy, setSelectedPolicy] = useState<PermissionPolicy | null>(null);
@@ -22,6 +23,10 @@ export default function PermissionPoliciesPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const canEdit = user?.roles?.includes(SystemRole.HR_ADMIN);
 
@@ -41,8 +46,15 @@ export default function PermissionPoliciesPage() {
   }, [showToast]);
 
   useEffect(() => {
-    loadPolicies();
-  }, [loadPolicies]);
+    if (mounted) {
+      loadPolicies();
+    }
+  }, [loadPolicies, mounted]);
+
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   const handleDelete = async () => {
     if (!selectedPolicy?._id) return;

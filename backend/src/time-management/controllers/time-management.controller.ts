@@ -72,9 +72,10 @@ export class TimeManagementController {
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== employeeId
     ) {
       throw new Error('Access denied');
@@ -96,9 +97,10 @@ export class TimeManagementController {
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== employeeId
     ) {
       throw new Error('Access denied');
@@ -126,9 +128,10 @@ export class TimeManagementController {
     },
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== employeeId
     ) {
       throw new Error('Access denied');
@@ -156,9 +159,10 @@ export class TimeManagementController {
     },
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== employeeId
     ) {
       throw new Error('Access denied');
@@ -194,7 +198,7 @@ export class TimeManagementController {
     @Param('employeeId') employeeId: string,
     @CurrentUser() user: any,
   ) {
-    // Self-access check for employees
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
       !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
@@ -218,7 +222,7 @@ export class TimeManagementController {
     @Query('days') days: string = '30',
     @CurrentUser() user: any,
   ) {
-    // Self-access check for employees
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
       !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
@@ -269,9 +273,10 @@ export class TimeManagementController {
     @Body() submitCorrectionRequestDto: SubmitCorrectionRequestDto,
     @CurrentUser() user: any,
   ) {
-    // Self-access check for employees
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== submitCorrectionRequestDto.employeeId
     ) {
       throw new Error('Access denied');
@@ -295,9 +300,10 @@ export class TimeManagementController {
     @Body() recordPunchWithMetadataDto: RecordPunchWithMetadataDto,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== recordPunchWithMetadataDto.employeeId
     ) {
       throw new Error('Access denied');
@@ -311,6 +317,7 @@ export class TimeManagementController {
   @Post('attendance/punch/device')
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.HR_MANAGER,
     SystemRole.HR_ADMIN,
@@ -320,9 +327,10 @@ export class TimeManagementController {
     @Body() recordPunchWithMetadataDto: RecordPunchWithMetadataDto,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== recordPunchWithMetadataDto.employeeId
     ) {
       throw new Error('Access denied');
@@ -472,6 +480,7 @@ export class TimeManagementController {
     SystemRole.HR_MANAGER,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
   )
   async importAttendanceFromCsv(
     @Body() body: ImportAttendanceCsvDto,
@@ -495,6 +504,7 @@ export class TimeManagementController {
     SystemRole.HR_MANAGER,
     SystemRole.SYSTEM_ADMIN,
     SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.DEPARTMENT_HEAD,
   )
   async importAttendanceFromExcel(
     @Body() body: { excelData: string }, // base64 encoded Excel file
@@ -712,9 +722,10 @@ export class TimeManagementController {
     @Body() createTimeExceptionDto: CreateTimeExceptionDto,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== createTimeExceptionDto.employeeId
     ) {
       throw new Error('Access denied');
@@ -752,9 +763,10 @@ export class TimeManagementController {
     @Body() getTimeExceptionsByEmployeeDto: GetTimeExceptionsByEmployeeDto,
     @CurrentUser() user: any,
   ) {
-    // Self-access check
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== id
     ) {
       throw new Error('Access denied');
@@ -824,6 +836,7 @@ export class TimeManagementController {
     SystemRole.HR_ADMIN,
     SystemRole.HR_MANAGER,
     SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.DEPARTMENT_EMPLOYEE, // Allow employees to view their own exceptions
   )
   async getAllTimeExceptions(
     @Query('status') status?: string,
@@ -834,6 +847,14 @@ export class TimeManagementController {
     @Query('endDate') endDate?: string,
     @CurrentUser() user?: any,
   ) {
+    // Security check: If user is DEPARTMENT_EMPLOYEE, they can only view their own exceptions
+    if (
+      user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      (!employeeId || employeeId !== user.userId)
+    ) {
+      throw new Error('Access denied: Employees can only view their own time exceptions');
+    }
+    
     return this.timeManagementService.getAllTimeExceptions(
       {
         status,
@@ -1474,9 +1495,10 @@ export class TimeManagementController {
     },
     @CurrentUser() user: any,
   ) {
-    // Self-access check for employees
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
+      !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&
       user.userId !== body.employeeId
     ) {
       throw new Error('Access denied');
@@ -1520,7 +1542,7 @@ export class TimeManagementController {
     @Query('endDate') endDate: string,
     @CurrentUser() user: any,
   ) {
-    // Self-access check for employees
+    // Self-access check: Allow DEPARTMENT_HEAD to access their own data
     if (
       user.roles.includes(SystemRole.DEPARTMENT_EMPLOYEE) &&
       !user.roles.includes(SystemRole.DEPARTMENT_HEAD) &&

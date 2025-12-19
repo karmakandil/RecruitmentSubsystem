@@ -18,6 +18,7 @@ import {
 import { LeavesService } from '../../leaves/leaves.service';
 import { PayrollExecutionService } from '../../payroll-execution/payroll-execution.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TimeManagementService } from './time-management.service';
 import { Inject, forwardRef } from '@nestjs/common';
 import { Types } from 'mongoose';
 
@@ -41,6 +42,8 @@ export class NotificationService {
     private leavesService: LeavesService,
     @Inject(forwardRef(() => PayrollExecutionService))
     private payrollExecutionService: PayrollExecutionService,
+    @Inject(forwardRef(() => TimeManagementService))
+    private timeManagementService: TimeManagementService,
     private unifiedNotificationsService: NotificationsService,
   ) {}
 
@@ -320,27 +323,44 @@ export class NotificationService {
       .populate('attendanceRecordId')
       .exec();
 
-    // Calculate overtime hours from attendance records
-    const overtimeData = overtimeExceptions.map((exception: any) => {
-      const record = exception.attendanceRecordId as any;
-      const standardMinutes = 480; // 8 hours
-      const overtimeMinutes =
-        record && record.totalWorkMinutes
-          ? Math.max(0, record.totalWorkMinutes - standardMinutes)
-          : 0;
+    // Calculate overtime hours from attendance records using shift-based calculation
+    const overtimeData = await Promise.all(
+      overtimeExceptions.map(async (exception: any) => {
+        const record = exception.attendanceRecordId as any;
+        let overtimeMinutes = 0;
 
-      return {
-        exceptionId: exception._id,
-        employeeId: exception.employeeId?._id || exception.employeeId,
-        attendanceRecordId:
-          exception.attendanceRecordId?._id || exception.attendanceRecordId,
-        date: exception.createdAt || record?.createdAt,
-        overtimeMinutes,
-        overtimeHours: Math.round((overtimeMinutes / 60) * 100) / 100,
-        status: exception.status,
-        reason: exception.reason,
-      };
-    });
+        if (record) {
+          try {
+            // Use shift-based overtime calculation
+            const overtimeCalc = await this.timeManagementService.calculateOvertimeBasedOnShift(
+              exception.employeeId?._id || exception.employeeId,
+              record,
+              480, // Fallback standard
+            );
+            overtimeMinutes = overtimeCalc.overtimeMinutes;
+          } catch (error) {
+            // Fallback to simple calculation if shift-based fails
+            console.warn('Shift-based overtime calculation failed, using fallback:', error);
+            const standardMinutes = 480;
+            overtimeMinutes = record.totalWorkMinutes
+              ? Math.max(0, record.totalWorkMinutes - standardMinutes)
+              : 0;
+          }
+        }
+
+        return {
+          exceptionId: exception._id,
+          employeeId: exception.employeeId?._id || exception.employeeId,
+          attendanceRecordId:
+            exception.attendanceRecordId?._id || exception.attendanceRecordId,
+          date: exception.createdAt || record?.createdAt,
+          overtimeMinutes,
+          overtimeHours: Math.round((overtimeMinutes / 60) * 100) / 100,
+          status: exception.status,
+          reason: exception.reason,
+        };
+      })
+    );
 
     return {
       employeeId,

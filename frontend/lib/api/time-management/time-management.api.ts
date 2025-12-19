@@ -190,7 +190,7 @@ export const timeManagementApi = {
   ): Promise<TimeException> => {
     return await api.post("/time-management/time-exception/reject", {
       timeExceptionId: exceptionId,
-      rejectionReason,
+      rejectionReason: rejectionReason?.trim(),
     });
   },
 
@@ -230,6 +230,29 @@ export const timeManagementApi = {
   // GET pending exceptions for current user
   getMyPendingExceptions: async (): Promise<TimeException[]> => {
     return await api.get("/time-management/time-exceptions/my-pending");
+  },
+
+  // POST request overtime approval
+  requestOvertimeApproval: async (data: {
+    employeeId: string;
+    attendanceRecordId: string;
+    requestedMinutes: number;
+    reason: string;
+    assignedTo: string;
+  }): Promise<TimeException> => {
+    return await api.post("/time-management/overtime/request", data);
+  },
+
+  // POST create time exception
+  createTimeException: async (data: {
+    employeeId: string;
+    type: TimeExceptionType;
+    attendanceRecordId: string;
+    assignedTo: string;
+    status: TimeExceptionStatus;
+    reason: string;
+  }): Promise<TimeException> => {
+    return await api.post("/time-management/time-exception", data);
   },
 
   // ===== Reports APIs =====

@@ -82,6 +82,26 @@ export class SyncSchedulerService {
           escalationError?.stack,
         );
       }
+
+      // BR-TM-20: Auto-escalate overdue exceptions after deadline (default: 3 days)
+      try {
+        const overdueEscalationResult =
+          await this.timeManagementService.autoEscalateOverdueExceptions(
+            {
+              thresholdDays: 3, // Auto-escalate requests pending for more than 3 days
+              excludeTypes: [], // Escalate all types
+            },
+            'system',
+          );
+        this.logger.log(
+          `[SCHEDULED TASK] Overdue exceptions auto-escalation: ${overdueEscalationResult.summary.escalated} escalated, ${overdueEscalationResult.summary.failed} failed`,
+        );
+      } catch (overdueError: any) {
+        this.logger.error(
+          `[SCHEDULED TASK] Overdue exceptions auto-escalation failed: ${overdueError?.message || overdueError}`,
+          overdueError?.stack,
+        );
+      }
     } catch (error: any) {
       this.logger.error(
         `[SCHEDULED TASK] Daily sync failed: ${error.message}`,

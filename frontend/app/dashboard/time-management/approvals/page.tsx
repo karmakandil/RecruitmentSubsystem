@@ -16,7 +16,7 @@ import { Button } from "@/components/shared/ui/Button";
 export default function LineManagerApprovalsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<
-    "exceptions" | "lateness" | "overtime" | "notifications" | "missed-punches" | "sync"
+    "exceptions" | "overtime-requests" | "lateness" | "overtime" | "notifications" | "missed-punches" | "sync"
   >("exceptions");
 
   const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
@@ -59,16 +59,28 @@ export default function LineManagerApprovalsPage() {
           <CardContent className="p-0">
             <div className="flex border-b border-gray-200 overflow-x-auto">
               {canApprove && (
-                <button
-                  onClick={() => setActiveTab("exceptions")}
-                  className={`px-6 py-4 font-medium whitespace-nowrap ${
-                    activeTab === "exceptions"
-                      ? "border-b-2 border-blue-600 text-blue-600"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  Time Exceptions
-                </button>
+                <>
+                  <button
+                    onClick={() => setActiveTab("exceptions")}
+                    className={`px-6 py-4 font-medium whitespace-nowrap ${
+                      activeTab === "exceptions"
+                        ? "border-b-2 border-blue-600 text-blue-600"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Time Exceptions
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("overtime-requests")}
+                    className={`px-6 py-4 font-medium whitespace-nowrap ${
+                      activeTab === "overtime-requests"
+                        ? "border-b-2 border-blue-600 text-blue-600"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Overtime Requests
+                  </button>
+                </>
               )}
               {canViewReports && (
                 <>
@@ -136,7 +148,24 @@ export default function LineManagerApprovalsPage() {
 
         {/* Tab Content */}
         {activeTab === "exceptions" && canApprove && (
-          <OvertimeApprovalList showTeamOnly={isDepartmentHead && !isHRManager} />
+          <div>
+            <p className="text-sm text-gray-600 mb-4">
+              View and manage all attendance-related requests: overtime, permission, and time exceptions
+            </p>
+            <OvertimeApprovalList showTeamOnly={isDepartmentHead && !isHRManager} />
+          </div>
+        )}
+
+        {activeTab === "overtime-requests" && canApprove && (
+          <div>
+            <p className="text-sm text-gray-600 mb-4">
+              Overtime requests from employees
+            </p>
+            <OvertimeApprovalList 
+              showTeamOnly={isDepartmentHead && !isHRManager}
+              filters={{ type: "OVERTIME_REQUEST" }}
+            />
+          </div>
         )}
 
         {activeTab === "lateness" && canViewReports && <LatenessReport />}

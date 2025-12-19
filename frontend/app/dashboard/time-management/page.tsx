@@ -160,8 +160,8 @@ export default function TimeManagementPage() {
         </>
       )}
 
-      {/* Employee Section */}
-      {!canConfigureShifts && !isDepartmentHead && (
+      {/* Employee Section - Show for regular employees and department heads */}
+      {!canConfigureShifts && (
         <>
           {/* Clock In/Out */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -205,6 +205,12 @@ export default function TimeManagementPage() {
                   className="block text-blue-600 hover:underline font-medium"
                 >
                   Import Attendance CSV
+                </Link>
+                <Link
+                  href="/dashboard/time-management/requests"
+                  className="block text-blue-600 hover:underline font-medium"
+                >
+                  Time Requests (Overtime, Permission, Exceptions)
                 </Link>
               </CardContent>
             </Card>
@@ -270,6 +276,21 @@ export default function TimeManagementPage() {
                     className="text-blue-600 hover:underline font-medium"
                   >
                     Import CSV
+                  </Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Time Requests</CardTitle>
+                  <CardDescription>Submit and track overtime, permission, and time exception requests</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link
+                    href="/dashboard/time-management/requests"
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    Manage All Requests
                   </Link>
                 </CardContent>
               </Card>

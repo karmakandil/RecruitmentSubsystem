@@ -803,13 +803,28 @@ export class PolicyConfigController {
     @Body() body: any,
     @CurrentUser() user: any,
   ) {
-    return this.policyConfigService.createPermissionPolicy(body, user.userId);
+    try {
+      const policy = await this.policyConfigService.createPermissionPolicy(body, user.userId);
+      return {
+        message: 'Permission policy created successfully',
+        data: policy,
+      };
+    } catch (error: any) {
+      console.error('[PermissionPolicy Controller] Create error:', error);
+      throw error;
+    }
   }
 
   @Get('permission-policy')
   @Roles(SystemRole.HR_ADMIN)
   async getPermissionPolicies(@CurrentUser() user: any) {
-    return this.policyConfigService.getPermissionPolicies(user.userId);
+    try {
+      const policies = await this.policyConfigService.getPermissionPolicies(user.userId);
+      return policies;
+    } catch (error: any) {
+      console.error('[PermissionPolicy Controller] Get all error:', error);
+      throw error;
+    }
   }
 
   @Get('permission-policy/:id')
