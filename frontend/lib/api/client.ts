@@ -4,11 +4,9 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 
-// CHANGED - Fixed port to match backend (5000)
-
-// Backend API runs on port 5000 by default (can be overridden with PORT env var or NEXT_PUBLIC_API_URL)
+// Backend API runs on port 6001 by default (can be overridden with NEXT_PUBLIC_API_URL)
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:6001/api/v1";
 
 // CHANGED - Debug: Log the API base URL on load
 console.log("🔧 API_BASE_URL configured as:", API_BASE_URL);
@@ -59,6 +57,7 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    
     // ============================================================
     // CHANGED: Fixed syntax errors in error handler
     // Issue: errorDetails object was incorrectly structured as inline
@@ -87,8 +86,17 @@ api.interceptors.response.use(
     const isNotificationsTimeout = (error.message?.includes('timeout') || error.code === 'ECONNABORTED') && 
       (url.includes('/notifications') || url.includes('notification'));
     
-    if (isBackup404 || isOffer404 || isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout) {
-      // Silently handle these errors - they're expected for optional features or unimplemented endpoints
+    // Suppress permission errors for getAllEmployees and getDepartmentEmployees when called by regular employees
+    // These are expected when employees try to find their manager - the code handles these gracefully
+    const errorData = error.response?.data;
+    const permissionErrorMsg = errorData?.message || error.message || '';
+    const isExpectedPermissionError = 
+      status === 403 && 
+      (permissionErrorMsg.includes('Access denied') || permissionErrorMsg.includes('permission')) &&
+      (url.includes('/employee-profile') && (url.includes('?') || url.includes('/department/') || url.includes('/employee-profile')));
+    
+    if (isBackup404 || isOffer404 ||isOptionalEmployeeProfile || isOptionalPayrollRuns || isNotificationsTimeout || isExpectedPermissionError) {
+      // Silently handle these errors - they're expected for optional features, unimplemented endpoints, or permission checks
       // Browser console will show the network error, but we don't treat it as an app error
       // Return a clean error that can be caught and handled gracefully
     } else {
@@ -242,6 +250,20 @@ api.interceptors.response.use(
     (detailedError as any).originalError = error;
     
     return Promise.reject(detailedError);
+
+//FOR LEAVES
+    // ============================================================
+    // CHANGED: Suppress logging for expected 404 errors (not found)
+    // These are common when checking for entitlements that don't exist yet
+    // ============================================================
+    const isNotFoundError = error.response?.status === 404;
+    const isEntitlementCheck = error.config?.url?.includes('/leaves/entitlement/');
+    
+    // Don't log 404 errors for entitlement checks - these are expected
+    if (isNotFoundError && isEntitlementCheck) {
+      // Just return the error without logging - let the calling code handle it
+      return Promise.reject(error);
+    }
   }
 );
 
