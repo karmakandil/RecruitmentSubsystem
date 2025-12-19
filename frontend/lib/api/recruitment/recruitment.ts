@@ -193,17 +193,31 @@ export const recruitmentApi = {
     return await api.patch(`/recruitment/offer/${id}/respond`, data);
   },
 
-  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  // ✅ Accessible: HR_MANAGER, HR_EMPLOYEE, SYSTEM_ADMIN
+  // CHANGED: Added HR_EMPLOYEE role - HR employees can create/send offers but cannot approve them
   createOffer: async (data: CreateOfferDto): Promise<Offer> => {
     return await api.post("/recruitment/offer", data);
   },
 
-  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN (NOT HR_EMPLOYEE)
+  // Only HR Manager can approve/finalize offers
   finalizeOffer: async (id: string, data: FinalizeOfferDto): Promise<Offer> => {
     return await api.patch(`/recruitment/offer/${id}/finalize`, data);
   },
 
-  // ✅ Accessible: HR_MANAGER, SYSTEM_ADMIN
+  // ✅ Accessible: HR_EMPLOYEE ONLY
+  // CHANGED: New endpoint for HR Employee to reject candidates
+  // Cannot reject if candidate is already finalized (hired, employee created, etc.)
+  rejectCandidate: async (offerId: string, reason: string): Promise<{
+    message: string;
+    offer: Offer;
+    reason: string;
+  }> => {
+    return await api.patch(`/recruitment/offer/${offerId}/reject-candidate`, { reason });
+  },
+
+  // ✅ Accessible: HR_MANAGER, HR_EMPLOYEE, SYSTEM_ADMIN
+  // CHANGED: Added HR_EMPLOYEE role for viewing offers
   getOfferByApplicationId: async (applicationId: string): Promise<Offer> => {
     return await api.get(`/recruitment/offer/application/${applicationId}`);
   },

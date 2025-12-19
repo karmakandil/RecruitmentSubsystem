@@ -15,6 +15,31 @@ import { Application } from "@/types/recruitment";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 import { Toast, useToast } from "@/components/leaves/Toast";
 
+// Helper function to extract job details from application
+const getJobDetails = (application: Application | null) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  const app = application as any;
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    "Unknown Position";
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    "Unknown Department";
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    "Unknown Location";
+  return { title, department, location };
+};
+
 export default function EmployeeReferralsPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -153,7 +178,7 @@ export default function EmployeeReferralsPage() {
                           {/* CHANGED - Added text-gray-900 for visibility */}
                           <span className="font-medium text-gray-900">{candidateName}</span>
                           <span className="text-sm text-gray-500 ml-2">
-                            - {app.requisition?.template?.title || "Application"}
+                            - {getJobDetails(app).title}
                           </span>
                         </div>
                         <Button
@@ -193,7 +218,7 @@ export default function EmployeeReferralsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <CardTitle className="text-xl">
-                      {item.application.requisition?.template?.title || "Referred Candidate"}
+                      {getJobDetails(item.application).title}
                     </CardTitle>
                     <p className="text-sm text-gray-600 mt-1">
                       Candidate: {item.application.candidate?.fullName || "N/A"}
@@ -208,7 +233,7 @@ export default function EmployeeReferralsPage() {
                     <div>
                       <span className="text-gray-500">Position:</span>
                       <span className="ml-2 text-gray-900">
-                        {item.application.requisition?.template?.title || "N/A"}
+                        {getJobDetails(item.application).title}
                       </span>
                     </div>
                     <div>

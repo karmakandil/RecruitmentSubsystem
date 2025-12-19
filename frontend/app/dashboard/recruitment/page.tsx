@@ -313,6 +313,23 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
+              {/* HR Manager Offer Management - Create, Approve, Finalize */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-800">📧 Offer Management</CardTitle>
+                  <CardDescription className="text-green-700">
+                    Create offers, approve/finalize offers, and manage the complete offer lifecycle
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/hr-offers">
+                    <Button className="w-full bg-green-600 hover:bg-green-700">
+                      Manage All Offers
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
               {/* Offer Letters */}
               <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
                 <CardHeader>
@@ -450,6 +467,25 @@ export default function RecruitmentPage() {
                   <CardContent>
                     <Link href="/dashboard/recruitment/applications">
                       <Button className="w-full">Track Candidates</Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* CHANGED - HR Employee can send offers and reject candidates */}
+              {isHREmployee && (
+                <Card className="border-green-200 bg-green-50">
+                  <CardHeader>
+                    <CardTitle className="text-green-800">📧 Send Offers</CardTitle>
+                    <CardDescription className="text-green-700">
+                      Create and send job offers to candidates. Reject candidates before finalization.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Link href="/dashboard/recruitment/hr-employee-offers">
+                      <Button className="w-full bg-green-600 hover:bg-green-700">
+                        Manage Offers
+                      </Button>
                     </Link>
                   </CardContent>
                 </Card>

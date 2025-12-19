@@ -25,6 +25,32 @@ import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 
+// Helper function to extract job details from application
+const getJobDetails = (application: any) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  const app = application as any;
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    app.requisition?.title ||
+    "Unknown Position";
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    "Unknown Department";
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    "Unknown Location";
+  return { title, department, location };
+};
+
 export default function HRInterviewsPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -613,13 +639,7 @@ export default function HRInterviewsPage() {
                     <div className="flex-1">
                       {/* CHANGED - Added text-gray-900 for visibility */}
                       <h3 className="text-lg font-semibold mb-2 text-gray-900">
-                        {(application as any).requisition?.template?.title ||
-                         (application as any).requisition?.templateId?.title ||
-                         (application as any).requisitionId?.template?.title ||
-                         (application as any).requisitionId?.templateId?.title ||
-                         (application as any).requisition?.title ||
-                         application.positionTitle ||
-                         "Job Opening"}
+                        {getJobDetails(application).title}
                       </h3>
                       {/* CHANGED - Handle candidateId as populated object or string */}
                       <p className="text-sm text-gray-600 mb-2">
@@ -996,13 +1016,7 @@ export default function HRInterviewsPage() {
                 </p>
                 <p className="text-sm text-blue-700">
                   <strong>Position:</strong>{" "}
-                  {(selectedApplication as any).requisition?.template?.title ||
-                   (selectedApplication as any).requisition?.templateId?.title ||
-                   (selectedApplication as any).requisitionId?.template?.title ||
-                   (selectedApplication as any).requisitionId?.templateId?.title ||
-                   (selectedApplication as any).requisition?.title ||
-                   selectedApplication.positionTitle ||
-                   "Position not specified"}
+                  {getJobDetails(selectedApplication).title}
                 </p>
                 {/* Show interview stage if available */}
                 {selectedInterview?.stage && (

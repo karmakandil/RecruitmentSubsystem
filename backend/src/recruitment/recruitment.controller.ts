@@ -308,16 +308,19 @@ export class RecruitmentController {
     return this.service.getInterviewAverageScore(interviewId);
   }
 
+  // CHANGED: Added HR_EMPLOYEE role to allow HR employees to create offers
+  // HR employees can create/send offers but cannot approve/finalize them
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
   @Post('offer')
   createOffer(@Body() dto: CreateOfferDto) {
     return this.service.createOffer(dto);
   }
 
   // More specific route must come before parameterized routes
+  // CHANGED: Added HR_EMPLOYEE role to allow viewing offers
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(SystemRole.HR_MANAGER, SystemRole.SYSTEM_ADMIN)
+  @Roles(SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.SYSTEM_ADMIN)
   @Get('offer/application/:applicationId')
   getOfferByApplication(@Param('applicationId') applicationId: string) {
     return this.service.getOfferByApplicationId(applicationId);
@@ -343,6 +346,19 @@ export class RecruitmentController {
   @Patch('offer/:id/finalize')
   finalize(@Param('id') id: string, @Body() dto: FinalizeOfferDto) {
     return this.service.finalizeOffer(id, dto);
+  }
+
+  // CHANGED: HR Employee can reject candidates - ONLY HR_EMPLOYEE can reject
+  // HR Manager cannot reject candidates, only HR Employee can
+  // Cannot reject if candidate is already finalized (hired, employee created, etc.)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(SystemRole.HR_EMPLOYEE)
+  @Patch('offer/:id/reject-candidate')
+  rejectCandidate(
+    @Param('id') offerId: string,
+    @Body() dto: { reason: string },
+  ) {
+    return this.service.rejectCandidateByHrEmployee(offerId, dto.reason);
   }
 
   // ONB-002: Get contract status for an offer (so HR can see if candidate uploaded contract)

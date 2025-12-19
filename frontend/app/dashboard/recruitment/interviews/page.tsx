@@ -11,6 +11,31 @@ import { Application, Interview, InterviewStatus, InterviewMethod } from "@/type
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 import { Toast, useToast } from "@/components/leaves/Toast";
 
+// Helper function to extract job details from application
+const getJobDetails = (application: Application | null) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  const app = application as any;
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    "Unknown Position";
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    "Unknown Department";
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    "Unknown Location";
+  return { title, department, location };
+};
+
 export default function InterviewsPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -103,7 +128,7 @@ export default function InterviewsPage() {
           if (hasInterviews) {
             console.log('✅ Candidate application with interviews:', {
               appId: app._id,
-              position: app.requisition?.template?.title,
+              position: getJobDetails(app).title,
               interviewsCount: app.interviews?.length || 0,
               interviews: app.interviews,
             });
@@ -228,7 +253,7 @@ export default function InterviewsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-xl">
-                          {application.requisition?.template?.title || "Interview"}
+                          {getJobDetails(application).title}
                         </CardTitle>
                         <p className="text-sm text-gray-600 mt-1">
                           {isCandidate
@@ -247,13 +272,13 @@ export default function InterviewsPage() {
                         <div>
                           <span className="text-gray-500">Position:</span>
                           <span className="ml-2 text-gray-900">
-                            {application.requisition?.template?.title || "N/A"}
+                            {getJobDetails(application).title}
                           </span>
                         </div>
                         <div>
                           <span className="text-gray-500">Department:</span>
                           <span className="ml-2 text-gray-900">
-                            {application.requisition?.template?.department || "N/A"}
+                            {getJobDetails(application).department}
                           </span>
                         </div>
                       </div>

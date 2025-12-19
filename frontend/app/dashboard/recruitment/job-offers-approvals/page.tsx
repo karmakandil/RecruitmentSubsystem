@@ -29,6 +29,31 @@ import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 
+// Helper function to extract job details from application
+const getJobDetails = (application: Application | null) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  const app = application as any;
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    "Unknown Position";
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    "Unknown Department";
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    "Unknown Location";
+  return { title, department, location };
+};
+
 export default function JobOffersApprovalsPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -206,12 +231,7 @@ export default function JobOffersApprovalsPage() {
       offerApps.forEach((app) => {
         const appAny = app as any;
         const reqId = appAny.requisitionId?._id || app.requisitionId || (app.requisition as any)?._id;
-        // CHANGED - Handle all possible paths for job title
-        const jobTitle = appAny.requisition?.template?.title || 
-                        appAny.requisition?.templateId?.title ||
-                        appAny.requisitionId?.template?.title ||
-                        appAny.requisitionId?.templateId?.title ||
-                        "Unknown Position";
+        const jobTitle = getJobDetails(app).title;
         if (reqId) {
           jobsMap.set(reqId, jobTitle);
         }
@@ -656,14 +676,7 @@ export default function JobOffersApprovalsPage() {
   };
 
   const getJobTitle = (application: Application): string => {
-    // CHANGED - Handle both field names: backend populates 'requisitionId' with nested 'templateId'
-    const app = application as any;
-    // Check all possible paths for the job title
-    return app.requisition?.template?.title || 
-           app.requisition?.templateId?.title ||
-           app.requisitionId?.template?.title ||
-           app.requisitionId?.templateId?.title ||
-           "Unknown Position";
+    return getJobDetails(application).title;
   };
 
   // CHANGED - Get candidate's resume URL from application

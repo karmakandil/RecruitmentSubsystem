@@ -18,6 +18,31 @@ import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 
+// Helper function to extract job details from application
+const getJobDetails = (application: Application | null) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  const app = application as any;
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    "Unknown Position";
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    "Unknown Department";
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    "Unknown Location";
+  return { title, department, location };
+};
+
 export default function TalentPoolPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -717,18 +742,10 @@ export default function TalentPoolPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <h4 className="font-semibold text-gray-900">
-                          {typeof app.requisition === "object" && app.requisition?.template
-                            ? typeof app.requisition.template === "object"
-                              ? app.requisition.template.title
-                              : "Job Opening"
-                            : "Job Opening"}
+                          {getJobDetails(app).title}
                         </h4>
                         <p className="text-sm text-gray-600">
-                          {typeof app.requisition === "object" && app.requisition?.template
-                            ? typeof app.requisition.template === "object"
-                              ? app.requisition.template.department
-                              : "N/A"
-                            : "N/A"}
+                          {getJobDetails(app).department}
                         </p>
                       </div>
                       <StatusBadge status={app.status} type="application" />

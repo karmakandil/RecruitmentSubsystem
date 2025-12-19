@@ -27,6 +27,45 @@ import { Modal } from "@/components/leaves/Modal";
 import { Toast, useToast } from "@/components/leaves/Toast";
 import { StatusBadge } from "@/components/recruitment/StatusBadge";
 
+// Helper function to extract job details from application
+// Handles all possible nested structures from the backend
+const getJobDetails = (application: Application | null) => {
+  if (!application) {
+    return { title: "Unknown Position", department: "Unknown Department", location: "Unknown Location" };
+  }
+  
+  const app = application as any;
+  
+  // Try all possible paths for the job title
+  const title = 
+    app.requisitionId?.templateId?.title ||
+    app.requisitionId?.template?.title ||
+    app.requisition?.templateId?.title ||
+    app.requisition?.template?.title ||
+    app.jobRequisition?.templateId?.title ||
+    app.jobRequisition?.template?.title ||
+    "Unknown Position";
+  
+  // Try all possible paths for department
+  const department = 
+    app.requisitionId?.templateId?.department ||
+    app.requisitionId?.template?.department ||
+    app.requisition?.templateId?.department ||
+    app.requisition?.template?.department ||
+    app.jobRequisition?.templateId?.department ||
+    app.jobRequisition?.template?.department ||
+    "Unknown Department";
+  
+  // Try all possible paths for location
+  const location = 
+    app.requisitionId?.location ||
+    app.requisition?.location ||
+    app.jobRequisition?.location ||
+    "Unknown Location";
+  
+  return { title, department, location };
+};
+
 export default function HROffersPage() {
   const { user } = useAuth();
   const { toast, showToast, hideToast } = useToast();
@@ -224,7 +263,7 @@ export default function HROffersPage() {
       signingBonus: 0,
       benefits: [],
       deadline: "",
-      role: (application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "",
+      role: getJobDetails(application).title !== "Unknown Position" ? getJobDetails(application).title : "",
       content: "",
     });
     setBenefitInput("");
@@ -752,7 +791,7 @@ export default function HROffersPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-3">
                               <h3 className="text-lg font-semibold text-gray-900">
-                                {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
+                                {getJobDetails(application).title}
                               </h3>
                               <StatusBadge status={application.status} type="application" />
                             </div>
@@ -762,7 +801,7 @@ export default function HROffersPage() {
                                 <p className="text-xs font-medium text-gray-500 uppercase mb-1">Candidate</p>
                                 <p className="text-sm text-gray-900 font-medium">{getCandidateName(application)}</p>
                                 <p className="text-xs text-gray-600">
-                                  {application.requisition?.template?.department || "Department"}
+                                  {getJobDetails(application).department}
                                 </p>
                               </div>
                               <div>
@@ -949,7 +988,7 @@ export default function HROffersPage() {
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-3">
                                 <h3 className="text-lg font-semibold text-gray-900">
-                                  {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
+                                  {getJobDetails(application).title}
                                 </h3>
                                 <StatusBadge status={application.status} type="application" />
                                 <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
@@ -962,7 +1001,7 @@ export default function HROffersPage() {
                                   <p className="text-xs font-medium text-gray-500 uppercase mb-1">Candidate</p>
                                   <p className="text-sm text-gray-900 font-medium">{getCandidateName(application)}</p>
                                   <p className="text-xs text-gray-600">
-                                    {application.requisition?.template?.department || "Department"}
+                                    {getJobDetails(application).department}
                                   </p>
                                 </div>
                                 <div>
@@ -1039,7 +1078,7 @@ export default function HROffersPage() {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-3">
                               <h3 className="text-lg font-semibold text-gray-900">
-                                {(application as any).requisition?.template?.title || (application as any).requisition?.templateId?.title || (application as any).requisitionId?.template?.title || (application as any).requisitionId?.templateId?.title || "Job Opening"}
+                                {getJobDetails(application).title}
                               </h3>
                               <StatusBadge status={application.status} type="application" />
                             </div>
@@ -1049,7 +1088,7 @@ export default function HROffersPage() {
                                 <p className="text-xs font-medium text-gray-500 uppercase mb-1">Candidate</p>
                                 <p className="text-sm text-gray-900 font-medium">{getCandidateName(application)}</p>
                                 <p className="text-xs text-gray-600">
-                                  {application.requisition?.template?.department || "Department"}
+                                  {getJobDetails(application).department}
                                 </p>
                               </div>
                               <div>
@@ -1060,7 +1099,7 @@ export default function HROffersPage() {
                                     : "N/A"}
                                 </p>
                                 <p className="text-xs text-gray-600">
-                                  Location: {application.requisition?.location || "N/A"}
+                                  Location: {getJobDetails(application).location}
                                 </p>
                               </div>
                             </div>
@@ -1096,7 +1135,7 @@ export default function HROffersPage() {
                   <p className="text-xs text-gray-500 mb-1">Candidate</p>
                   <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                   <p className="text-xs text-gray-600">
-                    {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
+                    {getJobDetails(selectedApplication).title}
                   </p>
                 </div>
 
@@ -1250,7 +1289,7 @@ export default function HROffersPage() {
                 <p className="text-xs text-gray-500 mb-1">Candidate</p>
                 <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                 <p className="text-xs text-gray-600">
-                  {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
+                  {getJobDetails(selectedApplication).title}
                 </p>
               </div>
 
@@ -1499,7 +1538,7 @@ export default function HROffersPage() {
                 <p className="text-xs text-gray-500 mb-1">Candidate</p>
                 <p className="text-sm font-medium">{getCandidateName(selectedApplication)}</p>
                 <p className="text-xs text-gray-600">
-                  {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "Position"}
+                  {getJobDetails(selectedApplication).title}
                 </p>
               </div>
 
@@ -1683,8 +1722,8 @@ export default function HROffersPage() {
                 <h3 className="font-semibold text-blue-900 mb-2">📋 Offer Details</h3>
                 <div className="text-sm text-blue-800 space-y-1">
                   <p><strong>Candidate:</strong> {getCandidateName(selectedApplication)}</p>
-                  <p><strong>Position:</strong> {(selectedApplication as any).requisition?.template?.title || (selectedApplication as any).requisition?.templateId?.title || (selectedApplication as any).requisitionId?.template?.title || (selectedApplication as any).requisitionId?.templateId?.title || "N/A"}</p>
-                  <p><strong>Department:</strong> {(selectedApplication as any).requisition?.template?.department || (selectedApplication as any).requisition?.templateId?.department || (selectedApplication as any).requisitionId?.template?.department || (selectedApplication as any).requisitionId?.templateId?.department || "N/A"}</p>
+                  <p><strong>Position:</strong> {getJobDetails(selectedApplication).title}</p>
+                  <p><strong>Department:</strong> {getJobDetails(selectedApplication).department}</p>
                   <p><strong>Salary:</strong> ${selectedOffer.grossSalary?.toLocaleString() || "N/A"}</p>
                 </div>
                 

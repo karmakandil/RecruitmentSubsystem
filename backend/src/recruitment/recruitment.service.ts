@@ -1149,6 +1149,26 @@ export class RecruitmentService {
       })
       .lean();
 
+    // DEBUG: Log what data is being returned
+    if (applications.length > 0) {
+      const sampleApp = applications[0] as any;
+      console.log('=== DEBUG: Application Data Structure ===');
+      console.log('Sample Application ID:', sampleApp._id);
+      console.log('requisitionId exists:', !!sampleApp.requisitionId);
+      console.log('requisitionId type:', typeof sampleApp.requisitionId);
+      if (sampleApp.requisitionId) {
+        console.log('requisitionId._id:', sampleApp.requisitionId._id);
+        console.log('requisitionId.templateId exists:', !!sampleApp.requisitionId.templateId);
+        console.log('requisitionId.templateId type:', typeof sampleApp.requisitionId.templateId);
+        if (sampleApp.requisitionId.templateId) {
+          console.log('templateId.title:', sampleApp.requisitionId.templateId.title);
+          console.log('templateId.department:', sampleApp.requisitionId.templateId.department);
+        }
+        console.log('requisitionId.location:', sampleApp.requisitionId.location);
+      }
+      console.log('=========================================');
+    }
+
     // Fetch interviews for all applications and attach them
     let applicationsWithInterviews = applications;
     
@@ -1237,14 +1257,25 @@ export class RecruitmentService {
     }
 
     // Add isReferral and isInternalCandidate flags to each application
+    // Also add 'requisition' and 'template' aliases for frontend compatibility
     const applicationsWithFlags = applicationsWithInterviews.map((app: any) => {
       const candidateId =
         app.candidateId?._id?.toString() ||
         app.candidateId?.toString();
       const isReferral = candidateId ? referralCandidateIds.has(candidateId) : false;
       const isInternal = candidateId ? internalCandidateIds.has(candidateId) : false;
+      
+      // Create aliases for frontend compatibility
+      const requisition = app.requisitionId ? {
+        ...app.requisitionId,
+        // Add template alias for templateId
+        template: app.requisitionId.templateId || null,
+      } : null;
+      
       return {
         ...app,
+        // Add requisition alias (points to same data as requisitionId but with template alias)
+        requisition,
         isReferral,
         isInternalCandidate: isInternal,
       };
@@ -1639,7 +1670,8 @@ export class RecruitmentService {
         .populate({
           path: 'requisitionId',
           populate: {
-            path: 'template',
+            path: 'templateId',  // FIXED: was 'template', should be 'templateId'
+            model: 'JobTemplate',
             select: 'department title',
           },
         })
@@ -1649,90 +1681,291 @@ export class RecruitmentService {
         throw new NotFoundException('Application not found');
       }
 
-      // 3. Get HR Employees (always included)
-      const hrEmployeeRoles = await this.employeeSystemRoleModel
-        .find({
-          roles: { $in: [SystemRole.HR_EMPLOYEE] },
-          isActive: true,
-        })
-        .select('employeeProfileId')
-        .lean()
-        .exec();
-
-      const hrEmployeeIds = hrEmployeeRoles
-        .map((role: any) => role.employeeProfileId?.toString())
-        .filter(Boolean);
-
-      // 4. Build list of eligible employees
+      // 3. Build list of eligible employees
       const eligibleEmployees: any[] = [];
       const addedIds = new Set<string>(); // Prevent duplicates
 
-      // Add HR Employees
-      for (const empId of hrEmployeeIds) {
-        try {
-          const emp: any = await this.employeeProfileService.findOne(empId);
-          if (emp && emp.active !== false && !addedIds.has(empId)) {
-            addedIds.add(empId);
-            eligibleEmployees.push({
-              _id: emp._id?.toString() || empId,
-              id: emp._id?.toString() || empId,
-              firstName: emp.firstName,
-              lastName: emp.lastName,
-              fullName: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
-              workEmail: emp.workEmail,
-              department: typeof emp.department === 'object' 
-                ? emp.department?.name 
-                : emp.department,
-              isHR: true, // Mark as HR employee
-            });
+      // Helper function to add employee to list
+      const addEmployee = (emp: any, isHR: boolean, deptName?: string) => {
+        const empId = emp._id?.toString();
+        if (empId && !addedIds.has(empId)) {
+          addedIds.add(empId);
+          eligibleEmployees.push({
+            _id: empId,
+            id: empId,
+            firstName: emp.firstName,
+            lastName: emp.lastName,
+            fullName: emp.fullName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
+            workEmail: emp.workEmail,
+            department: deptName || (typeof emp.department === 'object' ? emp.department?.name : emp.department),
+            isHR: isHR,
+          });
+        }
+      };
+
+      // 4. For HR_INTERVIEW: Get ALL employees from HR department
+      if (stage === ApplicationStage.HR_INTERVIEW || stage === 'hr_interview') {
+        console.log(`[getEligiblePanelMembers] HR Interview - fetching HR department employees`);
+        
+        // First, get HR Employees by role
+        const hrEmployeeRoles = await this.employeeSystemRoleModel
+          .find({
+            roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] },
+            isActive: true,
+          })
+          .select('employeeProfileId')
+          .lean()
+          .exec();
+
+        const hrEmployeeIds = hrEmployeeRoles
+          .map((role: any) => role.employeeProfileId?.toString())
+          .filter(Boolean);
+
+        // Add HR role-based employees
+        for (const empId of hrEmployeeIds) {
+          try {
+            const emp: any = await this.employeeProfileService.findOne(empId);
+            if (emp && emp.status !== EmployeeStatus.TERMINATED) {
+              addEmployee(emp, true, 'HR');
+            }
+          } catch (e) {
+            console.warn(`Could not fetch HR employee ${empId}:`, e);
           }
-        } catch (e) {
-          console.warn(`Could not fetch HR employee ${empId}:`, e);
+        }
+
+        // Also get employees from HR department by department name
+        const hrDepartment = await this.departmentModel.findOne({ 
+          name: { $regex: /^(hr|human\s*resource)/i } 
+        }).lean();
+
+        if (hrDepartment) {
+          const hrDeptEmployees = await this.employeeModel
+            .find({
+              primaryDepartmentId: hrDepartment._id,
+              status: { $ne: EmployeeStatus.TERMINATED },
+            })
+            .select('_id firstName lastName fullName workEmail primaryDepartmentId')
+            .lean()
+            .exec();
+
+          for (const emp of hrDeptEmployees) {
+            addEmployee(emp, true, 'HR');
+          }
+          console.log(`[getEligiblePanelMembers] Found ${hrDeptEmployees.length} HR department employees`);
         }
       }
 
-      // 5. If DEPARTMENT_INTERVIEW, also add employees from the job's department
-      if (stage === ApplicationStage.DEPARTMENT_INTERVIEW) {
+      // 5. For DEPARTMENT_INTERVIEW: Get employees from the job's target department
+      if (stage === ApplicationStage.DEPARTMENT_INTERVIEW || stage === 'department_interview') {
         // Get department name from the job template
+        let departmentName: string | undefined;
         const requisition = application.requisitionId as any;
-        const departmentName = requisition?.template?.department;
+        
+        // Try to get department from populated requisition
+        departmentName = requisition?.templateId?.department || requisition?.template?.department;
+        
+        // If requisition wasn't populated, try to fetch it directly
+        if (!departmentName && application.requisitionId) {
+          try {
+            const reqId = typeof application.requisitionId === 'object' 
+              ? (application.requisitionId as any)._id 
+              : application.requisitionId;
+            
+            if (reqId) {
+              const jobReq = await this.jobModel
+                .findById(reqId)
+                .populate('templateId')
+                .lean();
+              
+              if (jobReq) {
+                departmentName = (jobReq as any).templateId?.department || (jobReq as any).template?.department;
+                console.log(`[getEligiblePanelMembers] Fetched department from job requisition: ${departmentName}`);
+              }
+            }
+          } catch (e) {
+            console.warn('[getEligiblePanelMembers] Could not fetch job requisition:', e);
+          }
+        }
 
-        if (departmentName) {
-          console.log(`[getEligiblePanelMembers] Department Interview for department: ${departmentName}`);
+        console.log(`[getEligiblePanelMembers] Department Interview - target department: ${departmentName || 'NOT FOUND'}`);
 
-          // Find department by name
-          const department = await this.departmentModel.findOne({ name: departmentName }).lean();
+        // Check if the target department is HR-related
+        const isHRDepartment = departmentName && /^(hr|human\s*resource)/i.test(departmentName);
 
-          if (department) {
-            // Find all employees in this department
-            const departmentEmployees = await this.employeeModel
+        if (isHRDepartment) {
+          // If the job is for HR department, include HR role employees AND HR department employees
+          console.log(`[getEligiblePanelMembers] Target department is HR - including HR role employees`);
+          
+          // Get HR role employees
+          const hrEmployeeRoles = await this.employeeSystemRoleModel
+            .find({
+              roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_MANAGER] },
+              isActive: true,
+            })
+            .select('employeeProfileId')
+            .lean()
+            .exec();
+
+          const hrEmployeeIds = hrEmployeeRoles
+            .map((role: any) => role.employeeProfileId?.toString())
+            .filter(Boolean);
+
+          for (const empId of hrEmployeeIds) {
+            try {
+              const emp: any = await this.employeeProfileService.findOne(empId);
+              if (emp && emp.status !== EmployeeStatus.TERMINATED) {
+                addEmployee(emp, true, departmentName);
+              }
+            } catch (e) {
+              console.warn(`Could not fetch HR employee ${empId}:`, e);
+            }
+          }
+
+          // Also get employees from HR department by department record
+          const hrDepartment = await this.departmentModel.findOne({ 
+            name: { $regex: /^(hr|human\s*resource)/i } 
+          }).lean();
+
+          if (hrDepartment) {
+            const hrDeptEmployees = await this.employeeModel
               .find({
-                primaryDepartmentId: department._id,
+                primaryDepartmentId: hrDepartment._id,
                 status: { $ne: EmployeeStatus.TERMINATED },
               })
               .select('_id firstName lastName fullName workEmail primaryDepartmentId')
               .lean()
               .exec();
 
+            for (const emp of hrDeptEmployees) {
+              addEmployee(emp, true, departmentName);
+            }
+            console.log(`[getEligiblePanelMembers] Found ${hrDeptEmployees.length} HR department employees`);
+          }
+        } else if (departmentName) {
+          // Non-HR department - find employees in that specific department
+          // First try exact match (case-insensitive)
+          let department = await this.departmentModel.findOne({ 
+            name: { $regex: new RegExp(`^${departmentName}$`, 'i') }
+          }).lean();
+
+          // If no exact match, try partial match (department name contains the search term)
+          if (!department) {
+            department = await this.departmentModel.findOne({ 
+              name: { $regex: new RegExp(departmentName, 'i') }
+            }).lean();
+            if (department) {
+              console.log(`[getEligiblePanelMembers] Found partial match department: ${(department as any).name}`);
+            }
+          }
+
+          // If still no match, try reverse partial match (search term contains department name)
+          if (!department) {
+            const allDepartments = await this.departmentModel.find().select('_id name').lean();
+            department = allDepartments.find((d: any) => 
+              departmentName.toLowerCase().includes(d.name.toLowerCase()) ||
+              d.name.toLowerCase().includes(departmentName.toLowerCase())
+            );
+            if (department) {
+              console.log(`[getEligiblePanelMembers] Found reverse partial match department: ${(department as any).name}`);
+            }
+          }
+
+          if (department) {
+            const deptId = department._id;
+            const deptName = (department as any).name || departmentName;
+            
+            console.log(`[getEligiblePanelMembers] Searching for employees in department ID: ${deptId}, Name: ${deptName}`);
+            
+            // Get all active employees and filter by department
+            const allEmployees = await this.employeeModel
+              .find({
+                status: { $ne: EmployeeStatus.TERMINATED },
+              })
+              .select('_id firstName lastName fullName workEmail primaryDepartmentId')
+              .populate('primaryDepartmentId', 'name')
+              .lean()
+              .exec();
+
+            console.log(`[getEligiblePanelMembers] Total active employees: ${allEmployees.length}`);
+
+            // Filter employees that belong to this department
+            const departmentEmployees = allEmployees.filter((emp: any) => {
+              // Check if employee's department matches (by ID or name)
+              const empDeptId = emp.primaryDepartmentId?._id?.toString() || emp.primaryDepartmentId?.toString();
+              const empDeptName = emp.primaryDepartmentId?.name;
+              
+              const matchById = empDeptId === deptId.toString();
+              const matchByName = empDeptName && empDeptName.toLowerCase() === deptName.toLowerCase();
+              
+              return matchById || matchByName;
+            });
+
+            console.log(`[getEligiblePanelMembers] Found ${departmentEmployees.length} employees in ${deptName} department`);
+
+            // Add only department employees
             for (const emp of departmentEmployees) {
-              const empId = emp._id?.toString();
-              if (empId && !addedIds.has(empId)) {
-                addedIds.add(empId);
-                eligibleEmployees.push({
-                  _id: empId,
-                  id: empId,
-                  firstName: emp.firstName,
-                  lastName: emp.lastName,
-                  fullName: emp.fullName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
-                  workEmail: emp.workEmail,
-                  department: departmentName,
-                  isHR: false, // Mark as department employee
-                });
-              }
+              addEmployee(emp, false, deptName);
             }
 
-            console.log(`[getEligiblePanelMembers] Found ${departmentEmployees.length} department employees`);
+            // If no employees in this specific department, log for debugging
+            if (departmentEmployees.length === 0) {
+              console.log(`[getEligiblePanelMembers] No employees found in ${deptName}. Checking employee departments...`);
+              const deptCounts: Record<string, number> = {};
+              allEmployees.forEach((emp: any) => {
+                const dept = emp.primaryDepartmentId?.name || 'Unassigned';
+                deptCounts[dept] = (deptCounts[dept] || 0) + 1;
+              });
+              console.log(`[getEligiblePanelMembers] Employee distribution by department:`, deptCounts);
+            }
+
+            console.log(`[getEligiblePanelMembers] Total eligible for ${deptName}: ${departmentEmployees.length} employees`);
+          } else {
+            console.warn(`[getEligiblePanelMembers] Department not found: ${departmentName}`);
+            
+            // List available departments for debugging
+            const availableDepts = await this.departmentModel.find().select('name').lean();
+            console.log(`[getEligiblePanelMembers] Available departments:`, availableDepts.map((d: any) => d.name));
+            
+            // Try to find similar department name
+            const similarDept = await this.departmentModel.findOne({ 
+              name: { $regex: new RegExp(departmentName, 'i') }
+            }).lean();
+            
+            if (similarDept) {
+              const deptEmployees = await this.employeeModel
+                .find({
+                  primaryDepartmentId: similarDept._id,
+                  status: { $ne: EmployeeStatus.TERMINATED },
+                })
+                .select('_id firstName lastName fullName workEmail primaryDepartmentId')
+                .lean()
+                .exec();
+
+              for (const emp of deptEmployees) {
+                addEmployee(emp, false, (similarDept as any).name);
+              }
+              console.log(`[getEligiblePanelMembers] Found ${deptEmployees.length} employees in similar department: ${(similarDept as any).name}`);
+            }
           }
+        } else {
+          // If no department found in job, get all employees as fallback
+          console.warn(`[getEligiblePanelMembers] No department in job requisition, fetching all active employees`);
+          
+          const allEmployees = await this.employeeModel
+            .find({
+              status: { $ne: EmployeeStatus.TERMINATED },
+            })
+            .select('_id firstName lastName fullName workEmail primaryDepartmentId')
+            .populate('primaryDepartmentId', 'name')
+            .limit(50) // Limit to prevent too many results
+            .lean()
+            .exec();
+
+          for (const emp of allEmployees) {
+            const deptName = (emp as any).primaryDepartmentId?.name || 'Unknown';
+            addEmployee(emp, false, deptName);
+          }
+          console.log(`[getEligiblePanelMembers] Added ${allEmployees.length} employees as fallback`);
         }
       }
 
@@ -2713,6 +2946,175 @@ export class RecruitmentService {
     return updated;
   }
 
+  // =============================================================
+  // HR EMPLOYEE: REJECT CANDIDATE
+  // =============================================================
+  // This method is ONLY accessible by HR_EMPLOYEE role.
+  // HR Manager cannot reject candidates - only HR Employee can.
+  // Cannot reject if:
+  // - Candidate is already finalized (hired)
+  // - Employee has already been created
+  // - Offer is already approved
+  // =============================================================
+  async rejectCandidateByHrEmployee(offerId: string, reason: string) {
+    if (!Types.ObjectId.isValid(offerId)) {
+      throw new BadRequestException('Invalid offer ID format');
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('Rejection reason is required');
+    }
+
+    const offer = await this.offerModel.findById(offerId).populate('applicationId');
+    if (!offer) {
+      throw new NotFoundException('Offer not found');
+    }
+
+    // Get application details
+    const application = (offer as any).applicationId;
+    const candidateId = (offer as any).candidateId?.toString() || application?.candidateId?.toString();
+
+    // =============================================================
+    // VALIDATION: Cannot reject finalized candidates
+    // =============================================================
+
+    // 1. Cannot reject if offer is already approved (finalized)
+    if (offer.finalStatus === OfferFinalStatus.APPROVED) {
+      throw new BadRequestException(
+        'Cannot reject candidate: Offer has already been approved/finalized by HR Manager.',
+      );
+    }
+
+    // 2. Cannot reject if application is already HIRED
+    if (application && application.status === ApplicationStatus.HIRED) {
+      throw new BadRequestException(
+        'Cannot reject candidate: Candidate has already been hired.',
+      );
+    }
+
+    // 3. Cannot reject if employee profile already exists for this candidate
+    if (candidateId) {
+      const employeeExists = await this.employeeModel.findOne({
+        candidateId: new Types.ObjectId(candidateId),
+      }).lean();
+      
+      if (employeeExists) {
+        throw new BadRequestException(
+          'Cannot reject candidate: Employee profile has already been created for this candidate.',
+        );
+      }
+    }
+
+    // 4. Cannot reject if application is already rejected
+    if (application && application.status === ApplicationStatus.REJECTED) {
+      throw new BadRequestException(
+        'Cannot reject candidate: Application has already been rejected.',
+      );
+    }
+
+    // =============================================================
+    // PERFORM REJECTION
+    // =============================================================
+
+    // Update offer status to rejected
+    const updatedOffer = await this.offerModel.findByIdAndUpdate(
+      offerId,
+      { 
+        finalStatus: OfferFinalStatus.REJECTED,
+      },
+      { new: true },
+    );
+
+    // Update application status to REJECTED
+    if (application && application._id) {
+      await this.applicationModel.findByIdAndUpdate(application._id, {
+        status: ApplicationStatus.REJECTED,
+      });
+    }
+
+    // Update candidate status to REJECTED
+    if (candidateId) {
+      await this.candidateModel.findByIdAndUpdate(candidateId, {
+        status: CandidateStatus.REJECTED,
+      });
+    }
+
+    // =============================================================
+    // SEND NOTIFICATIONS
+    // =============================================================
+
+    // Get position title for notifications
+    let positionTitle = 'Position';
+    if (application?.requisitionId) {
+      try {
+        const job = await this.jobModel.findById(application.requisitionId).populate('template').lean();
+        positionTitle = (job as any)?.template?.title || 'Position';
+      } catch (e) {
+        console.warn('Could not get job title for notification:', e);
+      }
+    }
+
+    // Get candidate name
+    let candidateName = 'Candidate';
+    if (candidateId) {
+      try {
+        const candidate = await this.candidateModel.findById(candidateId).lean();
+        if (candidate) {
+          candidateName = (candidate as any).fullName || 
+            `${(candidate as any).firstName || ''} ${(candidate as any).lastName || ''}`.trim() || 
+            'Candidate';
+        }
+      } catch (e) {
+        console.warn('Could not get candidate name for notification:', e);
+      }
+    }
+
+    // Notify candidate about rejection (in-app)
+    if (candidateId) {
+      try {
+        await this.notificationsService.notifyCandidateRejected(
+          candidateId,
+          {
+            positionTitle,
+            applicationId: application?._id?.toString() || '',
+            rejectionReason: reason, // Use rejectionReason parameter name as expected by the notification service
+          },
+        );
+        console.log(`[REJECT_CANDIDATE] Sent rejection notification to candidate ${candidateId}`);
+      } catch (notifError) {
+        console.warn('Failed to send rejection notification to candidate:', notifError);
+      }
+    }
+
+    // Send rejection email to candidate
+    const candidateDoc = await this.candidateModel.findById(candidateId).lean();
+    if (candidateDoc && (candidateDoc as any).personalEmail) {
+      try {
+        await this.sendNotification(
+          'application_status',
+          (candidateDoc as any).personalEmail,
+          {
+            candidateName,
+            status: ApplicationStatus.REJECTED,
+            reason: reason,
+          },
+          { nonBlocking: true },
+        );
+        console.log(`[REJECT_CANDIDATE] Sent rejection email to ${(candidateDoc as any).personalEmail}`);
+      } catch (e) {
+        console.warn('Failed to send rejection email:', e);
+      }
+    }
+
+    console.log(`[REJECT_CANDIDATE] HR Employee rejected candidate ${candidateId} for offer ${offerId}. Reason: ${reason}`);
+
+    return {
+      message: 'Candidate rejected successfully',
+      offer: updatedOffer,
+      reason: reason,
+    };
+  }
+
   async getOfferByApplicationId(applicationId: string) {
     if (!Types.ObjectId.isValid(applicationId)) {
       throw new BadRequestException('Invalid application ID format');
@@ -2721,19 +3123,32 @@ export class RecruitmentService {
     // Try multiple query formats to handle potential type mismatches
     const applicationObjectId = new Types.ObjectId(applicationId);
     
+    // Population config with nested requisition and template
+    const populateConfig = [
+      {
+        path: 'applicationId',
+        populate: {
+          path: 'requisitionId',
+          populate: {
+            path: 'templateId',
+            model: 'JobTemplate',
+          },
+        },
+      },
+      { path: 'candidateId' },
+    ];
+    
     // First try: exact ObjectId match
     let offer = await this.offerModel
       .findOne({ applicationId: applicationObjectId })
-      .populate('applicationId')
-      .populate('candidateId')
+      .populate(populateConfig)
       .lean();
 
     // Second try: string match (in case it was stored as string)
     if (!offer) {
       offer = await this.offerModel
         .findOne({ applicationId: applicationId })
-        .populate('applicationId')
-        .populate('candidateId')
+        .populate(populateConfig)
         .lean();
     }
 
@@ -2741,13 +3156,24 @@ export class RecruitmentService {
     if (!offer) {
       offer = await this.offerModel
         .findOne({ applicationId: applicationId.toString() })
-        .populate('applicationId')
-        .populate('candidateId')
+        .populate(populateConfig)
         .lean();
     }
 
     if (!offer) {
       throw new NotFoundException('Offer not found for this application');
+    }
+
+    // Add requisition and template aliases for frontend compatibility
+    if (offer && (offer as any).applicationId?.requisitionId) {
+      const appData = (offer as any).applicationId;
+      (offer as any).applicationId = {
+        ...appData,
+        requisition: {
+          ...appData.requisitionId,
+          template: appData.requisitionId?.templateId || null,
+        },
+      };
     }
 
     return offer;
@@ -2760,12 +3186,26 @@ export class RecruitmentService {
 
     const candidateObjectId = new Types.ObjectId(candidateId);
     
+    // Population config with nested requisition and template
+    const populateConfig = [
+      {
+        path: 'applicationId',
+        populate: {
+          path: 'requisitionId',
+          populate: {
+            path: 'templateId',
+            model: 'JobTemplate',
+          },
+        },
+      },
+      { path: 'candidateId' },
+    ];
+    
     // Try multiple query formats to handle potential type mismatches
     // First try: exact ObjectId match
     let offers = await this.offerModel
       .find({ candidateId: candidateObjectId })
-      .populate('applicationId')
-      .populate('candidateId')
+      .populate(populateConfig)
       .sort({ createdAt: -1 })
       .lean();
 
@@ -2773,8 +3213,7 @@ export class RecruitmentService {
     if (!offers || offers.length === 0) {
       offers = await this.offerModel
         .find({ candidateId: candidateId })
-        .populate('applicationId')
-        .populate('candidateId')
+        .populate(populateConfig)
         .sort({ createdAt: -1 })
         .lean();
     }
@@ -2783,8 +3222,7 @@ export class RecruitmentService {
     if (!offers || offers.length === 0) {
       offers = await this.offerModel
         .find({ candidateId: candidateId.toString() })
-        .populate('applicationId')
-        .populate('candidateId')
+        .populate(populateConfig)
         .sort({ createdAt: -1 })
         .lean();
     }
