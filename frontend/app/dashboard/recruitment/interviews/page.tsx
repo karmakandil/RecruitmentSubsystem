@@ -154,7 +154,16 @@ export default function InterviewsPage() {
             app.stage?.includes("interview") &&
             (app.stage === "department_interview" || app.status === "in_process")
         );
-        setApplications(interviewApplications);
+        
+        // Sort applications: Referrals first, then others (for priority interview scheduling)
+        const sortedInterviewApps = [...interviewApplications].sort((a: any, b: any) => {
+          // Referrals should come first (isReferral = true sorts before false)
+          if (a.isReferral && !b.isReferral) return -1;
+          if (!a.isReferral && b.isReferral) return 1;
+          return 0;
+        });
+        
+        setApplications(sortedInterviewApps);
       }
     } catch (error: any) {
       showToast(error.message || "Failed to load interviews", "error");
@@ -261,6 +270,15 @@ export default function InterviewsPage() {
                               ? (application.stage || application.currentStage)?.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
                               : "Interview Stage"
                             : `Candidate: ${application.candidate?.fullName || "N/A"}`}
+                          {/* Show star indicator for referred candidates - priority for earlier interview */}
+                          {!isCandidate && (application as any).isReferral && (
+                            <span 
+                              className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" 
+                              title="Referred Candidate - Priority for Earlier Interview"
+                            >
+                              ⭐ Referral
+                            </span>
+                          )}
                         </p>
                       </div>
                       <StatusBadge status={application.status} type="application" />

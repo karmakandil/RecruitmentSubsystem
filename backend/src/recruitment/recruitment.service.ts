@@ -3773,26 +3773,33 @@ Due: ${context.dueDate}`
         });
 
         // HR Tasks (ONB-018, ONB-019: Payroll and benefits)
+        // These are AUTOMATED tasks - they are triggered automatically when onboarding starts
+        // So they should be marked as COMPLETED immediately
+        const automatedTaskCompletedAt = new Date();
+        
         tasks.push({
           name: 'Create Payroll Profile',
           department: 'HR',
-          status: OnboardingTaskStatus.PENDING,
+          status: OnboardingTaskStatus.COMPLETED, // Auto-completed: triggered automatically
           deadline: contractSigningDate || defaultDeadline,
-          notes: 'Automated task: Payroll initiation (REQ-PY-23)',
+          completedAt: automatedTaskCompletedAt,
+          notes: 'Automated task: Payroll initiation (REQ-PY-23) - Auto-completed on onboarding creation',
         });
         tasks.push({
           name: 'Process Signing Bonus',
           department: 'HR',
-          status: OnboardingTaskStatus.PENDING,
+          status: OnboardingTaskStatus.COMPLETED, // Auto-completed: triggered automatically
           deadline: contractSigningDate || defaultDeadline,
-          notes: 'Automated task: Signing bonus processing (REQ-PY-27)',
+          completedAt: automatedTaskCompletedAt,
+          notes: 'Automated task: Signing bonus processing (REQ-PY-27) - Auto-completed on onboarding creation',
         });
         tasks.push({
           name: 'Set up Benefits',
           department: 'HR',
-          status: OnboardingTaskStatus.PENDING,
+          status: OnboardingTaskStatus.COMPLETED, // Auto-completed: triggered automatically
           deadline: defaultDeadline,
-          notes: 'Automated task: Benefits enrollment',
+          completedAt: automatedTaskCompletedAt,
+          notes: 'Automated task: Benefits enrollment - Auto-completed on onboarding creation',
         });
 
         // New Hire Tasks (ONB-007: Document upload)
@@ -3883,6 +3890,18 @@ Due: ${context.dueDate}`
           }
 
           // ONB-004/ONB-005: Include employee number so new hire knows how to log in
+          // Also include specific document upload tasks so new hire knows exactly what to upload
+          const documentUploadTasks = tasks
+            .filter((task: any) => 
+              task.name.toLowerCase().includes('upload') ||
+              task.notes?.toLowerCase().includes('required:')
+            )
+            .map((task: any) => ({
+              name: task.name,
+              notes: task.notes,
+              deadline: task.deadline,
+            }));
+
           await this.notificationsService.notifyNewHireWelcome(
             createOnboardingDto.employeeId.toString(),
             {
@@ -3892,6 +3911,7 @@ Due: ${context.dueDate}`
               startDate: startDate || new Date(),
               totalTasks: tasks.length,
               onboardingId: saved._id.toString(),
+              documentUploadTasks, // NEW: Include specific document upload tasks
             },
           );
           
@@ -5586,12 +5606,14 @@ Due: ${context.dueDate}`
         );
 
         // ONB-018: Automatically trigger payroll initiation using contract data
+        // Pass jobTitle from the job template for accurate position in notifications
         if (contract.grossSalary && contract.grossSalary > 0) {
           try {
             await this.triggerPayrollInitiation(
               employeeId,
               contractSigningDate,
               contract.grossSalary,
+              jobTitle || contract.role || undefined, // Pass position title from job template or contract
             );
           } catch (e) {
             console.warn('Failed to trigger payroll initiation:', e);
@@ -5599,12 +5621,14 @@ Due: ${context.dueDate}`
         }
 
         // ONB-019: Automatically process signing bonus using contract data
+        // Pass jobTitle from the job template for accurate position in notifications
         if (contract.signingBonus && contract.signingBonus > 0) {
           try {
             await this.processSigningBonus(
               employeeId,
               contract.signingBonus,
               contractSigningDate,
+              jobTitle || contract.role || undefined, // Pass position title from job template or contract
             );
           } catch (e) {
             console.warn('Failed to process signing bonus:', e);
@@ -7528,6 +7552,7 @@ Due: ${context.dueDate}`
     employeeId: string,
     contractSigningDate: Date,
     grossSalary: number,
+    providedPositionTitle?: string, // Optional: position title from job template/contract
   ): Promise<any> {
     try {
       if (!Types.ObjectId.isValid(employeeId)) {
@@ -7581,10 +7606,12 @@ Due: ${context.dueDate}`
       }
 
       // Get position and department details for notifications
-      let positionTitle = 'New Hire';
+      // Use provided position title (from job template/contract) first, then try lookup, then default
+      let positionTitle = providedPositionTitle || 'New Hire';
       let departmentName = '';
       
-      if (employee.primaryPositionId) {
+      // Only try position lookup if no position title was provided
+      if (!providedPositionTitle && employee.primaryPositionId) {
         try {
           const position = await this.organizationStructureService.getPositionById(
             employee.primaryPositionId.toString(),
@@ -7746,6 +7773,7 @@ Due: ${context.dueDate}`
     employeeId: string,
     signingBonus: number,
     contractSigningDate: Date,
+    providedPositionTitle?: string, // Optional: position title from job template/contract
   ): Promise<any> {
     try {
       if (!Types.ObjectId.isValid(employeeId)) {
@@ -7804,10 +7832,12 @@ Due: ${context.dueDate}`
 
       let signingBonusResult: any = null;
       let integrationNote = '';
-      let positionTitle = 'New Hire';
+      // Use provided position title (from job template/contract) first, then try lookup, then default
+      let positionTitle = providedPositionTitle || 'New Hire';
 
       // Find signing bonus configuration by position title
-      if (employee.primaryPositionId) {
+      // Only try position lookup if no position title was provided
+      if (!providedPositionTitle && employee.primaryPositionId) {
         try {
           // Get position details
           const position =

@@ -76,7 +76,15 @@ export default function DepartmentInterviewsPage() {
         }
       }
 
-      setInterviews(interviewData);
+      // Sort interviews: Referrals first, then others (for priority interview scheduling)
+      const sortedInterviewData = [...interviewData].sort((a: any, b: any) => {
+        // Referrals should come first (isReferral = true sorts before false)
+        if (a.application.isReferral && !b.application.isReferral) return -1;
+        if (!a.application.isReferral && b.application.isReferral) return 1;
+        return 0;
+      });
+
+      setInterviews(sortedInterviewData);
     } catch (error: any) {
       showToast(error.message || "Failed to load interviews", "error");
     } finally {
@@ -137,6 +145,15 @@ export default function DepartmentInterviewsPage() {
                     </CardTitle>
                     <p className="text-sm text-gray-600 mt-1">
                       Candidate: {item.application.candidate?.fullName || "N/A"}
+                      {/* Show star indicator for referred candidates - priority for earlier interview */}
+                      {item.application.isReferral && (
+                        <span 
+                          className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" 
+                          title="Referred Candidate - Priority for Earlier Interview"
+                        >
+                          ⭐ Referral
+                        </span>
+                      )}
                     </p>
                   </div>
                   <StatusBadge

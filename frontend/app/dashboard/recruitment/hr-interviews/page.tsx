@@ -154,7 +154,16 @@ export default function HRInterviewsPage() {
         candidate: typeof app.candidateId === 'object' && app.candidateId ? app.candidateId : app.candidate,
       }));
       
-      setApplications(mappedApps);
+      // Sort applications: Referrals first, then others (for priority interview scheduling)
+      const sortedApps = [...mappedApps].sort((a: any, b: any) => {
+        // Referrals should come first (isReferral = true sorts before false)
+        if (a.isReferral && !b.isReferral) return -1;
+        if (!a.isReferral && b.isReferral) return 1;
+        // If both are referrals or both are not, maintain original order
+        return 0;
+      });
+      
+      setApplications(sortedApps);
       
       // Extract interviews from applications if they exist
       // Backend now returns interviews attached to applications
@@ -410,9 +419,9 @@ export default function HRInterviewsPage() {
       if (job?.template?.skills && job.template.skills.length > 0) {
         // Use skills from job template as assessment criteria
         setAssessmentCriteria(job.template.skills);
-      } else if (job?.templateId?.skills && job.templateId.skills.length > 0) {
-        // Backend might return templateId instead of template
-        setAssessmentCriteria(job.templateId.skills);
+      } else if (typeof job?.templateId === 'object' && job.templateId?.skills && (job.templateId as any).skills.length > 0) {
+        // Backend might return templateId as populated object instead of template
+        setAssessmentCriteria((job.templateId as any).skills);
       } else if (job?.template?.qualifications && job.template.qualifications.length > 0) {
         // Fallback to qualifications if no skills defined
         setAssessmentCriteria(job.template.qualifications.slice(0, 5));
@@ -649,6 +658,15 @@ export default function HRInterviewsPage() {
                             ? (application.candidateId as any)?.fullName || (application.candidateId as any)?.firstName || 'Unknown'
                             : application.candidateId || 'Unknown')
                         }
+                        {/* Show star indicator for referred candidates - priority for earlier interview */}
+                        {application.isReferral && (
+                          <span 
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" 
+                            title="Referred Candidate - Priority for Earlier Interview"
+                          >
+                            ⭐ Referral
+                          </span>
+                        )}
                       </p>
                       <p className="text-sm text-gray-600 mb-2">
                         Status: <StatusBadge status={application.status} type="application" />

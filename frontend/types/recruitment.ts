@@ -174,6 +174,7 @@ export interface OnboardingTask {
   department: string;
   status: OnboardingTaskStatus;
   deadline?: string;
+  completedAt?: string;
   documentId?: string;
   notes?: string;
 }
@@ -186,6 +187,8 @@ export interface Onboarding {
   tasks: OnboardingTask[];
   startDate?: string;
   completionDate?: string;
+  completed?: boolean;
+  completedAt?: string;
   status: string;
   createdAt?: string;
   updatedAt?: string;

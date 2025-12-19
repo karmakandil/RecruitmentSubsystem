@@ -1091,6 +1091,8 @@ export class NotificationsService {
       startDate: Date;
       totalTasks: number;
       onboardingId: string;
+      // NEW: Specific document upload tasks for the new hire
+      documentUploadTasks?: { name: string; notes?: string; deadline?: Date }[];
     },
   ) {
     return this.recruitmentNotificationsService.notifyNewHireWelcome(newHireId, welcomeDetails);
