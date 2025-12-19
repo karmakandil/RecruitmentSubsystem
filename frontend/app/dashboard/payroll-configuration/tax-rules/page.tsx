@@ -10,25 +10,14 @@ import { taxRulesApi } from '@/lib/api/payroll-configuration/tax-rules';
 import { TaxRule } from '@/lib/api/payroll-configuration/types';
 
 export default function TaxRulesPage() {
-  // Allow view access for multiple roles, but only Legal Admin can create/edit
-  useRequireAuth(
-    [
-      SystemRole.LEGAL_POLICY_ADMIN,
-      SystemRole.PAYROLL_SPECIALIST,
-      SystemRole.PAYROLL_MANAGER,
-      SystemRole.SYSTEM_ADMIN,
-      SystemRole.HR_MANAGER,
-      SystemRole.HR_ADMIN,
-      SystemRole.DEPARTMENT_EMPLOYEE,
-      SystemRole.DEPARTMENT_HEAD,
-    ],
-    '/dashboard'
-  );
-  
+  // All roles can view, but only Legal Admin can create/edit
   const { user } = useAuth();
   const isLegalAdmin = user?.roles?.some(role => 
     String(role).toLowerCase() === String(SystemRole.LEGAL_POLICY_ADMIN).toLowerCase()
   );
+  
+  // Allow all authenticated users to view
+  useRequireAuth(undefined, '/dashboard');
   
   const router = useRouter();
   const [taxRules, setTaxRules] = useState<TaxRule[]>([]);

@@ -65,8 +65,10 @@ export default function PayrollConfigurationLayout({
     return pathname?.startsWith(href) || false;
   };
 
-  // Only show navigation when NOT on the main dashboard page
+  // Only show navigation when NOT on the main dashboard page, approvals page, or stats page
   const isMainDashboard = pathname === '/dashboard/payroll-configuration';
+  const isApprovalsPage = pathname === '/dashboard/payroll-configuration/approvals';
+  const isStatsPage = pathname === '/dashboard/payroll-configuration/stats';
 
   const getColorClasses = (color: string, active: boolean) => {
     const colors: Record<string, { active: string; inactive: string; hover: string }> = {
@@ -119,7 +121,7 @@ export default function PayrollConfigurationLayout({
 
   return (
     <div className="min-h-screen">
-      {!isMainDashboard && (
+      {!isMainDashboard && !isApprovalsPage && !isStatsPage && (
         <nav className="relative backdrop-blur-xl bg-gradient-to-br from-slate-900/95 via-indigo-950/95 to-slate-900/95 border-b border-white/10 shadow-2xl sticky top-0 z-50">
           {/* Animated gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 animate-pulse"></div>

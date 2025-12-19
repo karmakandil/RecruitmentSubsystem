@@ -2,15 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useRequireAuth } from '@/lib/hooks/use-auth';
+import { useRequireAuth, useAuth } from '@/lib/hooks/use-auth';
 import { SystemRole } from '@/types';
 import ConfigurationTable from '@/components/payroll-configuration/ConfigurationTable';
 import StatusBadge from '@/components/payroll-configuration/StatusBadge';
 import { allowancesApi } from '@/lib/api/payroll-configuration/allowances';
 
 export default function AllowancesPage() {
-  // Only Payroll Specialist can create/edit allowances
-  useRequireAuth(SystemRole.PAYROLL_SPECIALIST, '/dashboard');
+  // All roles can view, but only Payroll Specialist can create/edit
+  const { user } = useAuth();
+  const canCreateEdit = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+  
+  // Allow all authenticated users to view
+  useRequireAuth(undefined, '/dashboard');
   
   const router = useRouter();
   const [allowances, setAllowances] = useState<any[]>([]);
@@ -194,16 +198,18 @@ export default function AllowancesPage() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleCreateNew}
-              className="group relative px-6 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-sm font-bold rounded-xl shadow-2xl hover:shadow-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-300 flex items-center transform hover:scale-105 overflow-hidden"
-            >
+            {canCreateEdit && (
+              <button
+                onClick={handleCreateNew}
+                className="group relative px-6 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 text-white text-sm font-bold rounded-xl shadow-2xl hover:shadow-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all duration-300 flex items-center transform hover:scale-105 overflow-hidden"
+              >
               <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 via-teal-700 to-cyan-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <svg className="w-5 h-5 mr-2 relative z-10 group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
               </svg>
               <span className="relative z-10">Create New Allowance</span>
-            </button>
+              </button>
+            )}
           </div>
 
           {/* Stats Cards */}
@@ -279,7 +285,8 @@ export default function AllowancesPage() {
               data={allowances}
               columns={columns}
               onView={handleView}
-              onEdit={handleEdit}
+              onEdit={canCreateEdit ? handleEdit : undefined}
+              canEdit={canCreateEdit ? (item) => item.status?.toLowerCase() === 'draft' : () => false}
               onDelete={undefined}
               canDelete={() => false}
               isLoading={isLoading}

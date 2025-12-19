@@ -2,10 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useRequireAuth, useAuth } from '@/lib/hooks/use-auth';
+import { SystemRole } from '@/types';
 import { insuranceBracketsApi } from '@/lib/api/payroll-configuration/insurance-brackets';
 import { InsuranceBracket } from '@/lib/api/payroll-configuration/types';
 
 export default function EditInsuranceBracketPage() {
+  // Payroll Specialist can edit Draft, HR Manager can edit any status
+  const { user } = useAuth();
+  const isPayrollSpecialist = user?.roles?.includes(SystemRole.PAYROLL_SPECIALIST);
+  const isHRManager = user?.roles?.includes(SystemRole.HR_MANAGER);
+  
+  useRequireAuth(
+    isHRManager 
+      ? SystemRole.HR_MANAGER 
+      : SystemRole.PAYROLL_SPECIALIST,
+    '/dashboard'
+  );
+  
   const params = useParams();
   const router = useRouter();
   const insuranceBracketId = params.id as string;
