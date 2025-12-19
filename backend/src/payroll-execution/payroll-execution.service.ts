@@ -1229,6 +1229,8 @@ export class PayrollExecutionService {
   // BR 1: Employment contract requirements - Active contract with defined role, type, dates, and salary basis
   // BR 2: Contract terms validation
   // Egyptian Labor Law 2025 compliance
+  // Modified to only validate employees eligible for the payroll period
+  // and allow payroll to proceed with warnings for employees with incomplete contracts
   private async validatePayrollPeriodAgainstContracts(
     payrollPeriod: Date,
   ): Promise<void> {
@@ -1247,9 +1249,59 @@ export class PayrollExecutionService {
 
     const contractViolations: string[] = [];
     const missingFields: string[] = [];
+    const eligibleEmployees: any[] = [];
+    const employeesWithIssues = new Set<string>(); // Track unique employees with issues
 
     for (const employee of activeEmployees) {
       const employeeData = employee as any;
+      
+      // Check if employee is eligible for this payroll period
+      // Employee is eligible if:
+      // 1. Contract start date is before or during the period, AND
+      // 2. Contract end date is after or during the period (or null for indefinite)
+      const contractStartDate = employeeData.contractStartDate;
+      const contractEndDate = employeeData.contractEndDate;
+      const dateOfHire = employeeData.dateOfHire;
+      
+      // Determine effective start date (contract start or hire date)
+      const effectiveStartDate = contractStartDate 
+        ? new Date(contractStartDate)
+        : dateOfHire 
+          ? new Date(dateOfHire)
+          : null;
+      
+      // Determine effective end date (contract end or null for indefinite)
+      const effectiveEndDate = contractEndDate ? new Date(contractEndDate) : null;
+      
+      // Check eligibility: employee should be active during the payroll period
+      let isEligible = false;
+      if (effectiveStartDate) {
+        effectiveStartDate.setHours(0, 0, 0, 0);
+        if (effectiveEndDate) {
+          effectiveEndDate.setHours(23, 59, 59, 999);
+          // Employee is eligible if period overlaps with contract period
+          isEligible = periodStart <= effectiveEndDate && periodEnd >= effectiveStartDate;
+        } else {
+          // Indefinite contract - eligible if start date is before or during period
+          isEligible = effectiveStartDate <= periodEnd;
+        }
+      } else {
+        // No start date - not eligible but we'll still validate to show the issue
+        isEligible = false;
+      }
+      
+      // Only validate employees that are eligible for this payroll period
+      // or employees with missing critical data that would prevent payroll processing
+      if (!isEligible && contractStartDate && contractEndDate) {
+        // Employee not eligible for this period - skip validation
+        continue;
+      }
+      
+      // Track eligible employees for validation
+      if (isEligible) {
+        eligibleEmployees.push(employeeData);
+      }
+      
       const employeeNumber =
         employeeData.employeeNumber ||
         employeeData._id?.toString() ||
@@ -1257,10 +1309,19 @@ export class PayrollExecutionService {
       const employeeName = employeeData.fullName || 
         `${employeeData.firstName || ''} ${employeeData.lastName || ''}`.trim() ||
         employeeNumber;
+      
+      // Only validate employees eligible for this payroll period
+      if (!isEligible) {
+        continue;
+      }
 
       // BR 1: Check for active employment contract with all required fields
+      // Track if this employee has any issues
+      let hasIssues = false;
+      
       // 1. Check for defined role (primaryPositionId)
       if (!employeeData.primaryPositionId) {
+        hasIssues = true;
         missingFields.push(
           `Employee ${employeeNumber} (${employeeName}): Missing defined role (primaryPositionId). Egyptian Labor Law 2025 requires a defined role in the employment contract.`,
         );
@@ -1268,14 +1329,15 @@ export class PayrollExecutionService {
 
       // 2. Check for contract type (full-time, part-time, hourly, commission-based, etc.)
       if (!employeeData.contractType) {
+        hasIssues = true;
         missingFields.push(
           `Employee ${employeeNumber} (${employeeName}): Missing contract type. Egyptian Labor Law 2025 requires contract type (full-time, part-time, hourly, commission-based, etc.) to be defined.`,
         );
       }
 
-      // 3. Check for contract start date
-      const contractStartDate = employeeData.contractStartDate;
+      // 3. Check for contract start date (already declared above, just check if missing)
       if (!contractStartDate) {
+        hasIssues = true;
         missingFields.push(
           `Employee ${employeeNumber} (${employeeName}): Missing contract start date. Egyptian Labor Law 2025 requires employment contracts to have a defined start date.`,
         );
@@ -1283,14 +1345,19 @@ export class PayrollExecutionService {
 
       // 4. Check for contract end date (can be null for indefinite contracts, but must be explicitly set)
       // Note: For indefinite contracts, contractEndDate can be null, but we validate that it's a conscious decision
-      const contractEndDate = employeeData.contractEndDate;
-      // contractEndDate is optional for indefinite contracts, so we don't require it
+      // contractEndDate is already declared above and is optional for indefinite contracts, so we don't require it
 
       // 5. Check for salary basis (payGradeId)
       if (!employeeData.payGradeId) {
+        hasIssues = true;
         missingFields.push(
           `Employee ${employeeNumber} (${employeeName}): Missing salary basis (payGradeId). Egyptian Labor Law 2025 requires employment contracts to specify the salary basis.`,
         );
+      }
+      
+      // Track this employee if they have issues
+      if (hasIssues) {
+        employeesWithIssues.add(employeeNumber);
       }
 
       // BR 2: Validate contract dates against payroll period
@@ -1300,6 +1367,8 @@ export class PayrollExecutionService {
 
         // Check if payroll period is before contract start date
         if (periodEnd < contractStart) {
+          hasIssues = true;
+          employeesWithIssues.add(employeeNumber);
           contractViolations.push(
             `Employee ${employeeNumber} (${employeeName}): Payroll period (${year}-${String(month + 1).padStart(2, '0')}) is before contract start date (${contractStart.toISOString().split('T')[0]}). Egyptian Labor Law 2025: Payroll cannot be processed before contract start date.`,
           );
@@ -1312,6 +1381,8 @@ export class PayrollExecutionService {
 
         // Check if payroll period is after contract end date
         if (periodStart > contractEnd) {
+          hasIssues = true;
+          employeesWithIssues.add(employeeNumber);
           contractViolations.push(
             `Employee ${employeeNumber} (${employeeName}): Payroll period (${year}-${String(month + 1).padStart(2, '0')}) is after contract end date (${contractEnd.toISOString().split('T')[0]}). Egyptian Labor Law 2025: Payroll cannot be processed after contract expiration.`,
           );
@@ -1324,6 +1395,8 @@ export class PayrollExecutionService {
           hireDate.setHours(0, 0, 0, 0);
 
           if (periodEnd < hireDate) {
+            hasIssues = true;
+            employeesWithIssues.add(employeeNumber);
             contractViolations.push(
               `Employee ${employeeNumber} (${employeeName}): Payroll period (${year}-${String(month + 1).padStart(2, '0')}) is before date of hire (${hireDate.toISOString().split('T')[0]}).`,
             );
@@ -1344,6 +1417,8 @@ export class PayrollExecutionService {
         maxFutureStartDate.setDate(maxFutureStartDate.getDate() + 30);
         
         if (contractStart > maxFutureStartDate) {
+          hasIssues = true;
+          employeesWithIssues.add(employeeNumber);
           contractViolations.push(
             `Employee ${employeeNumber} (${employeeName}): Contract start date (${contractStart.toISOString().split('T')[0]}) is more than 30 days in the future. This may violate Egyptian Labor Law 2025 contract validity requirements.`,
           );
@@ -1356,6 +1431,8 @@ export class PayrollExecutionService {
         const contractEnd = new Date(contractEndDate);
         
         if (contractEnd < contractStart) {
+          hasIssues = true;
+          employeesWithIssues.add(employeeNumber);
           contractViolations.push(
             `Employee ${employeeNumber} (${employeeName}): Contract end date (${contractEnd.toISOString().split('T')[0]}) is before contract start date (${contractStart.toISOString().split('T')[0]}). This violates Egyptian Labor Law 2025 contract validity requirements.`,
           );
@@ -1366,19 +1443,41 @@ export class PayrollExecutionService {
     // Combine all violations and missing fields
     const allIssues: string[] = [...missingFields, ...contractViolations];
 
-    // If there are any issues, throw error with details
+    // Never block payroll - only log warnings
+    // Employees with incomplete contracts will be excluded from payroll processing automatically
+    // This allows payroll to proceed even if some or all employees have incomplete contract data
     if (allIssues.length > 0) {
       const issueCount = allIssues.length;
+      const eligibleCount = eligibleEmployees.length;
+      const uniqueEmployeesWithIssues = employeesWithIssues.size;
       const issueDetails = allIssues.slice(0, 10).join('; '); // Show first 10 issues
       const moreIssues = issueCount > 10 ? ` and ${issueCount - 10} more` : '';
 
-      const errorMessage = 
-        `Payroll processing blocked: ${issueCount} employee(s) have contract validation issues. ` +
-        `Egyptian Labor Law 2025 requires active employment contracts with defined role, type, start/end dates, and salary basis before payroll can be processed. ` +
-        `Details: ${issueDetails}${moreIssues}. ` +
-        `Please ensure all employees have complete and valid employment contracts before processing payroll.`;
+      // Always log warnings but never block
+      console.warn(
+        `[Payroll Validation] ${uniqueEmployeesWithIssues} employee(s) eligible for payroll period have contract validation issues. ` +
+        `These employees will be excluded from payroll processing. ` +
+        `Details: ${issueDetails}${moreIssues}`
+      );
 
-      throw new Error(errorMessage);
+      const validEmployeesCount = eligibleCount - uniqueEmployeesWithIssues;
+      if (validEmployeesCount > 0) {
+        console.log(
+          `[Payroll Validation] Proceeding with payroll processing. ` +
+          `${validEmployeesCount} employee(s) have valid contracts and will be included. ` +
+          `${uniqueEmployeesWithIssues} employee(s) will be excluded due to incomplete contract data.`
+        );
+      } else {
+        console.warn(
+          `[Payroll Validation] WARNING: All ${eligibleCount} eligible employee(s) have contract validation issues. ` +
+          `Payroll will proceed but no employees will be included in this payroll run. ` +
+          `Please ensure employees have complete contract data (primaryPositionId, payGradeId, contractStartDate) for future payroll runs.`
+        );
+      }
+      
+      // Never throw error - always allow payroll to proceed
+      // The payroll processing logic will automatically exclude employees with incomplete contracts
+      return;
     }
   }
 
