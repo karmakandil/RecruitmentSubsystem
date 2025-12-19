@@ -36,7 +36,13 @@ export default function EmployerContributionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useRequireAuth(SystemRole.DEPARTMENT_EMPLOYEE);
+  useRequireAuth([
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN,
+  ]);
 
   useEffect(() => {
     const fetchEmployerContributions = async () => {

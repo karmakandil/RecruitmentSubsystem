@@ -86,7 +86,7 @@ export default function PayrollSpecialistDashboardPage() {
               {mounted ? `Welcome back, ${user?.fullName || "Specialist"}!` : 'Welcome back!'}
             </p>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Create and manage payroll configurations with comprehensive tools and intuitive workflows.
+              Create and manage payroll configurations (all in draft status requiring manager approval). Process payroll, review disputes and claims, and generate reports.
             </p>
           </div>
 
@@ -116,7 +116,7 @@ export default function PayrollSpecialistDashboardPage() {
               <div className="h-1 w-24 bg-gradient-to-l from-transparent via-pink-400 to-purple-400 rounded-full"></div>
             </div>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              Configure company-level payroll policies, pay grades, allowances, tax rules, and benefits with powerful management tools
+              Configure company-level payroll policies, pay grades, allowances, tax rules, and benefits. All configurations are created in draft status and require Payroll Manager approval before publishing. Editing is only allowed for draft status configurations.
             </p>
           </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -133,7 +133,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Payroll Policies</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Configure company-level payroll policies and rules
+                  Configure company-level payroll policies (Create, Edit, View) - Status: Draft (requires manager approval)
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -161,7 +161,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Pay Grades</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Define pay grades, salary, and compensation limits
+                  Define pay grades (Position, Gross Salary = Base Pay + Allowances) - Create, Edit, View - Status: Draft
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -189,7 +189,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Pay Types</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Define employee pay types (hourly, daily, weekly, monthly)
+                  Define employee pay types (hourly, daily, weekly, monthly, contract-based) - Create, Edit, View - Status: Draft
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -217,7 +217,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Allowances</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Set allowances (transportation, housing, etc.)
+                  Set allowances (transportation, housing, etc.) - Create, Edit, View - Status: Draft
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -245,7 +245,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Tax Rules</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Define tax rules and laws (progressive rates, exemptions)
+                  Define tax rules and laws (progressive rates, exemptions, thresholds) - Create, View - Status: Draft (Legal & Policy Admin can edit when laws change)
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -273,7 +273,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Signing Bonuses</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Configure policies for signing bonuses
+                  Configure policies for signing bonuses - Create, Edit, View - Status: Draft
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -301,7 +301,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Termination Benefits</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Configure resignation and termination benefits
+                  Configure resignation and termination benefits and their terms - Create, Edit, View - Status: Draft
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -329,7 +329,7 @@ export default function PayrollSpecialistDashboardPage() {
                 </div>
                 <CardTitle className="text-2xl font-bold text-gray-900 mb-3">Insurance Brackets</CardTitle>
                 <CardDescription className="text-gray-600 text-sm leading-relaxed">
-                  Configure insurance brackets with salary ranges
+                  Configure insurance brackets with defined salary ranges and contribution percentages (employer & employee) - Create, Edit, View - Status: Draft (requires HR Manager approval)
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0 pb-6 relative z-10">
@@ -715,7 +715,7 @@ export default function PayrollSpecialistDashboardPage() {
             <div className="h-1 w-24 bg-gradient-to-l from-transparent via-purple-400 to-indigo-400 rounded-full"></div>
           </div>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Review and approve employee disputes and claims, generate reports, and track payroll status with comprehensive analytics
+            Approve/reject disputes and expense claims (approved items escalate to Payroll Manager for confirmation). Generate department reports and track status of claims, disputes, and refunds.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">

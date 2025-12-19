@@ -97,34 +97,69 @@ export default function PayrollManagerDashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card className="hover:shadow-lg transition-shadow border-2 border-blue-200">
               <CardHeader>
-                <CardTitle>Payroll Configuration</CardTitle>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="text-3xl">⚙</div>
+                  <CardTitle>Payroll Configuration</CardTitle>
+                </div>
                 <CardDescription>
-                  Configure pay grades, tax rules, and payroll settings
+                  Configure payroll settings, pay grades, and payroll rules
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <p className="text-sm text-gray-600 mb-4">
+                  Manage pay grades, allowances, deductions, tax rules, and other payroll configurations.
+                </p>
                 <Link
                   href="/dashboard/payroll-configuration"
                   className="block w-full text-center bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 transition font-medium"
                 >
-                  Manage Configuration
+                  Go to Configuration
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200">
+              <CardHeader>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="text-3xl">💼</div>
+                  <CardTitle>Payroll Execution</CardTitle>
+                </div>
+                <CardDescription>
+                  Execute payroll runs and process payments
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-4">
+                  Create payroll runs, calculate salaries, generate payslips, and process payments.
+                </p>
+                <Link
+                  href="/dashboard/payroll-execution"
+                  className="block w-full text-center bg-purple-600 text-white py-3 px-4 rounded-md hover:bg-purple-700 transition font-medium"
+                >
+                  Go to Execution
                 </Link>
               </CardContent>
             </Card>
 
             <Card className="hover:shadow-lg transition-shadow border-2 border-green-200">
               <CardHeader>
-                <CardTitle>Payroll Tracking</CardTitle>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="text-3xl">📊</div>
+                  <CardTitle>Payroll Tracking</CardTitle>
+                </div>
                 <CardDescription>
-                  View payslips, claims, disputes, and refunds
+                  View payslips, track claims, disputes, and refunds
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <p className="text-sm text-gray-600 mb-4">
+                  Access your payslips, submit expense claims, dispute payroll errors, and track reimbursement status.
+                </p>
                 <Link
                   href="/dashboard/payroll-tracking"
                   className="block w-full text-center bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 transition font-medium"
                 >
-                  View Payroll
+                  Go to Tracking
                 </Link>
               </CardContent>
             </Card>

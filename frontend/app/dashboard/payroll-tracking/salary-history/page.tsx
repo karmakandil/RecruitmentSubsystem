@@ -19,7 +19,13 @@ export default function SalaryHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(12);
 
-  useRequireAuth(SystemRole.DEPARTMENT_EMPLOYEE);
+  useRequireAuth([
+    SystemRole.DEPARTMENT_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.SYSTEM_ADMIN,
+  ]);
 
   useEffect(() => {
     const fetchSalaryHistory = async () => {
