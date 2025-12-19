@@ -62,6 +62,9 @@ import { ConfigStatus } from '../payroll-configuration/enums/payroll-configurati
 import { EmployeeStatus, SystemRole } from '../employee-profile/enums/employee-profile.enums';
 import { TerminationStatus } from '../recruitment/enums/termination-status.enum';
 import { EmployeeSystemRole, EmployeeSystemRoleDocument } from '../employee-profile/models/employee-system-role.schema';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/enums/notification-type.enum';
+import { ExtendedNotification } from '../notifications/models/extended-notification.schema';
 
 /**
  * ====================================================================================
@@ -134,6 +137,7 @@ export class PayrollExecutionService {
     @InjectModel(employeePenalties.name) private employeePenaltiesModel: Model<employeePenaltiesDocument>,
     @InjectModel(EmployeeSystemRole.name) private employeeSystemRoleModel: Model<EmployeeSystemRoleDocument>,
     @InjectModel(EmployeeProfile.name) private employeeProfileModel: Model<EmployeeProfile>,
+    @InjectModel('ExtendedNotification') private notificationLogModel: Model<any>,
     // PayrollConfigurationService is exported from PayrollConfigurationModule - inject directly
     private readonly payrollConfigurationService: PayrollConfigurationService,
     // PayrollTrackingService uses forwardRef due to potential circular dependency
@@ -143,7 +147,51 @@ export class PayrollExecutionService {
     private readonly employeeProfileService: EmployeeProfileService,
     // LeavesService is exported from LeavesModule - inject directly
     private readonly leavesService: LeavesService,
+    // NotificationsService is exported from NotificationsModule - inject directly
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  // ====================================================================================
+  // NOTIFICATION HELPER METHODS
+  // ====================================================================================
+  /**
+   * Helper method to send payroll notifications
+   * @param type - Notification type
+   * @param recipientId - Employee ID to notify
+   * @param message - Notification message
+   * @param data - Additional data for notification
+   * @param title - Optional title for notification
+   */
+  /**
+   * Helper method to send payroll notifications
+   * @param type - Notification type
+   * @param recipientId - Employee ID to notify
+   * @param message - Notification message
+   * @param data - Additional data for notification
+   * @param title - Optional title for notification
+   */
+  private async sendPayrollNotification(
+    type: NotificationType,
+    recipientId: string,
+    message: string,
+    data?: any,
+    title?: string,
+  ): Promise<void> {
+    try {
+      await this.notificationLogModel.create({
+        to: new mongoose.Types.ObjectId(recipientId),
+        type: type,
+        message: message,
+        data: data || {},
+        title: title,
+        isRead: false,
+      });
+    } catch (error) {
+      // Log error but don't fail the operation
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to send notification to ${recipientId}:`, errorMessage);
+    }
+  }
 
   // ====================================================================================
   // PHASE 0: PRE-RUN REVIEWS & APPROVALS
@@ -743,6 +791,17 @@ export class PayrollExecutionService {
       console.log(`[Auto-Generate Payslips] Payroll run ${savedPayrollRun._id} is locked but payment status is not PAID yet. Payslips will be auto-generated when Finance approves.`);
     }
 
+    // Notify Payroll Specialist
+    if (payrollRun.payrollSpecialistId) {
+      await this.sendPayrollNotification(
+        NotificationType.PAYROLL_LOCKED,
+        payrollRun.payrollSpecialistId.toString(),
+        `Payroll run ${payrollRun.runId} has been locked`,
+        { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+        'Payroll Locked',
+      );
+    }
+
     return savedPayrollRun;
   }
 
@@ -780,7 +839,20 @@ export class PayrollExecutionService {
     payrollRun.status = PayRollStatus.UNLOCKED;
     payrollRun.unlockReason = unlockReason.trim();
     (payrollRun as any).updatedBy = currentUserId;
-    return await payrollRun.save();
+    const savedPayrollRun = await payrollRun.save();
+
+    // Notify Payroll Specialist
+    if (payrollRun.payrollSpecialistId) {
+      await this.sendPayrollNotification(
+        NotificationType.PAYROLL_UNLOCKED,
+        payrollRun.payrollSpecialistId.toString(),
+        `Payroll run ${payrollRun.runId} has been unlocked. Reason: ${unlockReason}`,
+        { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId, reason: unlockReason },
+        'Payroll Unlocked',
+      );
+    }
+
+    return savedPayrollRun;
   }
 
   // REQ-PY-7: Freeze finalized payroll (alias for lockPayroll to match requirement terminology)
@@ -1106,7 +1178,25 @@ export class PayrollExecutionService {
       updatedBy: currentUserId,
     });
 
-    return await payrollRun.save();
+    const savedPayrollRun = await payrollRun.save();
+
+    // Notify Payroll Manager
+    if (finalPayrollManagerId) {
+      await this.sendPayrollNotification(
+        NotificationType.PAYROLL_INITIATION_CREATED,
+        finalPayrollManagerId.toString(),
+        `New payroll initiation created: ${savedPayrollRun.runId} for period ${payrollPeriod.toISOString().split('T')[0]}`,
+        { 
+          payrollRunId: savedPayrollRun._id.toString(), 
+          runId: savedPayrollRun.runId, 
+          payrollPeriod: payrollPeriod.toISOString(),
+          entity: entityWithCurrency,
+        },
+        'New Payroll Initiation Created',
+      );
+    }
+
+    return savedPayrollRun;
   }
 
   // Helper: Find a default payroll manager from the system
@@ -1310,12 +1400,21 @@ export class PayrollExecutionService {
     if (!isFirstDayOfMonth) {
       // Calculate the first day of the month for the given period
       const firstDayOfMonth = new Date(periodDate.getFullYear(), periodDate.getMonth(), 1);
+      firstDayOfMonth.setHours(0, 0, 0, 0);
+      
+      // Format dates in local time to avoid timezone issues
+      const formatLocalDate = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
       
       throw new Error(
         `Payroll cycle validation failed: Payroll period must be aligned to monthly cycles (first day of month). ` +
         `Egyptian Labor Law 2025 requires payroll to be processed monthly. ` +
-        `Provided period: ${periodDate.toISOString().split('T')[0]}, ` +
-        `Expected period: ${firstDayOfMonth.toISOString().split('T')[0]} (first day of ${periodDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}). ` +
+        `Provided period: ${formatLocalDate(periodDate)}, ` +
+        `Expected period: ${formatLocalDate(firstDayOfMonth)} (first day of ${periodDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}). ` +
         `Please use the first day of the target month as the payroll period.`
       );
     }
@@ -1459,6 +1558,18 @@ export class PayrollExecutionService {
 
       // Ensure the payroll run is saved with all updates (exceptions, totalnetpay, etc.)
       // The generateDraftDetailsForPayrollRun already saved these, but we reload to ensure consistency
+      
+      // Notify Payroll Specialist
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_INITIATION_APPROVED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll initiation ${runId} has been approved. Draft generation started.`,
+          { payrollRunId: payrollRun._id.toString(), runId },
+          'Payroll Initiation Approved',
+        );
+      }
+      
       return updatedPayrollRun;
     } else {
       // Validate status transition (DRAFT → REJECTED)
@@ -1476,7 +1587,20 @@ export class PayrollExecutionService {
         .exec();
 
       (payrollRun as any).updatedBy = currentUserId;
-      return await payrollRun.save();
+      const savedPayrollRun = await payrollRun.save();
+      
+      // Notify Payroll Specialist about rejection
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_INITIATION_REJECTED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll initiation ${runId} has been rejected. Reason: ${rejectionReason || 'No reason provided'}`,
+          { payrollRunId: payrollRun._id.toString(), runId, rejectionReason },
+          'Payroll Initiation Rejected',
+        );
+      }
+      
+      return savedPayrollRun;
     }
   }
 
@@ -2875,7 +2999,7 @@ export class PayrollExecutionService {
         .find(query)
         .populate('employeeId', 'firstName lastName employeeNumber _id')
         .populate('benefitId', 'name amount')
-        .populate('terminationId', 'reason type')
+        .populate('terminationId', 'reason initiator')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 })
@@ -2904,7 +3028,7 @@ export class PayrollExecutionService {
       .findById(id)
       .populate('employeeId', 'firstName lastName employeeNumber _id')
       .populate('benefitId', 'name amount')
-      .populate('terminationId', 'reason type')
+      .populate('terminationId', 'reason initiator')
       .exec();
 
     if (!terminationBenefit) {
@@ -6053,7 +6177,27 @@ export class PayrollExecutionService {
     ) as any;
     (payrollRun as any).updatedBy = currentUserId;
 
-    return await payrollRun.save();
+    const savedPayrollRun = await payrollRun.save();
+
+    // Notify Payroll Manager
+    await this.sendPayrollNotification(
+      NotificationType.PAYROLL_SENT_FOR_APPROVAL,
+      managerId,
+      `Payroll run ${payrollRun.runId} has been sent for your approval`,
+      { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+      'Payroll Pending Manager Approval',
+    );
+
+    // Notify Finance Staff
+    await this.sendPayrollNotification(
+      NotificationType.PAYROLL_SENT_FOR_APPROVAL,
+      financeStaffId,
+      `Payroll run ${payrollRun.runId} has been sent for finance approval`,
+      { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+      'Payroll Pending Finance Approval',
+    );
+
+    return savedPayrollRun;
   }
 
   // Helper: Validate that an employee has a specific system role
@@ -6170,6 +6314,28 @@ export class PayrollExecutionService {
       (payrollRun as any).updatedBy = currentUserId;
       const savedPayrollRun = await payrollRun.save();
 
+      // Notify Payroll Manager
+      if (payrollRun.payrollManagerId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_FINANCE_APPROVED,
+          payrollRun.payrollManagerId.toString(),
+          `Payroll run ${payrollRun.runId} has been approved by finance. Please lock the payroll.`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+          'Finance Approval Received',
+        );
+      }
+      
+      // Notify Payroll Specialist
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_FINANCE_APPROVED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll run ${payrollRun.runId} has been approved by finance`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+          'Finance Approval Received',
+        );
+      }
+
       // REQ-PY-8: Automatically generate and distribute payslips after Finance approval (REQ-PY-15)
       // Check if payroll is already locked - if yes, auto-generate payslips
       if (savedPayrollRun.status === PayRollStatus.LOCKED) {
@@ -6201,7 +6367,20 @@ export class PayrollExecutionService {
         financeDecisionDto.reason || 'Rejected by Finance';
       
       (payrollRun as any).updatedBy = currentUserId;
-      return await payrollRun.save();
+      const savedPayrollRun = await payrollRun.save();
+      
+      // Notify Payroll Specialist about rejection
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_FINANCE_REJECTED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll run ${payrollRun.runId} has been rejected by finance. Reason: ${financeDecisionDto.reason || 'No reason provided'}`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId, reason: financeDecisionDto.reason },
+          'Finance Rejection',
+        );
+      }
+      
+      return savedPayrollRun;
     }
   }
 
@@ -6257,17 +6436,24 @@ export class PayrollExecutionService {
     let exceptionFound = false;
     for (const exception of exceptionsData.exceptionMessages) {
       if (exception.code === exceptionCode && exception.status === 'active') {
+        // Store exception data for history before clearing
+        const exceptionForHistory = {
+          ...exception,
+          action: 'resolved',
+        };
+        
+        // Clear exception message string when resolving (requirement simplification)
+        // As per requirement: "for simplicity just make exception string empty when resolving"
+        exception.message = ''; // Clear message as per requirement
+        exception.code = ''; // Clear code as per requirement
         exception.status = 'resolved';
         exception.resolvedBy = managerId;
         exception.resolvedAt = new Date().toISOString();
         exception.resolution = resolution;
         exceptionFound = true;
 
-        // Add to history
-        exceptionsData.exceptionHistory.push({
-          ...exception,
-          action: 'resolved',
-        });
+        // Add to history (with original data before clearing)
+        exceptionsData.exceptionHistory.push(exceptionForHistory);
         break;
       }
     }
@@ -6278,15 +6464,26 @@ export class PayrollExecutionService {
       );
     }
 
-    // Update the exceptions field
-    payrollDetails.exceptions = JSON.stringify(exceptionsData);
+    // Clear exception string when resolving (as per requirement)
+    // Remove the exception from active list and clear the string
+    const activeExceptions = exceptionsData.exceptionMessages.filter(
+      (e: any) => e.status === 'active',
+    );
+
+    // If no active exceptions remain, clear the exceptions field
+    if (activeExceptions.length === 0) {
+      payrollDetails.exceptions = ''; // Clear exception string as per requirement
+    } else {
+      // Keep only active exceptions in the string
+      exceptionsData.exceptionMessages = activeExceptions;
+      payrollDetails.exceptions = JSON.stringify(exceptionsData);
+    }
+
     (payrollDetails as any).updatedBy = currentUserId;
     await payrollDetails.save();
 
     // Decrement exceptions count when resolved (only if there are no more active exceptions for this employee)
-    const activeExceptions = exceptionsData.exceptionMessages.filter(
-      (e: any) => e.status === 'active',
-    );
+    // Reuse activeExceptions variable calculated above
     if (activeExceptions.length === 0 && payrollRun.exceptions > 0) {
       // Check if this was the last exception for this employee
       // Note: This is a simplified approach - in production, you might want to track per-employee exception counts
@@ -6566,7 +6763,45 @@ export class PayrollExecutionService {
     }
 
     (payrollRun as any).updatedBy = currentUserId;
-    return await payrollRun.save();
+    const savedPayrollRun = await payrollRun.save();
+
+    // Send notifications based on decision
+    if (managerApprovalDto.managerDecision === PayRollStatus.APPROVED) {
+      // Notify Finance Staff
+      if (payrollRun.financeStaffId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_MANAGER_APPROVED,
+          payrollRun.financeStaffId.toString(),
+          `Payroll run ${payrollRun.runId} has been approved by manager. Awaiting finance approval.`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+          'Manager Approval Received',
+        );
+      }
+      
+      // Notify Payroll Specialist
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_MANAGER_APPROVED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll run ${payrollRun.runId} has been approved by manager`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId },
+          'Manager Approval Received',
+        );
+      }
+    } else {
+      // Notify Payroll Specialist about rejection
+      if (payrollRun.payrollSpecialistId) {
+        await this.sendPayrollNotification(
+          NotificationType.PAYROLL_MANAGER_REJECTED,
+          payrollRun.payrollSpecialistId.toString(),
+          `Payroll run ${payrollRun.runId} has been rejected by manager. Reason: ${managerApprovalDto.managerComments || 'No reason provided'}`,
+          { payrollRunId: payrollRun._id.toString(), runId: payrollRun.runId, reason: managerApprovalDto.managerComments },
+          'Manager Rejection',
+        );
+      }
+    }
+
+    return savedPayrollRun;
   }
 
   // Get all payroll runs with optional filtering
