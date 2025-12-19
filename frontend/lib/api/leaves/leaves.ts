@@ -378,6 +378,27 @@ export const leavesApi = {
   },
 
   /**
+   * Department Head reject document (also rejects the leave request)
+   * POST /leaves/request/:id/reject-document-dept-head
+   * Required roles: DEPARTMENT_HEAD
+   */
+  rejectDocumentByDepartmentHead: async (
+    leaveRequestId: string,
+    rejectionReason: string
+  ): Promise<LeaveRequest> => {
+    try {
+      const payload = { 
+        rejectionReason 
+      };
+      const result = await api.post(`/leaves/request/${leaveRequestId}/reject-document-dept-head`, payload);
+      return result as unknown as LeaveRequest;
+    } catch (error: any) {
+      console.error("Error rejecting document by department head:", error);
+      throw error;
+    }
+  },
+
+  /**
    * Update a leave request
    * PUT /leaves/request/:id
    * Required roles: DEPARTMENT_EMPLOYEE, DEPARTMENT_HEAD, HR_ADMIN
@@ -934,6 +955,41 @@ export const leavesApi = {
       return await api.post('/leaves/delegate', payload);
     } catch (error: any) {
       console.error("Error delegating approval authority:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get delegations for current manager
+   * GET /leaves/delegations
+   */
+  getDelegations: async (): Promise<any[]> => {
+    try {
+      return await api.get('/leaves/delegations');
+    } catch (error: any) {
+      console.error("Error fetching delegations:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Revoke a delegation
+   * DELETE /leaves/delegate
+   */
+  revokeDelegation: async (
+    delegateId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<any> => {
+    try {
+      const payload = {
+        delegateId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      };
+      return await api.delete('/leaves/delegate', { data: payload });
+    } catch (error: any) {
+      console.error("Error revoking delegation:", error);
       throw error;
     }
   },
