@@ -14,7 +14,6 @@ import {
   PunchType,
   PunchPolicy,
   CorrectionRequestStatus,
-  PunchPolicy,
   ShiftAssignmentStatus,
 } from '../models/enums';
 import {
@@ -114,14 +113,15 @@ export class TimeManagementService {
 
     console.log(`📋 Shift assigned: "${shiftName}", Policy: "${punchPolicy}"`);
 
-    // BR-TM-11: If FIRST_LAST policy, check if employee already clocked in today
-    if (punchPolicy === 'FIRST_LAST') {
-      const todayRecords = await this.attendanceRecordModel
-        .find({
-          employeeId: new Types.ObjectId(employeeId),
-          createdAt: { $gte: todayStart, $lte: todayEnd },
-        })
-        .exec();
+    // BR-TM-11: Check if employee already clocked in today
+    const todayRecords = await this.attendanceRecordModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        createdAt: { $gte: todayStart, $lte: todayEnd },
+      })
+      .exec();
+
+    const todayRecord = todayRecords.length > 0 ? todayRecords[0] : null;
 
     // If there's an open session anywhere (latest record ends with IN), block another clock-in.
     const latestRecord = await this.attendanceRecordModel
@@ -313,6 +313,7 @@ export class TimeManagementService {
       if (firstIn && lastOut) {
         totalMinutes = (lastOut.time.getTime() - firstIn.time.getTime()) / 60000;
       }
+      console.log('📊 FIRST_LAST calculation: firstIn to lastOut =', totalMinutes, 'minutes');
     } else {
       // MULTIPLE: sum IN->OUT pairs
       for (let i = 0; i < punchesSorted.length; i += 2) {
@@ -322,18 +323,6 @@ export class TimeManagementService {
           totalMinutes += (outTime - inTime) / 60000;
         }
       }
-      
-      console.log('📊 FIRST_LAST calculation: firstIn to lastOut =', totalMinutes, 'minutes');
-    } else {
-      // MULTIPLE: Sum up all paired IN/OUT sessions
-      for (let i = 0; i < attendanceRecord.punches.length; i += 2) {
-        if (i + 1 < attendanceRecord.punches.length) {
-          const inTime = new Date(attendanceRecord.punches[i].time).getTime();
-          const outTime = new Date(attendanceRecord.punches[i + 1].time).getTime();
-          totalMinutes += (outTime - inTime) / 60000;
-        }
-      }
-      
       console.log('📊 MULTIPLE calculation: sum of all pairs =', totalMinutes, 'minutes');
     }
 
@@ -6704,7 +6693,6 @@ export class TimeManagementService {
           const dayStart = this.convertDateToUTCStart(punchDate);
           const dayEnd = this.convertDateToUTCEnd(punchDate);
 
-<<<<<<< HEAD
           // Check if employee has a shift assigned for this specific date
           const shiftAssignments = await this.shiftAssignmentModel
             .find({
@@ -6799,106 +6787,6 @@ export class TimeManagementService {
               openIn = inPunches[0].time;
             } else if (outPunches.length > 0 && inPunches.length === 0) {
               hasUnpairedOut = true;
-=======
-        // Determine the date we're importing for (from first punch)
-        const importDate = punchesSorted[0]?.time || new Date();
-        const dayStart = new Date(importDate);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(importDate);
-        dayEnd.setHours(23, 59, 59, 999);
-
-        // Check if employee has approved leave for this date
-        try {
-          const leaveCheck = await this.checkIfEmployeeOnVacation(
-            group.employeeId,
-            importDate,
-          );
-          
-          if (leaveCheck) {
-            leaveConflicts++;
-            const leaveTypeName = (leaveCheck.leaveTypeId as any)?.name || 'Leave';
-            const errorMsg = `Employee has approved ${leaveTypeName} from ${new Date(leaveCheck.dates.from).toLocaleDateString()} to ${new Date(leaveCheck.dates.to).toLocaleDateString()}. Cannot import attendance for this date.`;
-            errors.push({ 
-              line: 0, 
-              error: `${group.employeeId}: ${errorMsg}` 
-            });
-            continue; // Skip this record
-          }
-        } catch (leaveCheckErr) {
-          console.warn(`[ATTENDANCE_CSV_IMPORT] Failed to check leave status for ${group.employeeId}:`, leaveCheckErr);
-          // Continue with import if leave check fails
-        }
-
-        // Query shift assignment for this employee on this date
-        const shiftAssignment = await this.shiftAssignmentModel
-          .findOne({
-            employeeId: new Types.ObjectId(group.employeeId),
-            status: ShiftAssignmentStatus.APPROVED,
-            startDate: { $lte: dayEnd },
-            endDate: { $gte: dayStart },
-          })
-          .populate('shiftId')
-          .exec();
-
-        // Get the punch policy from the shift (default to FIRST_LAST if no shift found)
-        const punchPolicy = 
-          (shiftAssignment?.shiftId as any)?.punchPolicy || PunchPolicy.FIRST_LAST;
-
-        // Calculate totalWorkMinutes based on punch policy
-        let totalWorkMinutes = 0;
-        let openIn: Date | null = null;
-        let hasUnpairedOut = false;
-
-        if (punchPolicy === PunchPolicy.FIRST_LAST) {
-          // First IN to Last OUT
-          const firstIn = punchesSorted.find((p) => p.type === PunchType.IN);
-          const lastOut = [...punchesSorted]
-            .reverse()
-            .find((p) => p.type === PunchType.OUT);
-
-          if (firstIn && lastOut) {
-            totalWorkMinutes = Math.max(
-              0,
-              Math.round((lastOut.time.getTime() - firstIn.time.getTime()) / (1000 * 60)),
-            );
-          }
-
-          // Check for missed punch in FIRST_LAST
-          openIn = firstIn && !lastOut ? firstIn.time : null;
-          hasUnpairedOut = !firstIn && !!lastOut;
-        } else if (punchPolicy === PunchPolicy.ONLY_FIRST) {
-          // Only the first IN-OUT pair
-          const firstIn = punchesSorted.find((p) => p.type === PunchType.IN);
-          const firstOut = punchesSorted
-            .slice(punchesSorted.indexOf(firstIn || punchesSorted[0]))
-            .find((p) => p.type === PunchType.OUT);
-
-          if (firstIn && firstOut) {
-            totalWorkMinutes = Math.max(
-              0,
-              Math.round((firstOut.time.getTime() - firstIn.time.getTime()) / (1000 * 60)),
-            );
-          }
-
-          openIn = firstIn && !firstOut ? firstIn.time : null;
-          hasUnpairedOut = !firstIn && !!firstOut;
-        } else {
-          // MULTIPLE: sum all IN-OUT pairs
-          for (const p of punchesSorted) {
-            if (p.type === PunchType.IN) {
-              openIn = p.time;
-            } else {
-              // OUT
-              if (openIn) {
-                totalWorkMinutes += Math.max(
-                  0,
-                  Math.round((p.time.getTime() - openIn.getTime()) / (1000 * 60)),
-                );
-                openIn = null;
-              } else {
-                hasUnpairedOut = true;
-              }
->>>>>>> origin/TimeMangementFE
             }
           } else {
             // MULTIPLE: Sum up all paired IN/OUT sessions
