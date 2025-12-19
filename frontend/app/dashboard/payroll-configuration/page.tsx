@@ -12,7 +12,9 @@ import {
   Users, 
   Shield,
   Building2,
-  Sparkles
+  Sparkles,
+  Star,
+  Settings
 } from "lucide-react";
 
 export default function PayrollConfigurationPage() {
@@ -28,225 +30,185 @@ export default function PayrollConfigurationPage() {
   const configurationCards = [
     {
       title: "Payroll Policies",
-      description: "Manage payroll policies and rules",
+      description: "Configure company-level payroll policies and rules",
       href: "/dashboard/payroll-configuration/policies",
       icon: FileText,
-      color: "blue",
-      gradient: "from-blue-500 via-blue-600 to-indigo-600",
-      iconBg: "bg-blue-500/10",
-      iconColor: "text-blue-600",
-      buttonGradient: "from-blue-600 to-blue-700",
-      hoverGradient: "from-blue-700 to-blue-800",
-      glowColor: "shadow-blue-500/50",
+      iconColor: "bg-blue-500",
+      buttonGradient: "from-blue-500 to-cyan-500",
+      hasButton: true,
     },
     {
       title: "Pay Grades",
-      description: "Configure pay grades and salary bands",
+      description: "Define pay grades, salary, and compensation limits",
       href: "/dashboard/payroll-configuration/pay-grades",
       icon: DollarSign,
-      color: "purple",
-      gradient: "from-purple-500 via-purple-600 to-fuchsia-600",
-      iconBg: "bg-purple-500/10",
-      iconColor: "text-purple-600",
-      buttonGradient: "from-purple-600 to-purple-700",
-      hoverGradient: "from-purple-700 to-purple-800",
-      glowColor: "shadow-purple-500/50",
+      iconColor: "bg-purple-500",
+      buttonGradient: "from-purple-500 to-pink-500",
+      hasButton: true,
     },
     {
       title: "Pay Types",
-      description: "Manage different pay types",
+      description: "Define employee pay types (hourly, daily, weekly, monthly)",
       href: "/dashboard/payroll-configuration/pay-types",
       icon: Briefcase,
-      color: "blue",
-      gradient: "from-indigo-500 via-blue-600 to-cyan-600",
-      iconBg: "bg-indigo-500/10",
-      iconColor: "text-indigo-600",
-      buttonGradient: "from-indigo-600 to-indigo-700",
-      hoverGradient: "from-indigo-700 to-indigo-800",
-      glowColor: "shadow-indigo-500/50",
+      iconColor: "bg-blue-600",
+      buttonGradient: "from-blue-500 to-purple-500",
+      hasButton: true,
     },
     {
       title: "Allowances",
-      description: "Configure employee allowances",
+      description: "Set allowances (transportation, housing, etc.)",
       href: "/dashboard/payroll-configuration/allowances",
       icon: Gift,
-      color: "green",
-      gradient: "from-emerald-500 via-green-600 to-teal-600",
-      iconBg: "bg-emerald-500/10",
-      iconColor: "text-emerald-600",
-      buttonGradient: "from-emerald-600 to-emerald-700",
-      hoverGradient: "from-emerald-700 to-emerald-800",
-      glowColor: "shadow-emerald-500/50",
+      iconColor: "bg-green-500",
+      buttonGradient: "from-emerald-500 to-teal-500",
+      hasButton: false,
+    },
+    {
+      title: "Tax Rules",
+      description: "Define tax rules and laws (progressive rates, exemptions)",
+      href: "/dashboard/payroll-configuration/tax-rules",
+      icon: Shield,
+      iconColor: "bg-red-500",
+      buttonGradient: "from-red-500 to-rose-500",
+      hasButton: false,
     },
     {
       title: "Signing Bonuses",
-      description: "Manage signing bonus configurations",
+      description: "Configure policies for signing bonuses",
       href: "/dashboard/payroll-configuration/signing-bonuses",
       icon: Users,
-      color: "orange",
-      gradient: "from-orange-500 via-amber-600 to-yellow-600",
-      iconBg: "bg-orange-500/10",
-      iconColor: "text-orange-600",
-      buttonGradient: "from-orange-600 to-orange-700",
-      hoverGradient: "from-orange-700 to-orange-800",
-      glowColor: "shadow-orange-500/50",
+      iconColor: "bg-orange-500",
+      buttonGradient: "from-orange-500 to-amber-500",
+      hasButton: false,
     },
     {
       title: "Termination Benefits",
       description: "Configure termination and resignation benefits",
       href: "/dashboard/payroll-configuration/termination-benefits",
       icon: Shield,
-      color: "red",
-      gradient: "from-rose-500 via-red-600 to-pink-600",
-      iconBg: "bg-rose-500/10",
-      iconColor: "text-rose-600",
-      buttonGradient: "from-rose-600 to-rose-700",
-      hoverGradient: "from-rose-700 to-rose-800",
-      glowColor: "shadow-rose-500/50",
+      iconColor: "bg-rose-500",
+      buttonGradient: "from-rose-500 to-pink-500",
+      hasButton: false,
     },
     {
       title: "Insurance Brackets",
       description: "Configure insurance contribution brackets",
       href: "/dashboard/payroll-configuration/insurance-brackets",
       icon: Building2,
-      color: "indigo",
-      gradient: "from-violet-500 via-indigo-600 to-blue-600",
-      iconBg: "bg-violet-500/10",
-      iconColor: "text-violet-600",
-      buttonGradient: "from-violet-600 to-violet-700",
-      hoverGradient: "from-violet-700 to-violet-800",
-      glowColor: "shadow-violet-500/50",
+      iconColor: "bg-indigo-500",
+      buttonGradient: "from-indigo-500 to-blue-500",
+      hasButton: false,
     },
   ];
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Animated Gradient Background */}
-      <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"></div>
-      
-      {/* Animated Mesh Gradient Overlay */}
-      <div className="fixed inset-0 bg-gradient-to-tr from-blue-900/20 via-purple-900/20 to-pink-900/20 animate-pulse"></div>
-      
-      {/* Animated Grid Pattern */}
-      <div 
-        className="fixed inset-0 opacity-10"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px',
-        }}
-      ></div>
-      
-      {/* Floating Orbs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute top-40 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute bottom-20 left-1/4 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-pulse delay-2000"></div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 relative overflow-hidden">
+      {/* Subtle Background Shapes */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-100/20 rounded-full blur-3xl"></div>
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
-        {/* Header Section with Enhanced Styling */}
-        <div className="mb-12 lg:mb-16 text-center">
-          <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full border border-white/20">
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            <span className="text-sm font-medium text-white/90">Payroll Configuration</span>
+      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
+        {/* Top Right Badge */}
+        <div className="flex justify-end mb-8">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-50 to-rose-50 rounded-lg border border-pink-200/50 shadow-sm">
+            <Sparkles className="w-4 h-4 text-pink-500" />
+            <span className="text-sm font-medium text-gray-700">Payroll Configuration</span>
           </div>
-          
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-4 tracking-tight">
-            <span className="text-white drop-shadow-lg">
-              Payroll Specialist
-            </span>
-            <br />
-            <span className="bg-gradient-to-r from-blue-300 via-purple-300 to-pink-300 bg-clip-text text-transparent drop-shadow-md">
+        </div>
+
+        {/* Header Section */}
+        <div className="mb-12 text-center">
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold mb-6">
+            <span className="text-gray-900">Payroll Specialist </span>
+            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
               Dashboard
             </span>
           </h1>
           
-          <p className="text-lg sm:text-xl lg:text-2xl text-white/90 max-w-2xl mx-auto">
-            Welcome, <span className="font-bold text-white">{userName}</span>.
-            <br className="hidden sm:block" />
-            <span className="text-white/80">Create and manage payroll configurations with ease.</span>
-          </p>
+          <div className="space-y-3 mb-8">
+            <p className="text-2xl font-bold text-gray-800">
+              Welcome back, <span className="text-gray-900">{userName}!</span>
+            </p>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Create and manage payroll configurations with comprehensive tools and intuitive workflows.
+            </p>
+          </div>
+
+          {/* Decorative Separator with Stars */}
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <Star className="w-5 h-5 text-blue-500 fill-blue-500" />
+            <div className="h-px w-32 bg-gradient-to-r from-blue-500 to-pink-500"></div>
+            <Star className="w-5 h-5 text-pink-500 fill-pink-500" />
+          </div>
         </div>
 
-        {/* Section Title with Enhanced Design */}
-        <div className="mb-8 lg:mb-12">
+        {/* Configuration Management Section */}
+        <div className="mb-12">
           <div className="flex items-center gap-4 mb-4">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/30 to-transparent"></div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white whitespace-nowrap">
+            <div className="p-3 bg-blue-500 rounded-xl shadow-lg">
+              <Settings className="w-6 h-6 text-white" />
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
               Configuration Management
             </h2>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/30 to-transparent"></div>
           </div>
-          <div className="flex justify-center">
-            <div className="h-1.5 w-32 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full shadow-lg shadow-purple-500/50"></div>
+          <p className="text-gray-600 text-lg ml-16 mb-6">
+            Configure company-level payroll policies, pay grades, allowances, tax rules, and benefits with powerful management tools.
+          </p>
+          
+          {/* Decorative Separator with Stars */}
+          <div className="flex items-center gap-3 ml-16 mb-8">
+            <Star className="w-4 h-4 text-blue-500 fill-blue-500" />
+            <div className="h-px w-24 bg-gradient-to-r from-blue-500 to-pink-500"></div>
+            <Star className="w-4 h-4 text-pink-500 fill-pink-500" />
           </div>
         </div>
 
-        {/* Configuration Cards Grid with Enhanced Styling */}
+        {/* Configuration Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
           {configurationCards.map((card, index) => {
             const IconComponent = card.icon;
             return (
               <div
                 key={card.href}
-                className="group relative"
-                style={{ animationDelay: `${index * 100}ms` }}
+                className="group relative bg-white rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
               >
-                {/* Card Glow Effect */}
-                <div className={`absolute -inset-0.5 bg-gradient-to-r ${card.gradient} rounded-3xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 ${card.glowColor}`}></div>
+                {/* Subtle Background Shape */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-gray-50 to-transparent rounded-bl-full opacity-50"></div>
                 
-                {/* Main Card */}
-                <div className="relative rounded-3xl shadow-2xl border border-white/20 overflow-hidden transform transition-all duration-500 group-hover:-translate-y-2 group-hover:scale-[1.02] group-hover:shadow-3xl">
-                  {/* Card Background with Gradient */}
-                  <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-90`}></div>
-                  
-                  {/* Overlay Pattern */}
-                  <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
-                  
-                  {/* Card Top Gradient Accent */}
-                  <div className={`absolute top-0 left-0 right-0 h-2 bg-gradient-to-r ${card.gradient} opacity-100`}></div>
-                  
-                  {/* Card Content */}
-                  <div className="relative p-6 lg:p-8">
-                    {/* Icon with Enhanced Styling */}
-                    <div className="mb-6">
-                      <div className="inline-flex p-4 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 shadow-lg transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <IconComponent className="w-8 h-8 lg:w-10 lg:h-10 text-white" />
-                      </div>
+                <div className="relative p-6">
+                  {/* Icon */}
+                  <div className="mb-4">
+                    <div className={`w-14 h-14 ${card.iconColor} rounded-xl flex items-center justify-center shadow-lg transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
+                      <IconComponent className="w-7 h-7 text-white" />
                     </div>
-
-                    {/* Title */}
-                    <h3 className="text-xl lg:text-2xl font-bold text-white mb-3 group-hover:text-white transition-colors drop-shadow-lg">
-                      {card.title}
-                    </h3>
-
-                    {/* Description */}
-                    <p className="text-white/90 mb-8 text-sm lg:text-base leading-relaxed min-h-[3rem] font-medium drop-shadow-md">
-                      {card.description}
-                    </p>
-
-                    {/* Enhanced Button */}
-                    <Link
-                      href={card.href}
-                      className="group/btn relative inline-flex items-center justify-center w-full px-6 py-4 rounded-xl font-bold text-white overflow-hidden transition-all duration-300 transform group-hover:scale-105 shadow-2xl hover:shadow-3xl bg-white/20 backdrop-blur-md border border-white/30 hover:bg-white/30"
-                    >
-                      {/* Button Shine Effect */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-1000"></div>
-                      
-                      {/* Button Text */}
-                      <span className="relative z-10 flex items-center gap-2 text-white font-bold drop-shadow-lg">
-                        Manage {card.title.split(' ')[0]} {card.title.split(' ')[1] || ''}
-                        <span className="transform group-hover/btn:translate-x-1 transition-transform duration-300">→</span>
-                      </span>
-                    </Link>
                   </div>
 
-                  {/* Bottom Accent Line on Hover */}
-                  <div className={`absolute bottom-0 left-0 right-0 h-1 bg-white/50 opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
+                  {/* Title */}
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    {card.title}
+                  </h3>
+
+                  {/* Description */}
+                  <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+                    {card.description}
+                  </p>
+
+                  {/* Button */}
+                  {card.hasButton && (
+                    <Link
+                      href={card.href}
+                      className={`group/btn inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r ${card.buttonGradient} text-white text-sm font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-105`}
+                    >
+                      <span>Manage {card.title.split(' ')[0]}</span>
+                      <span className="transform group-hover/btn:translate-x-1 transition-transform duration-300">→</span>
+                    </Link>
+                  )}
                 </div>
               </div>
             );
