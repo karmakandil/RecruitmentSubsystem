@@ -268,16 +268,10 @@ export class RecruitmentController {
   ) {
     return this.service.updateInterviewStatus(id, dto);
   }
-  // CHANGED: Added RECRUITER role to allow recruiters to submit feedback
-  // Recruiters who schedule interviews are automatically added to the panel,
-  // so they should be able to submit feedback just like HR employees
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(
-    SystemRole.HR_EMPLOYEE,
-    SystemRole.HR_MANAGER,
-    SystemRole.RECRUITER,
-    SystemRole.SYSTEM_ADMIN,
-  )
+  // CHANGED: Allow ANY authenticated employee to submit feedback
+  // The service validates that the user is actually part of the interview panel
+  // This allows department employees, new hires, etc. to submit feedback when selected as panel members
+  @UseGuards(JwtAuthGuard)
   @Post('interview/:id/feedback')
   submitInterviewFeedback(
     @Param('id') interviewId: string,
@@ -300,6 +294,18 @@ export class RecruitmentController {
   @Get('interview/:id/feedback')
   getInterviewFeedback(@Param('id') interviewId: string) {
     return this.service.getInterviewFeedback(interviewId);
+  }
+
+  // NEW: Get interviews where current user is a panel member
+  // Accessible to ANY authenticated employee - all employees can be panel members
+  @UseGuards(JwtAuthGuard)
+  @Get('my-panel-interviews')
+  getMyPanelInterviews(@Req() req: any) {
+    const userId = req.user?.userId || req.user?.id || req.user?._id;
+    if (!userId) {
+      throw new BadRequestException('User ID not found in request');
+    }
+    return this.service.getMyPanelInterviews(userId);
   }
 
   @UseGuards(RolesGuard)

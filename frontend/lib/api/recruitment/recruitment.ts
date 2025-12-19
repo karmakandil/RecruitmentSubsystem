@@ -181,6 +181,12 @@ export const recruitmentApi = {
     });
   },
 
+  // ✅ Accessible: Any authenticated user (panel members only see their assignments)
+  // Returns interviews where the current user is a panel member
+  getMyPanelInterviews: async (): Promise<any[]> => {
+    return await api.get("/recruitment/my-panel-interviews");
+  },
+
   // ============================================
   // OFFERS
   // ============================================
@@ -341,18 +347,26 @@ export const recruitmentApi = {
   },
 
   // ✅ Accessible: No role restriction
-  downloadDocument: async (documentId: string): Promise<Blob> => {
-    return await api.get(`/recruitment/document/${documentId}/download`, {
-      responseType: "blob",
+  // Download candidate resume/CV by candidate ID
+  // Used in Talent Pool to view candidate CVs
+  downloadCandidateResume: async (candidateId: string): Promise<Blob> => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : '';
+    
+    const response = await fetch(`${API_BASE_URL}/recruitment/candidate/${candidateId}/resume/download`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
     });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `Failed to download resume: ${response.statusText}`);
+    }
+    
+    return response.blob();
   },
 
-  // CHANGED BY RECRUITMENT SUBSYSTEM - Talent Pool Feature
-  // Download candidate resume/CV by candidate ID
-  // This method allows HR staff to download resumes from the Talent Pool
-  // ✅ Accessible: HR_EMPLOYEE, HR_MANAGER, SYSTEM_ADMIN, RECRUITER
-  downloadCandidateResume: async (candidateId: string): Promise<Blob> => {
-    return await api.get(`/recruitment/candidate/${candidateId}/resume/download`, {
+  downloadDocument: async (documentId: string): Promise<Blob> => {
+    return await api.get(`/recruitment/document/${documentId}/download`, {
       responseType: "blob",
     });
   },

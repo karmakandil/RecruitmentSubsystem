@@ -249,50 +249,18 @@ export default function TalentPoolPage() {
     await loadCandidateApplications(candidate._id);
   };
 
-  // View resume - opens in new tab (handles URLs, file paths, and document IDs)
+  // View resume - opens in new tab
   // BR 12: Support viewing resumes from the talent pool
+  // CHANGED: Now uses the dedicated candidate resume download endpoint
   const handleViewResume = async (candidate: Candidate) => {
-    if (!candidate.resumeUrl) {
-      showToast("No resume available for this candidate", "error");
-      return;
-    }
-
     try {
       setViewingResume(candidate._id);
       
-      const resumeUrl = candidate.resumeUrl.trim();
-      
-      // Case 1: Full URL (http:// or https://) - open directly in new tab
-      if (resumeUrl.startsWith("http://") || resumeUrl.startsWith("https://")) {
-        const newWindow = window.open(resumeUrl, '_blank');
-        if (!newWindow) {
-          showToast("Popup blocked. Please allow popups to view the resume.", "error");
-          setViewingResume(null);
-          return;
-        }
-        showToast("Opening resume in new tab...", "success");
-        setViewingResume(null);
-        return;
-      }
-      
-      // Case 2: File path (starts with / or contains uploads) - fetch with auth and open
-      if (resumeUrl.startsWith("/") || resumeUrl.includes("uploads")) {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
-        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : '';
-        
-        // Construct full URL
-        const baseUrl = API_BASE_URL.replace('/api/v1', '');
-        const fullUrl = `${baseUrl}${resumeUrl.startsWith('/') ? resumeUrl : '/' + resumeUrl}`;
-        
-        const response = await fetch(fullUrl, {
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch resume: ${response.statusText}`);
-        }
-        
-        const blob = await response.blob();
+      // First, try to download using the candidate ID-based endpoint
+      // This endpoint fetches the CV from the documents collection
+      try {
+        console.log(`📄 Attempting to download resume for candidate: ${candidate._id}`);
+        const blob = await recruitmentApi.downloadCandidateResume(candidate._id);
         const blobUrl = window.URL.createObjectURL(blob);
         
         const newWindow = window.open(blobUrl, '_blank');
@@ -307,12 +275,45 @@ export default function TalentPoolPage() {
         showToast("Opening resume in new tab...", "success");
         setViewingResume(null);
         return;
+      } catch (apiError: any) {
+        console.log("Primary resume endpoint failed, trying fallback methods...", apiError);
       }
       
-      // Case 3: Document ID (MongoDB ObjectId format - 24 hex characters) - use document API
-      if (/^[0-9a-fA-F]{24}$/.test(resumeUrl)) {
-        try {
-          const blob = await recruitmentApi.downloadDocument(resumeUrl);
+      // Fallback: Try using candidate.resumeUrl if it exists
+      if (candidate.resumeUrl) {
+        const resumeUrl = candidate.resumeUrl.trim();
+        
+        // Case 1: Full URL (http:// or https://) - open directly in new tab
+        if (resumeUrl.startsWith("http://") || resumeUrl.startsWith("https://")) {
+          const newWindow = window.open(resumeUrl, '_blank');
+          if (!newWindow) {
+            showToast("Popup blocked. Please allow popups to view the resume.", "error");
+            setViewingResume(null);
+            return;
+          }
+          showToast("Opening resume in new tab...", "success");
+          setViewingResume(null);
+          return;
+        }
+        
+        // Case 2: File path (starts with / or contains uploads) - fetch with auth and open
+        if (resumeUrl.startsWith("/") || resumeUrl.includes("uploads")) {
+          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+          const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') || '' : '';
+          
+          // Construct full URL
+          const baseUrl = API_BASE_URL.replace('/api/v1', '');
+          const fullUrl = `${baseUrl}${resumeUrl.startsWith('/') ? resumeUrl : '/' + resumeUrl}`;
+          
+          const response = await fetch(fullUrl, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch resume: ${response.statusText}`);
+          }
+          
+          const blob = await response.blob();
           const blobUrl = window.URL.createObjectURL(blob);
           
           const newWindow = window.open(blobUrl, '_blank');
@@ -327,14 +328,35 @@ export default function TalentPoolPage() {
           showToast("Opening resume in new tab...", "success");
           setViewingResume(null);
           return;
-        } catch (docError: any) {
-          console.error("Error fetching document:", docError);
-          throw new Error("Failed to retrieve document. It may have been deleted or is inaccessible.");
+        }
+        
+        // Case 3: Document ID (MongoDB ObjectId format - 24 hex characters) - use document API
+        if (/^[0-9a-fA-F]{24}$/.test(resumeUrl)) {
+          try {
+            const blob = await recruitmentApi.downloadDocument(resumeUrl);
+            const blobUrl = window.URL.createObjectURL(blob);
+            
+            const newWindow = window.open(blobUrl, '_blank');
+            if (!newWindow) {
+              window.URL.revokeObjectURL(blobUrl);
+              showToast("Popup blocked. Please allow popups to view the resume.", "error");
+              setViewingResume(null);
+              return;
+            }
+            
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+            showToast("Opening resume in new tab...", "success");
+            setViewingResume(null);
+            return;
+          } catch (docError: any) {
+            console.error("Error fetching document:", docError);
+            throw new Error("Failed to retrieve document. It may have been deleted or is inaccessible.");
+          }
         }
       }
       
-      // If we get here, the format is unrecognized
-      throw new Error("Unrecognized resume URL format. Please contact support.");
+      // If we get here, no resume was found
+      throw new Error("No resume available for this candidate.");
       
     } catch (error: any) {
       console.error("Error viewing resume:", error);
@@ -575,17 +597,15 @@ export default function TalentPoolPage() {
                       >
                         {loadingApplications[candidate._id] ? "Loading..." : "Applications"}
                       </Button>
-                      {candidate.resumeUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewResume(candidate)}
-                          disabled={viewingResume === candidate._id}
-                          title="View Resume"
-                        >
-                          {viewingResume === candidate._id ? "..." : "📄"}
-                        </Button>
-                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewResume(candidate)}
+                        disabled={viewingResume === candidate._id}
+                        title="View Resume/CV"
+                      >
+                        {viewingResume === candidate._id ? "..." : "📄 CV"}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -698,20 +718,18 @@ export default function TalentPoolPage() {
                 </div>
               )}
 
-              {selectedCandidate.resumeUrl && (
-                <div className="pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleViewResume(selectedCandidate)}
-                    disabled={viewingResume === selectedCandidate._id}
-                    className="w-full"
-                  >
-                    {viewingResume === selectedCandidate._id
-                      ? "Opening..."
-                      : "📄 View Resume"}
-                  </Button>
-                </div>
-              )}
+              <div className="pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => handleViewResume(selectedCandidate)}
+                  disabled={viewingResume === selectedCandidate._id}
+                  className="w-full"
+                >
+                  {viewingResume === selectedCandidate._id
+                    ? "Opening..."
+                    : "📄 View Resume/CV"}
+                </Button>
+              </div>
             </div>
           )}
         </Modal>

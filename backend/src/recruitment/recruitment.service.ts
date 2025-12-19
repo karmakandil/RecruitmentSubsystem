@@ -963,16 +963,29 @@ export class RecruitmentService {
       );
     }
 
-    // Check if all positions are filled
+    // CHANGED: Check if openings is greater than 0
+    if (!jobRequisition.openings || jobRequisition.openings <= 0) {
+      throw new BadRequestException(
+        'This job has no available positions. Cannot apply.',
+      );
+    }
+
+    // Check if all positions are filled (by counting HIRED applications)
     const hiredCount = await this.applicationModel.countDocuments({
       requisitionId: new Types.ObjectId(dto.requisitionId),
       status: ApplicationStatus.HIRED,
     });
-    if (hiredCount >= jobRequisition.openings) {
+    
+    // Calculate remaining positions
+    const remainingPositions = jobRequisition.openings - hiredCount;
+    
+    if (remainingPositions <= 0) {
       throw new BadRequestException(
         `All ${jobRequisition.openings} position(s) for this requisition have been filled. No more applications are being accepted.`,
       );
     }
+    
+    console.log(`[APPLICATION] Job ${dto.requisitionId}: ${remainingPositions} of ${jobRequisition.openings} positions remaining`);
 
     // Check if candidate already applied to this requisition
     const existingApplication = await this.applicationModel.findOne({
@@ -1617,11 +1630,12 @@ export class RecruitmentService {
       }
 
       // Get the employee profiles for these HR employees using the service
+      // CHANGED: Only include ACTIVE employees as panel members
       const hrEmployees: any[] = [];
       for (const empId of hrEmployeeIds) {
         try {
           const emp: any = await this.employeeProfileService.findOne(empId);
-          if (emp && emp.active !== false) {
+          if (emp && emp.status === EmployeeStatus.ACTIVE) {
             hrEmployees.push({
               _id: emp._id?.toString() || empId,
               id: emp._id?.toString() || empId,
@@ -1721,11 +1735,12 @@ export class RecruitmentService {
           .map((role: any) => role.employeeProfileId?.toString())
           .filter(Boolean);
 
-        // Add HR role-based employees
+        // Add HR role-based employees - CHANGED: Only ACTIVE employees
         for (const empId of hrEmployeeIds) {
           try {
             const emp: any = await this.employeeProfileService.findOne(empId);
-            if (emp && emp.status !== EmployeeStatus.TERMINATED) {
+            // CHANGED: Only include ACTIVE employees as panel members
+            if (emp && emp.status === EmployeeStatus.ACTIVE) {
               addEmployee(emp, true, 'HR');
             }
           } catch (e) {
@@ -1739,10 +1754,11 @@ export class RecruitmentService {
         }).lean();
 
         if (hrDepartment) {
+          // CHANGED: Only ACTIVE employees
           const hrDeptEmployees = await this.employeeModel
             .find({
               primaryDepartmentId: hrDepartment._id,
-              status: { $ne: EmployeeStatus.TERMINATED },
+              status: EmployeeStatus.ACTIVE,
             })
             .select('_id firstName lastName fullName workEmail primaryDepartmentId')
             .lean()
@@ -1810,10 +1826,11 @@ export class RecruitmentService {
             .map((role: any) => role.employeeProfileId?.toString())
             .filter(Boolean);
 
+          // CHANGED: Only ACTIVE employees
           for (const empId of hrEmployeeIds) {
             try {
               const emp: any = await this.employeeProfileService.findOne(empId);
-              if (emp && emp.status !== EmployeeStatus.TERMINATED) {
+              if (emp && emp.status === EmployeeStatus.ACTIVE) {
                 addEmployee(emp, true, departmentName);
               }
             } catch (e) {
@@ -1827,10 +1844,11 @@ export class RecruitmentService {
           }).lean();
 
           if (hrDepartment) {
+            // CHANGED: Only ACTIVE employees
             const hrDeptEmployees = await this.employeeModel
               .find({
                 primaryDepartmentId: hrDepartment._id,
-                status: { $ne: EmployeeStatus.TERMINATED },
+                status: EmployeeStatus.ACTIVE,
               })
               .select('_id firstName lastName fullName workEmail primaryDepartmentId')
               .lean()
@@ -1876,10 +1894,10 @@ export class RecruitmentService {
             
             console.log(`[getEligiblePanelMembers] Searching for employees in department ID: ${deptId}, Name: ${deptName}`);
             
-            // Get all active employees and filter by department
+            // CHANGED: Get only ACTIVE employees and filter by department
             const allEmployees = await this.employeeModel
               .find({
-                status: { $ne: EmployeeStatus.TERMINATED },
+                status: EmployeeStatus.ACTIVE,
               })
               .select('_id firstName lastName fullName workEmail primaryDepartmentId')
               .populate('primaryDepartmentId', 'name')
@@ -1932,10 +1950,11 @@ export class RecruitmentService {
             }).lean();
             
             if (similarDept) {
+              // CHANGED: Only ACTIVE employees
               const deptEmployees = await this.employeeModel
                 .find({
                   primaryDepartmentId: similarDept._id,
-                  status: { $ne: EmployeeStatus.TERMINATED },
+                  status: EmployeeStatus.ACTIVE,
                 })
                 .select('_id firstName lastName fullName workEmail primaryDepartmentId')
                 .lean()
@@ -1951,9 +1970,10 @@ export class RecruitmentService {
           // If no department found in job, get all employees as fallback
           console.warn(`[getEligiblePanelMembers] No department in job requisition, fetching all active employees`);
           
+          // CHANGED: Only ACTIVE employees
           const allEmployees = await this.employeeModel
             .find({
-              status: { $ne: EmployeeStatus.TERMINATED },
+              status: EmployeeStatus.ACTIVE,
             })
             .select('_id firstName lastName fullName workEmail primaryDepartmentId')
             .populate('primaryDepartmentId', 'name')
@@ -2141,54 +2161,42 @@ export class RecruitmentService {
         await this.jobModel.findByIdAndUpdate(app.requisitionId, { progress });
       }
 
-      // REC-011: Notify candidate and panel members about interview scheduling
+      // =====================================================================
+      // INTERVIEW NOTIFICATIONS - Using RecruitmentNotificationsService
+      // =====================================================================
+      // 1. Send notification to CANDIDATE
+      // 2. Send notifications to all PANEL MEMBERS
+      // =====================================================================
+      
       const candidate = (app as any)?.candidateId;
-      const interviewDate = scheduledDate.toLocaleString();
-      const methodText = dto.method || 'TBD';
-      const videoLinkText = dto.videoLink
-        ? `\nVideo Link: ${dto.videoLink}`
-        : '';
+      const candidateId = candidate?._id?.toString();
+      const candidateName = candidate?.fullName || candidate?.firstName || 'Candidate';
+      
+      // Get position title from job requisition
+      const jobRequisition = app?.requisitionId
+        ? await this.jobModel.findById(app.requisitionId).populate('templateId').lean().exec()
+        : null;
+      const positionTitle = (jobRequisition as any)?.templateId?.title || 
+                           (jobRequisition as any)?.template?.title || 
+                           'Position';
+      
+      console.log(`[INTERVIEW-NOTIF] Interview scheduled - preparing notifications:`, {
+        interviewId: saved._id.toString(),
+        candidateId,
+        candidateName,
+        positionTitle,
+        scheduledDate: scheduledDate.toISOString(),
+        panelMembers: dto.panel,
+      });
 
-      // REC-011: Notify candidate about interview scheduling
-      if (candidate && candidate.personalEmail) {
+      // =====================================================================
+      // 1. SEND NOTIFICATION TO CANDIDATE via RecruitmentNotificationsService
+      // =====================================================================
+      if (candidateId) {
         try {
-          await this.sendNotification(
-            'interview_scheduled',
-            candidate.personalEmail,
-            {
-              candidateName: candidate.firstName || 'Candidate',
-              interviewDate: interviewDate,
-              method: methodText,
-              videoLink: dto.videoLink,
-            },
-            { nonBlocking: true },
-          );
-        } catch (e) {
-          console.warn('Failed to send candidate interview notification:', e);
-        }
-      }
-
-      // =============================================================
-      // RECRUITMENT NOTIFICATION: Candidate Interview Scheduled
-      // =============================================================
-      // Send in-app notification to the candidate about their scheduled interview.
-      // This appears in the candidate's notification center in the app.
-      // Note: Email notification is sent separately above via sendNotification()
-      // 
-      // Flow: scheduleInterview → notifyCandidateInterviewScheduled 
-      //       → Candidate sees "Your interview is scheduled!" in app
-      // =============================================================
-      if (candidate && candidate._id) {
-        // CHANGED - Populate template to get the actual position title
-        const jobRequisition = app?.requisitionId
-          ? await this.jobModel.findById(app.requisitionId).populate('template').lean().exec()
-          : null;
-        const positionTitle = (jobRequisition as any)?.template?.title || 'Position';
-
-        try {
-          // Call the notification service to create in-app notification for candidate
-          await this.notificationsService.notifyCandidateInterviewScheduled(
-            candidate._id.toString(),
+          console.log(`[INTERVIEW-NOTIF] Calling notifyCandidateInterviewScheduled for candidate: ${candidateId}`);
+          const candidateResult = await this.notificationsService.notifyCandidateInterviewScheduled(
+            candidateId,
             {
               interviewId: saved._id.toString(),
               positionTitle: positionTitle,
@@ -2196,90 +2204,43 @@ export class RecruitmentService {
               method: dto.method || 'TBD',
               videoLink: dto.videoLink,
               stage: dto.stage,
-            },
+            }
           );
-          console.log(`[INTERVIEW] In-app notification sent to candidate: ${candidate._id}`);
+          console.log(`[INTERVIEW-NOTIF] ✅ Candidate notification result:`, candidateResult);
         } catch (candidateNotifError) {
-          console.warn('Failed to send in-app notification to candidate:', candidateNotifError);
-          // Don't fail the interview creation if notification fails
+          console.error(`[INTERVIEW-NOTIF] ❌ Failed to send candidate notification:`, candidateNotifError);
         }
+      } else {
+        console.warn(`[INTERVIEW-NOTIF] ⚠️ No candidate ID found - skipping candidate notification`);
       }
 
+      // =====================================================================
+      // 2. SEND NOTIFICATIONS TO ALL PANEL MEMBERS via RecruitmentNotificationsService
+      // =====================================================================
       if (dto.panel && dto.panel.length > 0) {
-        // CHANGED - Populate template to get the actual position title
-        const jobRequisition = app?.requisitionId
-          ? await this.jobModel.findById(app.requisitionId).populate('template').lean().exec()
-          : null;
-        const positionTitle = (jobRequisition as any)?.template?.title || 'Position';
-
-        // Send email notifications to panel members
-        for (const panelMemberId of dto.panel) {
-          try {
-            const panelMember =
-              await this.employeeProfileService.findOne(panelMemberId);
-
-            const panelMemberEmail =
-              panelMember.workEmail || panelMember.personalEmail;
-
-            if (panelMemberEmail) {
-              await this.sendNotification(
-                'panel_invitation',
-                panelMemberEmail,
-                {
-                  interviewDate: interviewDate,
-                  method: methodText,
-                  videoLink: dto.videoLink,
-                  candidateName:
-                    candidate?.fullName || candidate?.firstName || 'Candidate',
-                  position: positionTitle,
-                },
-                { nonBlocking: true },
-              );
-            } else {
-              console.warn(
-                `Panel member ${panelMemberId} has no email address. Notification skipped.`,
-              );
-            }
-          } catch (error) {
-            console.warn(
-              `Failed to send panel invitation to ${panelMemberId}:`,
-              error,
-            );
-          }
-        }
-
-        // =============================================================
-        // RECRUITMENT NOTIFICATION: Panel Members Interview Invitation
-        // =============================================================
-        // Send in-app notifications to all panel members assigned to the interview.
-        // Each panel member receives a notification with full interview details.
-        // Note: Email notifications are sent separately above via sendNotification()
-        //
-        // Flow: scheduleInterview → notifyInterviewPanelMembers
-        //       → Each panel member sees "You have been assigned to an interview!"
-        // =============================================================
         try {
-          // Call the notification service to create in-app notifications for all panel members
-          await this.notificationsService.notifyInterviewPanelMembers(
+          console.log(`[INTERVIEW-NOTIF] Calling notifyInterviewPanelMembers for ${dto.panel.length} panel members:`, dto.panel);
+          const panelResult = await this.notificationsService.notifyInterviewPanelMembers(
             dto.panel,
             {
               interviewId: saved._id.toString(),
-              candidateName: candidate?.fullName || candidate?.firstName || 'Candidate',
+              candidateName: candidateName,
               positionTitle: positionTitle,
               scheduledDate: scheduledDate,
               method: dto.method || 'TBD',
               videoLink: dto.videoLink,
               stage: dto.stage,
-            },
+            }
           );
-          console.log(`[INTERVIEW] In-app notifications sent to ${dto.panel.length} panel members`);
-        } catch (notifError) {
-          console.warn('Failed to send in-app notifications to panel members:', notifError);
-          // Don't fail the interview creation if notifications fail
+          console.log(`[INTERVIEW-NOTIF] ✅ Panel members notification result:`, panelResult);
+        } catch (panelNotifError) {
+          console.error(`[INTERVIEW-NOTIF] ❌ Failed to send panel notifications:`, panelNotifError);
         }
+      } else {
+        console.warn(`[INTERVIEW-NOTIF] ⚠️ No panel members - skipping panel notifications`);
       }
     } catch (e) {
-      console.warn('Failed to send interview notifications:', e);
+      console.error('[INTERVIEW-NOTIF] ❌ Error in notification block:', e);
     }
 
     // Convert to plain object to ensure proper serialization
@@ -3650,6 +3611,7 @@ Due: ${context.dueDate}`
     startDate?: Date,
     workEmail?: string,
     contractId?: Types.ObjectId,
+    candidateId?: string, // NEW: Candidate ID to send notifications to candidate account
   ): Promise<any> {
     try {
       if (!Types.ObjectId.isValid(createOnboardingDto.employeeId.toString())) {
@@ -3902,22 +3864,67 @@ Due: ${context.dueDate}`
               deadline: task.deadline,
             }));
 
-          await this.notificationsService.notifyNewHireWelcome(
-            createOnboardingDto.employeeId.toString(),
-            {
-              employeeName,
-              employeeNumber, // New hire needs this to log in as employee
-              positionTitle,
-              startDate: startDate || new Date(),
-              totalTasks: tasks.length,
-              onboardingId: saved._id.toString(),
-              documentUploadTasks, // NEW: Include specific document upload tasks
-            },
-          );
+          // =====================================================================
+          // ONBOARDING NOTIFICATIONS - Send to CANDIDATE account
+          // =====================================================================
+          // The candidate needs to receive the onboarding checklist notification
+          // so they know what documents to upload and tasks to complete
+          // =====================================================================
           
-          console.log(
-            `[ONB-005] Sent ONBOARDING_WELCOME notification to new hire: ${createOnboardingDto.employeeId} (Employee Number: ${employeeNumber})`,
-          );
+          console.log(`[ONBOARDING-NOTIF] Preparing onboarding notifications:`, {
+            employeeId: createOnboardingDto.employeeId.toString(),
+            candidateId: candidateId,
+            employeeName,
+            employeeNumber,
+            positionTitle,
+            totalTasks: tasks.length,
+            documentUploadTasks: documentUploadTasks?.length || 0,
+          });
+
+          // Send notification to CANDIDATE account FIRST (this is the important one!)
+          // The candidate can log in with their candidate credentials and see this
+          if (candidateId) {
+            try {
+              console.log(`[ONBOARDING-NOTIF] Calling notifyNewHireWelcome for CANDIDATE: ${candidateId}`);
+              const candidateResult = await this.notificationsService.notifyNewHireWelcome(
+                candidateId,
+                {
+                  employeeName,
+                  employeeNumber,
+                  positionTitle,
+                  startDate: startDate || new Date(),
+                  totalTasks: tasks.length,
+                  onboardingId: saved._id.toString(),
+                  documentUploadTasks,
+                },
+              );
+              console.log(`[ONBOARDING-NOTIF] ✅ CANDIDATE notification result:`, candidateResult);
+            } catch (candidateNotifError) {
+              console.error(`[ONBOARDING-NOTIF] ❌ Failed to send notification to CANDIDATE:`, candidateNotifError);
+            }
+          } else {
+            console.warn(`[ONBOARDING-NOTIF] ⚠️ No candidateId provided - skipping candidate notification`);
+          }
+
+          // Also send to employee account (for when they activate their employee login)
+          try {
+            console.log(`[ONBOARDING-NOTIF] Calling notifyNewHireWelcome for EMPLOYEE: ${createOnboardingDto.employeeId.toString()}`);
+            const employeeResult = await this.notificationsService.notifyNewHireWelcome(
+              createOnboardingDto.employeeId.toString(),
+              {
+                employeeName,
+                employeeNumber,
+                positionTitle,
+                startDate: startDate || new Date(),
+                totalTasks: tasks.length,
+                onboardingId: saved._id.toString(),
+                documentUploadTasks,
+              },
+            );
+            console.log(`[ONBOARDING-NOTIF] ✅ EMPLOYEE notification result:`, employeeResult);
+          } catch (employeeNotifError) {
+            console.error(`[ONBOARDING-NOTIF] ❌ Failed to send notification to EMPLOYEE:`, employeeNotifError);
+          }
         }
       } catch (e) {
         // Non-critical - don't fail onboarding creation if notification fails
@@ -5603,6 +5610,7 @@ Due: ${context.dueDate}`
           startDate,
           workEmail, // Pass work email to include in onboarding tasks
           contract._id, // Pass contractId (required by ONB-002)
+          candidate._id.toString(), // Pass candidateId to send notification to candidate account
         );
 
         // ONB-018: Automatically trigger payroll initiation using contract data
@@ -6705,6 +6713,114 @@ Due: ${context.dueDate}`
       0,
     );
     return totalScore / feedbacks.length;
+  }
+
+  /**
+   * Get interviews where the user is a panel member
+   * Returns interviews with application and candidate details
+   * Used by the "My Panel Interviews" page for any employee selected as a panel member
+   */
+  async getMyPanelInterviews(userId: string): Promise<any[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID format');
+    }
+
+    const userObjectId = new Types.ObjectId(userId);
+
+    // Find all interviews where the user is in the panel
+    const interviews = await this.interviewModel
+      .find({
+        panel: userObjectId,
+        status: { $ne: 'cancelled' }, // Exclude cancelled interviews
+      })
+      .sort({ scheduledDate: -1 })
+      .lean()
+      .exec();
+
+    // Enrich each interview with application and candidate details
+    const enrichedInterviews = await Promise.all(
+      interviews.map(async (interview: any) => {
+        try {
+          // Get the application
+          const application = await this.applicationModel
+            .findById(interview.applicationId)
+            .populate('candidateId')
+            .lean()
+            .exec();
+
+          if (!application) {
+            return null;
+          }
+
+          // Get the job requisition for position title
+          const job = await this.jobModel
+            .findById(application.requisitionId)
+            .populate('templateId')
+            .lean()
+            .exec();
+
+          const candidate = application.candidateId as any;
+          const jobTemplate = job?.templateId as any;
+
+          // Get existing feedback from this user for this interview
+          const myFeedback = await this.assessmentResultModel
+            .findOne({
+              interviewId: interview._id,
+              interviewerId: userObjectId,
+            })
+            .lean()
+            .exec();
+
+          // Get all feedback for this interview to check completion
+          const allFeedback = await this.assessmentResultModel
+            .find({ interviewId: interview._id })
+            .lean()
+            .exec();
+
+          return {
+            _id: interview._id,
+            applicationId: interview.applicationId,
+            stage: interview.stage,
+            scheduledDate: interview.scheduledDate,
+            method: interview.method,
+            videoLink: interview.videoLink,
+            status: interview.status,
+            panelSize: interview.panel?.length || 0,
+            feedbackSubmitted: allFeedback.length,
+            allFeedbackComplete: allFeedback.length >= (interview.panel?.length || 0),
+            candidate: {
+              _id: candidate?._id,
+              fullName: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Unknown',
+              email: candidate?.email,
+            },
+            position: {
+              title: jobTemplate?.title || 'Position',
+              department: jobTemplate?.department || 'Department',
+            },
+            application: {
+              _id: application._id,
+              status: (application as any).status,
+              stage: (application as any).stage || (application as any).currentStage,
+              isReferral: (application as any).isReferral || false,
+            },
+            myFeedback: myFeedback ? {
+              _id: myFeedback._id,
+              score: myFeedback.score,
+              comments: myFeedback.comments,
+              hasSubmitted: true,
+            } : {
+              hasSubmitted: false,
+            },
+          };
+        } catch (err) {
+          console.error(`Error enriching interview ${interview._id}:`, err);
+          return null;
+        }
+      }),
+    );
+
+    // Filter out null entries and return
+    return enrichedInterviews.filter((interview) => interview !== null);
   }
 
   /**
@@ -8738,7 +8854,7 @@ Due: ${context.dueDate}`
                   employeeId: termination.employeeId.toString(),
                   employeeName: employeeName,
                   terminationDate: termination.terminationDate?.toISOString() || new Date().toISOString(),
-                  departments: ['LINE_MANAGER', 'HR', 'IT', 'FINANCE', 'FACILITIES', 'ADMIN'],
+                  departments: ['LINE_MANAGER', 'HR', 'IT', 'FINANCE', 'HR_EMPLOYEE'],
                 },
               );
               console.log(`✅ [OFF-006] Clearance checklist notification sent to ${allRecipients.length} recipient(s)`);
@@ -8940,6 +9056,7 @@ Due: ${context.dueDate}`
       .exec();
     if (!employee) {
       // Employee unexpectedly missing — create checklist without department manager/equipment
+      // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
       const checklistFallback = new this.clearanceModel({
         terminationId: new Types.ObjectId(dto.terminationId),
         items: [
@@ -8951,8 +9068,7 @@ Due: ${context.dueDate}`
           { department: 'HR', status: ApprovalStatus.PENDING },
           { department: 'IT', status: ApprovalStatus.PENDING },
           { department: 'FINANCE', status: ApprovalStatus.PENDING },
-          { department: 'FACILITIES', status: ApprovalStatus.PENDING },
-          { department: 'ADMIN', status: ApprovalStatus.PENDING },
+          { department: 'HR_EMPLOYEE', status: ApprovalStatus.PENDING },
         ],
         equipmentList: [],
         cardReturned: false,
@@ -8992,7 +9108,8 @@ Due: ${context.dueDate}`
       );
     }
 
-    // Default checklist order: LINE_MANAGER (assigned), HR, IT, FINANCE, FACILITIES, ADMIN
+    // Default checklist order: LINE_MANAGER (assigned), HR, IT, FINANCE, HR_EMPLOYEE
+    // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
     // Each department signs off on their overall clearance
     const items = [
       {
@@ -9003,8 +9120,7 @@ Due: ${context.dueDate}`
       { department: 'HR', status: ApprovalStatus.PENDING },
       { department: 'IT', status: ApprovalStatus.PENDING },
       { department: 'FINANCE', status: ApprovalStatus.PENDING },
-      { department: 'FACILITIES', status: ApprovalStatus.PENDING },
-      { department: 'ADMIN', status: ApprovalStatus.PENDING },
+      { department: 'HR_EMPLOYEE', status: ApprovalStatus.PENDING },
     ];
 
     const checklist = new this.clearanceModel({
@@ -9024,12 +9140,12 @@ Due: ${context.dueDate}`
       const terminationDate = termination.terminationDate?.toISOString() || new Date().toISOString();
 
       // Get recipients for each department
+      // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
       const departmentRecipients: { [key: string]: string[] } = {
         'LINE_MANAGER': [],
         'IT': [],
         'FINANCE': [],
-        'FACILITIES': [],
-        'ADMIN': [],
+        'HR_EMPLOYEE': [],
         'HR': [],
       };
 
@@ -9057,13 +9173,12 @@ Due: ${context.dueDate}`
         .select('employeeProfileId').lean().exec();
       departmentRecipients['FINANCE'] = financeStaff.map((f: any) => f.employeeProfileId?.toString()).filter(Boolean);
 
-      // FACILITIES & ADMIN - HR Employees
+      // HR_EMPLOYEE - Combined FACILITIES and ADMIN clearance items (HR Employees)
       const hrEmployees = await this.employeeSystemRoleModel
         .find({ roles: { $in: [SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN] }, isActive: true })
         .select('employeeProfileId').lean().exec();
       const hrEmployeeIds = hrEmployees.map((hr: any) => hr.employeeProfileId?.toString()).filter(Boolean);
-      departmentRecipients['FACILITIES'] = hrEmployeeIds;
-      departmentRecipients['ADMIN'] = hrEmployeeIds;
+      departmentRecipients['HR_EMPLOYEE'] = hrEmployeeIds;
 
       // HR - HR Managers
       const hrManagers = await this.employeeSystemRoleModel
@@ -9412,14 +9527,9 @@ Due: ${context.dueDate}`
             roles.includes(SystemRole.PAYROLL_MANAGER) ||
             roles.includes(SystemRole.PAYROLL_SPECIALIST)
           );
-        case 'FACILITIES':
-          // HR Admin or HR Employee can update FACILITIES
-          return (
-            roles.includes(SystemRole.HR_ADMIN) ||
-            roles.includes(SystemRole.HR_EMPLOYEE)
-          );
-        case 'ADMIN':
-          // HR Admin or HR Employee can update ADMIN
+        case 'HR_EMPLOYEE':
+          // HR Admin or HR Employee can update HR_EMPLOYEE clearance items
+          // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
           return (
             roles.includes(SystemRole.HR_ADMIN) ||
             roles.includes(SystemRole.HR_EMPLOYEE)
@@ -9501,9 +9611,10 @@ Due: ${context.dueDate}`
           if (employee) await this._internalRevokeSystemAccess(employee);
         }
 
-        // FACILITIES approval → mark equipment items as returned and annotate onboarding
+        // HR_EMPLOYEE approval → mark equipment items as returned and annotate onboarding
+        // CHANGED: FACILITIES merged into HR_EMPLOYEE
         if (
-          dept === 'FACILITIES' &&
+          dept === 'HR_EMPLOYEE' &&
           Array.isArray((dto as any).equipmentReturns)
         ) {
           const returns = (dto as any).equipmentReturns;
@@ -10339,6 +10450,7 @@ Due: ${context.dueDate}`
     }
 
     // role mapping for departments (best-effort)
+    // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
     const roleMap: Record<string, SystemRole[]> = {
       LINE_MANAGER: [SystemRole.DEPARTMENT_HEAD],
       HR: [SystemRole.HR_MANAGER, SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN],
@@ -10348,8 +10460,7 @@ Due: ${context.dueDate}`
         SystemRole.PAYROLL_MANAGER,
         SystemRole.PAYROLL_SPECIALIST,
       ],
-      FACILITIES: [SystemRole.HR_ADMIN, SystemRole.SYSTEM_ADMIN],
-      ADMIN: [SystemRole.HR_ADMIN, SystemRole.SYSTEM_ADMIN],
+      HR_EMPLOYEE: [SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN],
     };
 
     const roles = roleMap[dept] || [SystemRole.HR_MANAGER];
@@ -10397,8 +10508,8 @@ Due: ${context.dueDate}`
       case 'FINANCE':
         roles = [SystemRole.FINANCE_STAFF, SystemRole.PAYROLL_MANAGER, SystemRole.PAYROLL_SPECIALIST];
         break;
-      case 'FACILITIES':
-      case 'ADMIN':
+      case 'HR_EMPLOYEE':
+        // CHANGED: Merged FACILITIES and ADMIN into HR_EMPLOYEE
         roles = [SystemRole.HR_EMPLOYEE, SystemRole.HR_ADMIN];
         break;
       case 'HR':

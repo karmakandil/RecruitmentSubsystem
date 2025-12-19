@@ -87,18 +87,10 @@ export default function HRInterviewsPage() {
     });
   };
   
-  // Users can submit feedback if they have the right role AND are in the panel
+  // CHANGED: ANY user who is in the panel can submit feedback - no role restriction
+  // If you're a panel member, you can submit feedback regardless of your role
   const canUserSubmitFeedback = (interview: any): boolean => {
-    // First check if user has the required role
-    const hasRequiredRole = user?.roles?.some(
-      (role) => ["hr employee", "hr manager", "system admin", "recruiter"].includes(String(role).toLowerCase())
-    );
-    
-    if (!hasRequiredRole) {
-      return false;
-    }
-    
-    // Then check if user is actually in the panel
+    // Only check if user is in the panel - no role restriction
     return isUserInPanel(interview);
   };
   const [scheduleForm, setScheduleForm] = useState<ScheduleInterviewDto>({
@@ -711,7 +703,7 @@ export default function HRInterviewsPage() {
                                             'Unknown'
                                           : 'Loading...';
                                         return (
-                                          <span
+                                          <span 
                                             key={idx}
                                             className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
                                           >

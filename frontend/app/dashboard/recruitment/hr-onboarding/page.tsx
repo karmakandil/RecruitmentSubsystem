@@ -362,15 +362,7 @@ export default function HROnboardingPage() {
                         {onboarding.tasks?.length || 0} tasks
                       </CardDescription>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenAddTask(onboarding)}
-                      >
-                        Add Task
-                      </Button>
-                    </div>
+                    {/* REMOVED: Add Task button removed for all users per user request */}
                   </div>
                 </CardHeader>
                 <CardContent>

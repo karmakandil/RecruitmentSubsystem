@@ -39,6 +39,14 @@ export class RecruitmentNotificationsService {
       stage: string;
     },
   ) {
+    console.log('[INTERVIEW_NOTIFICATION] notifyInterviewPanelMembers called with:', {
+      panelMemberIds,
+      interviewDetails: {
+        ...interviewDetails,
+        scheduledDate: interviewDetails.scheduledDate?.toISOString(),
+      },
+    });
+    
     if (!panelMemberIds || panelMemberIds.length === 0) {
       console.log('[INTERVIEW_NOTIFICATION] No panel members to notify');
       return { success: true, notificationsCreated: 0 };
@@ -332,6 +340,14 @@ export class RecruitmentNotificationsService {
       stage: string;
     },
   ) {
+    console.log('[INTERVIEW_NOTIFICATION] notifyCandidateInterviewScheduled called with:', {
+      candidateId,
+      interviewDetails: {
+        ...interviewDetails,
+        scheduledDate: interviewDetails.scheduledDate?.toISOString(),
+      },
+    });
+    
     if (!candidateId) {
       console.log('[INTERVIEW_NOTIFICATION] No candidate ID provided');
       return { success: false, message: 'No candidate ID provided' };
@@ -1069,7 +1085,17 @@ export class RecruitmentNotificationsService {
       documentUploadTasks?: { name: string; notes?: string; deadline?: Date }[];
     },
   ) {
+    console.log(`[ONBOARDING_NOTIFICATION] notifyNewHireWelcome called with:`, {
+      newHireId,
+      employeeName: welcomeDetails.employeeName,
+      employeeNumber: welcomeDetails.employeeNumber,
+      positionTitle: welcomeDetails.positionTitle,
+      totalTasks: welcomeDetails.totalTasks,
+      documentUploadTasks: welcomeDetails.documentUploadTasks?.length || 0,
+    });
+
     if (!newHireId) {
+      console.log(`[ONBOARDING_NOTIFICATION] No newHireId provided - aborting`);
       return { success: false, message: 'No new hire ID provided' };
     }
 
@@ -1128,7 +1154,11 @@ export class RecruitmentNotificationsService {
         isRead: false,
       });
 
-      console.log(`[ONBOARDING_NOTIFICATION] Sent WELCOME notification to new hire: ${newHireId} (Employee Number: ${welcomeDetails.employeeNumber})`);
+      console.log(`[ONBOARDING_NOTIFICATION] ✅ WELCOME notification CREATED:`, {
+        notificationId: notification._id.toString(),
+        toUserId: newHireId,
+        employeeNumber: welcomeDetails.employeeNumber,
+      });
 
       return {
         success: true,

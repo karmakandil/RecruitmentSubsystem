@@ -37,15 +37,14 @@ interface PendingAdminTask {
   employeeNumber: string;
 }
 
-// CHANGED - Equipment types (must match backend valid types: workspace, desk, access_card, badge, laptop, equipment)
-// ONB-012: HR Employee handles all physical equipment
+// CHANGED - Equipment types for HR Employee (ONB-012)
+// Removed duplicates: "desk" merged with "workspace" → now single "workspace" option
+// These are the 4 main equipment types HR Employee reserves
 const EQUIPMENT_TYPES = [
-  { value: "laptop", label: "💻 Laptop", icon: "💻", description: "Allocate laptop for the new hire" },
-  { value: "equipment", label: "🖥️ Other Equipment", icon: "🖥️", description: "Allocate other hardware equipment" },
-  { value: "workspace", label: "🪑 Workspace/Desk", icon: "🪑", description: "Reserve a desk or workspace for the new hire" },
-  { value: "desk", label: "📋 Desk Assignment", icon: "📋", description: "Assign a specific desk number" },
-  { value: "access_card", label: "🎫 Access Card", icon: "🎫", description: "Issue building access card" },
-  { value: "badge", label: "🪪 ID Badge", icon: "🪪", description: "Issue employee ID badge" },
+  { value: "laptop", label: "💻 Laptop", icon: "💻", description: "Allocate laptop for the new hire", taskMatch: "laptop" },
+  { value: "workspace", label: "🪑 Desk/Workspace", icon: "🪑", description: "Reserve a desk or workspace for the new hire", taskMatch: "workspace|desk" },
+  { value: "access_card", label: "🎫 Access Card", icon: "🎫", description: "Issue building access card", taskMatch: "access" },
+  { value: "badge", label: "🪪 ID Badge", icon: "🪪", description: "Issue employee ID badge", taskMatch: "badge|id badge" },
 ];
 
 export default function EquipmentManagementPage() {
@@ -175,7 +174,7 @@ export default function EquipmentManagementPage() {
     setIsReserveModalOpen(true);
   };
 
-  // CHANGED - Reserve equipment
+  // CHANGED - Reserve equipment AND mark the corresponding onboarding task as completed
   const handleReserveEquipment = async () => {
     if (!selectedOnboarding || !equipmentForm.equipmentType) {
       showToast("Please select an equipment type", "error");
@@ -192,18 +191,66 @@ export default function EquipmentManagementPage() {
         reservedAt: new Date().toISOString(),
       };
 
+      // 1. Reserve the equipment
       await recruitmentApi.reserveEquipment(
         selectedOnboarding.employeeId,
         equipmentForm.equipmentType,
         equipmentDetails
       );
 
-      showToast("Equipment reserved successfully!", "success");
+      // 2. Find and mark the corresponding onboarding task as completed
+      const selectedType = EQUIPMENT_TYPES.find(t => t.value === equipmentForm.equipmentType);
+      if (selectedType && selectedOnboarding.tasks) {
+        const matchPattern = new RegExp(selectedType.taskMatch, 'i');
+        const taskIndex = selectedOnboarding.tasks.findIndex((task: any) => 
+          matchPattern.test(task.name?.toLowerCase() || '') &&
+          task.status !== 'COMPLETED' && task.status !== 'completed'
+        );
+        
+        if (taskIndex !== -1) {
+          try {
+            await recruitmentApi.updateOnboardingTaskStatus(
+              selectedOnboarding._id,
+              taskIndex,
+              'completed'
+            );
+            console.log(`✅ Auto-completed task: ${selectedOnboarding.tasks[taskIndex].name}`);
+          } catch (taskError) {
+            console.warn('Could not auto-complete task:', taskError);
+          }
+        }
+      }
+
+      showToast("Equipment reserved and task completed!", "success");
       setIsReserveModalOpen(false);
-      loadOnboardings();
+      // Reload both lists to reflect changes
+      await Promise.all([loadOnboardings(), loadAllPendingAdminTasks()]);
     } catch (error: any) {
       showToast(error.message || "Failed to reserve equipment", "error");
     }
+  };
+  
+  // CHANGED - Get equipment types that are NOT yet completed for this employee
+  const getAvailableEquipmentTypes = (onboarding: Onboarding) => {
+    if (!onboarding?.tasks) return EQUIPMENT_TYPES;
+    
+    // Find which equipment types already have completed tasks
+    const completedTypes: string[] = [];
+    
+    onboarding.tasks.forEach((task: any) => {
+      if (task.status === 'COMPLETED' || task.status === 'completed') {
+        const taskName = task.name?.toLowerCase() || '';
+        EQUIPMENT_TYPES.forEach(eqType => {
+          const matchPattern = new RegExp(eqType.taskMatch, 'i');
+          if (matchPattern.test(taskName)) {
+            completedTypes.push(eqType.value);
+          }
+        });
+      }
+    });
+    
+    // Return only equipment types that are NOT completed
+    return EQUIPMENT_TYPES.filter(type => !completedTypes.includes(type.value));
   };
 
   // CHANGED - Get equipment icon
@@ -519,19 +566,28 @@ export default function EquipmentManagementPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Equipment Type *
               </label>
-              <Select
-                value={equipmentForm.equipmentType}
-                onChange={(e) =>
-                  setEquipmentForm({ ...equipmentForm, equipmentType: e.target.value })
-                }
-                options={[
-                  { value: "", label: "Select equipment type" },
-                  ...EQUIPMENT_TYPES.map((type) => ({
-                    value: type.value,
-                    label: type.label,
-                  })),
-                ]}
-              />
+              {/* Only show equipment types that are NOT yet reserved/completed */}
+              {selectedOnboarding && getAvailableEquipmentTypes(selectedOnboarding).length === 0 ? (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-green-800 text-sm">
+                    ✅ All equipment has been reserved for this employee!
+                  </p>
+                </div>
+              ) : (
+                <Select
+                  value={equipmentForm.equipmentType}
+                  onChange={(e) =>
+                    setEquipmentForm({ ...equipmentForm, equipmentType: e.target.value })
+                  }
+                  options={[
+                    { value: "", label: "Select equipment type" },
+                    ...(selectedOnboarding ? getAvailableEquipmentTypes(selectedOnboarding) : EQUIPMENT_TYPES).map((type) => ({
+                      value: type.value,
+                      label: type.label,
+                    })),
+                  ]}
+                />
+              )}
             </div>
 
             <div>
