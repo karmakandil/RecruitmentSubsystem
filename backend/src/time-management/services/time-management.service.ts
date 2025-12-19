@@ -89,16 +89,9 @@ export class TimeManagementService {
       .find({
         employeeId: new Types.ObjectId(employeeId),
         status: 'APPROVED',
-<<<<<<< HEAD
         startDate: { $lte: todayEnd }, // Shift started on or before end of today
         $or: [
           { endDate: { $gte: todayStart } }, // Shift ends on or after start of today
-=======
-        // Use day-boundaries so endDate stored at 00:00 still counts for that day
-        startDate: { $lte: todayEnd },
-        $or: [
-          { endDate: { $gte: todayStart } },
->>>>>>> origin/TimeMangementFE
           { endDate: null }, // Ongoing assignments
           { endDate: { $exists: false } }, // No end date set
         ],
@@ -114,7 +107,6 @@ export class TimeManagementService {
       );
     }
 
-<<<<<<< HEAD
     const assignment = shiftAssignments[0] as any;
     const shift = assignment.shiftId;
     const punchPolicy = shift?.punchPolicy || 'MULTIPLE';
@@ -130,17 +122,6 @@ export class TimeManagementService {
           createdAt: { $gte: todayStart, $lte: todayEnd },
         })
         .exec();
-=======
-    // We keep ONE attendance record per employee per day (punches array grows).
-    // Find today's record if it exists.
-    const todayRecord = await this.attendanceRecordModel
-      .findOne({
-        employeeId: new Types.ObjectId(employeeId),
-        createdAt: { $gte: todayStart, $lte: todayEnd },
-      })
-      .sort({ createdAt: -1 })
-      .exec();
->>>>>>> origin/TimeMangementFE
 
     // If there's an open session anywhere (latest record ends with IN), block another clock-in.
     const latestRecord = await this.attendanceRecordModel
@@ -273,42 +254,6 @@ export class TimeManagementService {
     const { Types } = require('mongoose');
     const todayStart = this.convertDateToUTCStart(now);
     const todayEnd = this.convertDateToUTCEnd(now);
-<<<<<<< HEAD
-
-    console.log('⏰ CLOCK OUT called for employee:', employeeId, 'Date:', now.toISOString());
-
-    // BR-TM-11: Get employee's assigned shift and check punch policy
-    // Use todayStart/todayEnd for date comparison to handle same-day assignments
-    const shiftAssignments = await this.shiftAssignmentModel
-      .find({
-        employeeId: new Types.ObjectId(employeeId),
-        status: 'APPROVED',
-        startDate: { $lte: todayEnd }, // Shift started on or before end of today
-        $or: [
-          { endDate: { $gte: todayStart } }, // Shift ends on or after start of today
-          { endDate: null }, // Ongoing assignments
-          { endDate: { $exists: false } }, // No end date set
-        ],
-      })
-      .populate('shiftId')
-      .exec();
-
-    // Validate that employee has a shift assigned for this date
-    if (shiftAssignments.length === 0) {
-      const dateStr = now.toISOString().split('T')[0];
-      throw new Error(
-        `Cannot clock out. No shift assigned for ${dateStr}. Please contact your manager to assign a shift for this date.`
-      );
-    }
-
-    const assignment = shiftAssignments[0] as any;
-    const shift = assignment.shiftId;
-    const punchPolicy = shift?.punchPolicy || 'MULTIPLE';
-    const shiftName = shift?.name || 'Unknown Shift';
-
-    console.log(`📋 Shift assigned: "${shiftName}", Policy: "${punchPolicy}"`);
-=======
->>>>>>> origin/TimeMangementFE
 
     // Determine punch policy for today (so we can calculate minutes correctly).
     const shiftAssignments = await this.shiftAssignmentModel
@@ -357,23 +302,6 @@ export class TimeManagementService {
 
     // BR-TM-07: Calculate total work minutes based on punch policy
     let totalMinutes = 0;
-<<<<<<< HEAD
-    
-    if (punchPolicy === 'FIRST_LAST') {
-      // FIRST_LAST: Calculate duration from first clock-in to last clock-out
-      const sortedPunches = [...attendanceRecord.punches].sort(
-        (a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime()
-      );
-      
-      // Find first IN punch and last OUT punch
-      const firstInPunch = sortedPunches.find((p: any) => p.type === PunchType.IN);
-      const lastOutPunch = [...sortedPunches].reverse().find((p: any) => p.type === PunchType.OUT);
-      
-      if (firstInPunch && lastOutPunch) {
-        const firstInTime = new Date(firstInPunch.time).getTime();
-        const lastOutTime = new Date(lastOutPunch.time).getTime();
-        totalMinutes = (lastOutTime - firstInTime) / 60000;
-=======
     const punchesSorted = attendanceRecord.punches
       .slice()
       .sort((a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime());
@@ -393,7 +321,6 @@ export class TimeManagementService {
           const outTime = new Date(punchesSorted[i + 1].time).getTime();
           totalMinutes += (outTime - inTime) / 60000;
         }
->>>>>>> origin/TimeMangementFE
       }
       
       console.log('📊 FIRST_LAST calculation: firstIn to lastOut =', totalMinutes, 'minutes');
@@ -409,11 +336,6 @@ export class TimeManagementService {
       
       console.log('📊 MULTIPLE calculation: sum of all pairs =', totalMinutes, 'minutes');
     }
-<<<<<<< HEAD
-    
-    attendanceRecord.totalWorkMinutes = totalMinutes;
-    attendanceRecord.updatedBy = currentUserId;
-=======
 
     attendanceRecord.totalWorkMinutes = Math.max(0, Math.round(totalMinutes));
     attendanceRecord.hasMissedPunch =
@@ -421,7 +343,6 @@ export class TimeManagementService {
     attendanceRecord.finalisedForPayroll =
       attendanceRecord.punches.length > 0 && attendanceRecord.punches.length % 2 === 0;
     (attendanceRecord as any).updatedBy = currentUserId;
->>>>>>> origin/TimeMangementFE
 
     const saved = await attendanceRecord.save();
 
@@ -432,15 +353,9 @@ export class TimeManagementService {
       {
         attendanceRecordId: saved._id,
         source: 'ID_CARD',
-<<<<<<< HEAD
         punchPolicy,
         shiftName,
         totalWorkMinutes: totalMinutes,
-=======
-        totalWorkMinutes: Math.max(0, Math.round(totalMinutes)),
-        punchPolicy,
-        shiftName,
->>>>>>> origin/TimeMangementFE
         timestamp: now.toISOString(),
       },
       currentUserId,
@@ -815,16 +730,9 @@ export class TimeManagementService {
       .find({
         employeeId: new Types.ObjectId(employeeId),
         status: 'APPROVED',
-<<<<<<< HEAD
         startDate: { $lte: todayEnd }, // Shift started on or before end of today
         $or: [
           { endDate: { $gte: todayStart } }, // Shift ends on or after start of today
-=======
-        // Use day-boundaries so endDate stored at 00:00 still counts for that day
-        startDate: { $lte: todayEnd },
-        $or: [
-          { endDate: { $gte: todayStart } },
->>>>>>> origin/TimeMangementFE
           { endDate: null }, // Ongoing assignments
           { endDate: { $exists: false } }, // No end date set
         ],
@@ -6991,24 +6899,6 @@ export class TimeManagementService {
                 hasUnpairedOut = true;
               }
 >>>>>>> origin/TimeMangementFE
-            }
-          } else {
-            // MULTIPLE: Sum up all paired IN/OUT sessions
-            for (const p of filteredPunches) {
-              if (p.type === PunchType.IN) {
-                openIn = p.time;
-              } else {
-                // OUT
-                if (openIn) {
-                  totalWorkMinutes += Math.max(
-                    0,
-                    Math.round((p.time.getTime() - openIn.getTime()) / (1000 * 60)),
-                  );
-                  openIn = null;
-                } else {
-                  hasUnpairedOut = true;
-                }
-              }
             }
           } else {
             // MULTIPLE: Sum up all paired IN/OUT sessions
