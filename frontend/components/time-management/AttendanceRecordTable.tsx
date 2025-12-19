@@ -13,7 +13,7 @@ interface AttendanceRecord {
   totalWorkMinutes?: number;
   duration?: number;
   punches?: Array<{ type?: string; time?: string | Date } | any>;
-  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'INCOMPLETE' | 'COMPLETE' | 'CORRECTION_PENDING';
+  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'INCOMPLETE' | 'COMPLETE' | 'CORRECTION_PENDING' | 'MISSED PUNCH';
 }
 
 interface AttendanceRecordTableProps {

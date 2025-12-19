@@ -175,7 +175,11 @@ export function OvertimeApprovalList({
   );
 
   // Helper functions for displaying details
-  const getTypeLabel = (type: TimeExceptionType) => {
+  const getTypeLabel = (type: TimeExceptionType | string) => {
+    if (typeof type === 'string') {
+      return type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+    }
+
     switch (type) {
       case TimeExceptionType.MISSED_PUNCH:
         return "Missed Punch";
@@ -190,7 +194,7 @@ export function OvertimeApprovalList({
       case TimeExceptionType.MANUAL_ADJUSTMENT:
         return "Manual Adjustment";
       default:
-        return type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+        return "Unknown Type";
     }
   };
 

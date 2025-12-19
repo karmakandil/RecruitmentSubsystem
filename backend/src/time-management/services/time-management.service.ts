@@ -12,6 +12,7 @@ import {
   TimeExceptionStatus,
   TimeExceptionType,
   PunchType,
+  PunchPolicy,
   CorrectionRequestStatus,
   PunchPolicy,
   ShiftAssignmentStatus,
@@ -72,16 +73,18 @@ export class TimeManagementService {
    * BR-TM-06: Creates audit trail for clock-in
    * BR-TM-11: Enforces punch policy (Multiple punches or First-In/Last-Out)
    * BR-TM-12: Tags with source type (defaults to manual)
+   * @param punchDate Optional date for manual attendance adjustments. If not provided, uses current date.
    */
-  async clockInWithID(employeeId: string, currentUserId: string) {
-    const now = new Date();
+  async clockInWithID(employeeId: string, currentUserId: string, punchDate?: Date) {
+    const now = punchDate || new Date();
     const { Types } = require('mongoose');
     const todayStart = this.convertDateToUTCStart(now);
     const todayEnd = this.convertDateToUTCEnd(now);
 
-    console.log('⏰ CLOCK IN called for employee:', employeeId);
+    console.log('⏰ CLOCK IN called for employee:', employeeId, 'Date:', now.toISOString());
 
     // BR-TM-11: Get employee's assigned shift and check punch policy
+    // Use todayStart/todayEnd for date comparison to handle same-day assignments
     const shiftAssignments = await this.shiftAssignmentModel
       .find({
         employeeId: new Types.ObjectId(employeeId),
@@ -91,21 +94,18 @@ export class TimeManagementService {
         $or: [
           { endDate: { $gte: todayStart } },
           { endDate: null }, // Ongoing assignments
+          { endDate: { $exists: false } }, // No end date set
         ],
       })
       .populate('shiftId')
       .exec();
 
-    let punchPolicy = 'MULTIPLE'; // Default to allow multiple if no shift assigned
-    let shiftName = 'No Shift Assigned';
-
-    if (shiftAssignments.length > 0) {
-      const assignment = shiftAssignments[0] as any;
-      const shift = assignment.shiftId;
-      if (shift && shift.punchPolicy) {
-        punchPolicy = shift.punchPolicy;
-        shiftName = shift.name || 'Unknown Shift';
-      }
+    // Validate that employee has a shift assigned for this date
+    if (shiftAssignments.length === 0) {
+      const dateStr = now.toISOString().split('T')[0];
+      throw new Error(
+        `Cannot clock in. No shift assigned for ${dateStr}. Please contact your manager to assign a shift for this date.`
+      );
     }
 
     // We keep ONE attendance record per employee per day (punches array grows).
@@ -240,10 +240,12 @@ export class TimeManagementService {
   /**
    * Clock out with employee ID
    * BR-TM-06: Creates audit trail for clock-out
-   * BR-TM-07: Calculates total work minutes
+   * BR-TM-07: Calculates total work minutes based on punch policy
+   * BR-TM-11: Respects punch policy (FIRST_LAST or MULTIPLE)
+   * @param punchDate Optional date for manual attendance adjustments. If not provided, uses current date.
    */
-  async clockOutWithID(employeeId: string, currentUserId: string) {
-    const now = new Date();
+  async clockOutWithID(employeeId: string, currentUserId: string, punchDate?: Date) {
+    const now = punchDate || new Date();
     const { Types } = require('mongoose');
     const todayStart = this.convertDateToUTCStart(now);
     const todayEnd = this.convertDateToUTCEnd(now);
@@ -293,7 +295,7 @@ export class TimeManagementService {
       time: now,
     });
 
-    // BR-TM-07: Calculate total work minutes
+    // BR-TM-07: Calculate total work minutes based on punch policy
     let totalMinutes = 0;
     const punchesSorted = attendanceRecord.punches
       .slice()
@@ -315,6 +317,19 @@ export class TimeManagementService {
           totalMinutes += (outTime - inTime) / 60000;
         }
       }
+      
+      console.log('📊 FIRST_LAST calculation: firstIn to lastOut =', totalMinutes, 'minutes');
+    } else {
+      // MULTIPLE: Sum up all paired IN/OUT sessions
+      for (let i = 0; i < attendanceRecord.punches.length; i += 2) {
+        if (i + 1 < attendanceRecord.punches.length) {
+          const inTime = new Date(attendanceRecord.punches[i].time).getTime();
+          const outTime = new Date(attendanceRecord.punches[i + 1].time).getTime();
+          totalMinutes += (outTime - inTime) / 60000;
+        }
+      }
+      
+      console.log('📊 MULTIPLE calculation: sum of all pairs =', totalMinutes, 'minutes');
     }
 
     attendanceRecord.totalWorkMinutes = Math.max(0, Math.round(totalMinutes));
@@ -426,6 +441,8 @@ export class TimeManagementService {
   /**
    * Enhanced clock-out with full metadata
    * BR-TM-06: Captures source type with audit trail
+   * BR-TM-07: Calculates total work minutes based on punch policy
+   * BR-TM-11: Respects punch policy (FIRST_LAST or MULTIPLE)
    * BR-TM-12: Tags with location, terminal ID, device
    */
   async clockOutWithMetadata(
@@ -441,10 +458,41 @@ export class TimeManagementService {
     currentUserId: string,
   ) {
     const now = new Date();
+    const { Types } = require('mongoose');
+    const todayStart = this.convertDateToUTCStart(now);
+    const todayEnd = this.convertDateToUTCEnd(now);
+
+    // BR-TM-11: Get employee's assigned shift and check punch policy
+    // Use todayStart/todayEnd for date comparison to handle same-day assignments
+    const shiftAssignments = await this.shiftAssignmentModel
+      .find({
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'APPROVED',
+        startDate: { $lte: todayEnd }, // Shift started on or before end of today
+        $or: [
+          { endDate: { $gte: todayStart } }, // Shift ends on or after start of today
+          { endDate: null }, // Ongoing assignments
+          { endDate: { $exists: false } }, // No end date set
+        ],
+      })
+      .populate('shiftId')
+      .exec();
+
+    let punchPolicy = 'MULTIPLE'; // Default to MULTIPLE if no shift assigned
+    let shiftName = 'No Shift Assigned';
+
+    if (shiftAssignments.length > 0) {
+      const assignment = shiftAssignments[0] as any;
+      const shift = assignment.shiftId;
+      if (shift && shift.punchPolicy) {
+        punchPolicy = shift.punchPolicy;
+        shiftName = shift.name || 'Unknown Shift';
+      }
+    }
 
     // Find active clock-in
     const attendanceRecords = await this.attendanceRecordModel
-      .find({ employeeId })
+      .find({ employeeId: new Types.ObjectId(employeeId) })
       .sort({ createdAt: -1 })
       .exec();
 
@@ -473,15 +521,35 @@ export class TimeManagementService {
       time: now,
     });
 
-    // Calculate total work minutes
+    // BR-TM-07: Calculate total work minutes based on punch policy
     let totalMinutes = 0;
-    for (let i = 0; i < attendanceRecord.punches.length; i += 2) {
-      if (i + 1 < attendanceRecord.punches.length) {
-        const inTime = attendanceRecord.punches[i].time.getTime();
-        const outTime = attendanceRecord.punches[i + 1].time.getTime();
-        totalMinutes += (outTime - inTime) / 60000;
+    
+    if (punchPolicy === 'FIRST_LAST') {
+      // FIRST_LAST: Calculate duration from first clock-in to last clock-out
+      const sortedPunches = [...attendanceRecord.punches].sort(
+        (a: any, b: any) => new Date(a.time).getTime() - new Date(b.time).getTime()
+      );
+      
+      // Find first IN punch and last OUT punch
+      const firstInPunch = sortedPunches.find((p: any) => p.type === PunchType.IN);
+      const lastOutPunch = [...sortedPunches].reverse().find((p: any) => p.type === PunchType.OUT);
+      
+      if (firstInPunch && lastOutPunch) {
+        const firstInTime = new Date(firstInPunch.time).getTime();
+        const lastOutTime = new Date(lastOutPunch.time).getTime();
+        totalMinutes = (lastOutTime - firstInTime) / 60000;
+      }
+    } else {
+      // MULTIPLE: Sum up all paired IN/OUT sessions
+      for (let i = 0; i < attendanceRecord.punches.length; i += 2) {
+        if (i + 1 < attendanceRecord.punches.length) {
+          const inTime = new Date(attendanceRecord.punches[i].time).getTime();
+          const outTime = new Date(attendanceRecord.punches[i + 1].time).getTime();
+          totalMinutes += (outTime - inTime) / 60000;
+        }
       }
     }
+    
     attendanceRecord.totalWorkMinutes = totalMinutes;
     attendanceRecord.updatedBy = currentUserId;
 
@@ -499,6 +567,8 @@ export class TimeManagementService {
         location: metadata.location,
         gpsCoordinates: metadata.gpsCoordinates,
         ipAddress: metadata.ipAddress,
+        punchPolicy,
+        shiftName,
         totalWorkMinutes: totalMinutes,
         timestamp: now.toISOString(),
       },
@@ -649,6 +719,8 @@ export class TimeManagementService {
     const { Types } = require('mongoose');
 
     // BR-TM-11: Get employee's assigned shift and punch policy
+    // Use todayStart for startDate comparison and todayEnd for endDate comparison
+    // to handle same-day assignments properly
     const shiftAssignments = await this.shiftAssignmentModel
       .find({
         employeeId: new Types.ObjectId(employeeId),
@@ -658,10 +730,18 @@ export class TimeManagementService {
         $or: [
           { endDate: { $gte: todayStart } },
           { endDate: null }, // Ongoing assignments
+          { endDate: { $exists: false } }, // No end date set
         ],
       })
       .populate('shiftId')
       .exec();
+
+    console.log('🔍 Looking for shift assignments for employee:', employeeId);
+    console.log('📅 Date range: startDate <= ', todayEnd, ', endDate >= ', todayStart);
+    console.log('📋 Found shift assignments:', shiftAssignments.length);
+    if (shiftAssignments.length > 0) {
+      console.log('📋 First assignment:', JSON.stringify(shiftAssignments[0], null, 2));
+    }
 
     let punchPolicy = 'MULTIPLE'; // Default to allow multiple if no shift assigned
     let shiftName = 'No Shift Assigned';
@@ -6565,7 +6645,7 @@ export class TimeManagementService {
       // Group punch rows by employee + day
       const grouped = new Map<
         string,
-        { employeeId: string; punches: Array<{ type: PunchType; time: Date }> }
+        { employeeId: string; date: Date; punches: Array<{ type: PunchType; time: Date }> }
       >();
 
       for (let i = 1; i < lines.length; i++) {
@@ -6605,7 +6685,7 @@ export class TimeManagementService {
           const dayKey = punchTime.toISOString().split('T')[0]; // UTC day
           const key = `${employeeId}|${dayKey}`;
           if (!grouped.has(key)) {
-            grouped.set(key, { employeeId, punches: [] });
+            grouped.set(key, { employeeId, date: punchTime, punches: [] });
           }
           grouped.get(key)!.punches.push({ type: punchType, time: punchTime });
         } catch (error: any) {
@@ -6613,11 +6693,12 @@ export class TimeManagementService {
         }
       }
 
-      for (const [, group] of grouped.entries()) {
-        // Sort punches by time
-        const punchesSorted = group.punches
-          .slice()
-          .sort((a, b) => a.time.getTime() - b.time.getTime());
+      for (const [key, group] of grouped.entries()) {
+        try {
+          // Get the date for this group of punches
+          const punchDate = group.date;
+          const dayStart = this.convertDateToUTCStart(punchDate);
+          const dayEnd = this.convertDateToUTCEnd(punchDate);
 
         // Determine the date we're importing for (from first punch)
         const importDate = punchesSorted[0]?.time || new Date();
@@ -6718,55 +6799,80 @@ export class TimeManagementService {
                 hasUnpairedOut = true;
               }
             }
+          } else {
+            // MULTIPLE: Sum up all paired IN/OUT sessions
+            for (const p of filteredPunches) {
+              if (p.type === PunchType.IN) {
+                openIn = p.time;
+              } else {
+                // OUT
+                if (openIn) {
+                  totalWorkMinutes += Math.max(
+                    0,
+                    Math.round((p.time.getTime() - openIn.getTime()) / (1000 * 60)),
+                  );
+                  openIn = null;
+                } else {
+                  hasUnpairedOut = true;
+                }
+              }
+            }
           }
-        }
 
-        const hasMissedPunch =
-          punchesSorted.length === 0 ||
-          !!openIn ||
-          hasUnpairedOut ||
-          punchesSorted[0]?.type === PunchType.OUT;
+          const hasMissedPunch =
+            filteredPunches.length === 0 ||
+            !!openIn ||
+            hasUnpairedOut ||
+            filteredPunches[0]?.type === PunchType.OUT;
 
-        if (hasMissedPunch) missedPunches++;
+          if (hasMissedPunch) missedPunches++;
 
-        const record = new this.attendanceRecordModel({
-          employeeId: new Types.ObjectId(group.employeeId),
-          punches: punchesSorted.map((p) => ({ type: p.type, time: p.time })),
-          totalWorkMinutes,
-          hasMissedPunch,
-          exceptionIds: [],
-          finalisedForPayroll: false,
-        });
+          const record = new this.attendanceRecordModel({
+            employeeId: new Types.ObjectId(group.employeeId),
+            punches: filteredPunches.map((p) => ({ type: p.type, time: p.time })),
+            totalWorkMinutes,
+            hasMissedPunch,
+            exceptionIds: [],
+            finalisedForPayroll: false,
+          });
 
-        await record.save();
-        created++;
+          await record.save();
+          created++;
 
-        if (hasMissedPunch) {
-          // Decide which punch is missing to label the alert
-          const missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT' =
-            punchesSorted[0]?.type === PunchType.OUT || hasUnpairedOut
-              ? 'CLOCK_IN'
-              : 'CLOCK_OUT';
+          console.log(`✅ Created attendance record for ${group.employeeId} on ${punchDate.toISOString().split('T')[0]} with ${totalWorkMinutes} minutes`);
 
-          const notifyAt =
-            missedPunchType === 'CLOCK_IN'
-              ? punchesSorted[0]?.time || new Date()
-              : punchesSorted[punchesSorted.length - 1]?.time || new Date();
+          if (hasMissedPunch) {
+            // Decide which punch is missing to label the alert
+            const missedPunchType: 'CLOCK_IN' | 'CLOCK_OUT' =
+              filteredPunches[0]?.type === PunchType.OUT || hasUnpairedOut
+                ? 'CLOCK_IN'
+                : 'CLOCK_OUT';
 
-          try {
-            await this.notificationService.flagMissedPunchWithNotificationAuto(
-              record._id?.toString(),
-              group.employeeId,
-              missedPunchType,
-              notifyAt,
-              currentUserId,
-            );
-          } catch (notifyErr) {
-            console.error(
-              `[ATTENDANCE_CSV_IMPORT] Failed to send missed punch alert for record ${record._id}:`,
-              notifyErr,
-            );
+            const notifyAt =
+              missedPunchType === 'CLOCK_IN'
+                ? filteredPunches[0]?.time || new Date()
+                : filteredPunches[filteredPunches.length - 1]?.time || new Date();
+
+            try {
+              await this.notificationService.flagMissedPunchWithNotificationAuto(
+                record._id?.toString(),
+                group.employeeId,
+                missedPunchType,
+                notifyAt,
+                currentUserId,
+              );
+            } catch (notifyErr) {
+              console.error(
+                `[ATTENDANCE_CSV_IMPORT] Failed to send missed punch alert for record ${record._id}:`,
+                notifyErr,
+              );
+            }
           }
+        } catch (error: any) {
+          errors.push({
+            line: 0,
+            error: `Error processing group ${key}: ${error.message || 'Unknown error'}`,
+          });
         }
       }
     } else {
