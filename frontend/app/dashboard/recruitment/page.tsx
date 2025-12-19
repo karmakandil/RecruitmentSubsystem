@@ -343,6 +343,21 @@ export default function RecruitmentPage() {
                 </CardContent>
               </Card>
 
+              {/* My Interview Panel for HR Managers */}
+              <Card className="hover:shadow-lg transition-shadow border-2 border-purple-200 bg-purple-50">
+                <CardHeader>
+                  <CardTitle className="text-purple-900">📋 My Interview Panel</CardTitle>
+                  <CardDescription className="text-purple-700">
+                    View interviews where you are a panel member and submit feedback
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/dashboard/recruitment/my-panel-interviews">
+                    <Button className="w-full bg-purple-600 hover:bg-purple-700">View Panel Interviews</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
               {/* HR Onboarding - ONB-001, ONB-002, ONB-004 */}
               <Card className="hover:shadow-lg transition-shadow border-2 border-green-200 bg-green-50">
                 <CardHeader>
