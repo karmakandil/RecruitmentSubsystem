@@ -828,9 +828,18 @@ export class LeavesService {
       )
       .exec();
     if (updated && updated.pending < 0) {
-      await this.leaveEntitlementModel
-        .findByIdAndUpdate(entitlement._id, { $set: { pending: 0 } })
+      const corrected = await this.leaveEntitlementModel
+        .findByIdAndUpdate(entitlement._id, { $set: { pending: 0 } }, { new: true })
         .exec();
+      // Recalculate remaining balance after correcting pending
+      if (corrected) {
+        corrected.remaining = this.calculateRemaining(corrected);
+        await corrected.save();
+      }
+    } else if (updated) {
+      // Recalculate remaining balance after updating pending
+      updated.remaining = this.calculateRemaining(updated);
+      await updated.save();
     }
 
     // Update status to canceled
@@ -1227,8 +1236,11 @@ export class LeavesService {
       0,
       entitlement.pending - leaveRequest.durationDays,
     );
+    // Recalculate remaining balance immediately
+    entitlement.remaining = this.calculateRemaining(entitlement);
     await this.updateLeaveEntitlement(entitlement._id.toString(), {
       pending: entitlement.pending,
+      remaining: entitlement.remaining,
     });
 
     // Step 7: Save the updated leave request
@@ -5633,19 +5645,21 @@ export class LeavesService {
       throw new BadRequestException('Rejection reason is required');
     }
 
-    // Verify the user is a department head or HR Manager
+    // Verify the user is a department head, HR Manager, or Payroll Manager
     const managerSystemRole = await this.systemRoleModel
       .findOne({ employeeProfileId: deptHeadObjectId, isActive: true })
       .exec();
     const isDepartmentHead = managerSystemRole?.roles?.includes(SystemRole.DEPARTMENT_HEAD) || false;
     const isHRManager = managerSystemRole?.roles?.includes(SystemRole.HR_MANAGER) || false;
+    const isPayrollManager = managerSystemRole?.roles?.includes(SystemRole.PAYROLL_MANAGER) || false;
 
-    if (!isDepartmentHead && !isHRManager) {
-      throw new BadRequestException('Only department heads and HR managers can reject documents');
+    if (!isDepartmentHead && !isHRManager && !isPayrollManager) {
+      throw new BadRequestException('Only department heads, HR managers, and payroll managers can reject documents');
     }
 
     // Find the pending approval that needs to be updated
     // For HR Managers: look for Manager or HR Manager role
+    // For Payroll Managers: look for Manager or Payroll Manager role
     // For Department Heads: look for Manager or Department Head role
     let pendingApproval;
     if (isHRManager) {
@@ -5653,6 +5667,12 @@ export class LeavesService {
         (approval) => 
           (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING) &&
           (approval.role === 'Manager' || approval.role === 'HR Manager')
+      );
+    } else if (isPayrollManager) {
+      pendingApproval = leaveRequest.approvalFlow.find(
+        (approval) => 
+          (approval.status === 'PENDING' || approval.status === LeaveStatus.PENDING) &&
+          (approval.role === 'Manager' || approval.role === 'Payroll Manager')
       );
     } else {
       pendingApproval = leaveRequest.approvalFlow.find(
@@ -5662,43 +5682,43 @@ export class LeavesService {
       );
     }
 
-    // For HR Managers: allow rejecting documents for team members (HR Admin, Recruiter, HR Employee)
+    // For HR Managers and Payroll Managers: allow rejecting documents for team members
     // For Department Heads: verify they are the direct supervisor
-    if (isHRManager) {
-      // HR Managers can reject documents for their team members
-      // Verify the employee is in the HR Manager's team (using filterTeamLeaveData logic)
+    if (isHRManager || isPayrollManager) {
+      // HR Managers and Payroll Managers can reject documents for their team members
+      // Verify the employee is in the manager's team (using filterTeamLeaveData logic)
       const employeeId = leaveRequest.employeeId.toString();
-      const hrManagerProfile = await this.employeeProfileModel.findById(departmentHeadId).exec();
+      const managerProfile = await this.employeeProfileModel.findById(departmentHeadId).exec();
       const employeeProfile = await this.employeeProfileModel.findById(employeeId).exec();
       
-      if (!hrManagerProfile || !employeeProfile) {
+      if (!managerProfile || !employeeProfile) {
         throw new BadRequestException(
-          'Unable to verify team relationship. Please ensure both employee and HR manager profiles exist.',
+          `Unable to verify team relationship. Please ensure both employee and ${isHRManager ? 'HR manager' : 'payroll manager'} profiles exist.`,
         );
       }
       
-      // Check if employee's supervisorPositionId matches HR Manager's primaryPositionId
-      const hrManagerPositionId = hrManagerProfile.primaryPositionId;
+      // Check if employee's supervisorPositionId matches manager's primaryPositionId
+      const managerPositionId = managerProfile.primaryPositionId;
       const employeeSupervisorPositionId = (employeeProfile as any).supervisorPositionId;
       
-      if (!hrManagerPositionId || !employeeSupervisorPositionId) {
+      if (!managerPositionId || !employeeSupervisorPositionId) {
         throw new BadRequestException(
-          'Unable to verify team relationship. Employee or HR manager may not have position assignments.',
+          `Unable to verify team relationship. Employee or ${isHRManager ? 'HR manager' : 'payroll manager'} may not have position assignments.`,
         );
       }
       
-      const hrManagerPosIdStr = hrManagerPositionId instanceof Types.ObjectId 
-        ? hrManagerPositionId.toString() 
-        : String(hrManagerPositionId);
+      const managerPosIdStr = managerPositionId instanceof Types.ObjectId 
+        ? managerPositionId.toString() 
+        : String(managerPositionId);
       const empSupervisorPosIdStr = employeeSupervisorPositionId instanceof Types.ObjectId
         ? employeeSupervisorPositionId.toString()
         : String(employeeSupervisorPositionId);
       
-      const isTeamMember = hrManagerPosIdStr === empSupervisorPosIdStr;
+      const isTeamMember = managerPosIdStr === empSupervisorPosIdStr;
       
       if (!isTeamMember) {
         throw new BadRequestException(
-          'Only team members can have their documents rejected by HR Manager.',
+          `Only team members can have their documents rejected by ${isHRManager ? 'HR Manager' : 'Payroll Manager'}.`,
         );
       }
     } else {
@@ -5748,10 +5768,12 @@ export class LeavesService {
 
     // FIX: Use findByIdAndUpdate to avoid VersionError (handles concurrent modifications)
     const rejectionRole = isHRManager 
-      ? 'HR Manager - Document Verification' 
+      ? 'HR Manager - Document Verification'
+      : isPayrollManager
+      ? 'Payroll Manager - Document Verification'
       : 'Department Head - Document Verification';
     
-    const rejectedBy = isHRManager ? 'HR Manager' : 'Department Head';
+    const rejectedBy = isHRManager ? 'HR Manager' : isPayrollManager ? 'Payroll Manager' : 'Department Head';
     const rejectionJustification = `[Request Rejected: Document was rejected by ${rejectedBy}. Reason: ${rejectionReason}]`;
 
     // Release pending balance first (before updating leave request)
@@ -5763,8 +5785,11 @@ export class LeavesService {
       0,
       entitlement.pending - leaveRequest.durationDays,
     );
+    // Recalculate remaining balance immediately
+    entitlement.remaining = this.calculateRemaining(entitlement);
     await this.updateLeaveEntitlement(entitlement._id.toString(), {
       pending: entitlement.pending,
+      remaining: entitlement.remaining,
     });
 
     // Reload the document fresh to avoid version conflicts

@@ -167,10 +167,15 @@ export class LeaveController {
   @UseGuards(RolesGuard)
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
-    SystemRole.HR_EMPLOYEE,
-    SystemRole.HR_ADMIN,
     SystemRole.DEPARTMENT_HEAD,
     SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
+    SystemRole.HR_ADMIN,
     SystemRole.RECRUITER,
   )
   async getLeaveRequestById(@Param('id') id: string) {
@@ -182,8 +187,13 @@ export class LeaveController {
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
-    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
     SystemRole.HR_ADMIN,
     SystemRole.RECRUITER,
   )
@@ -459,8 +469,13 @@ export class LeaveController {
   @Roles(
     SystemRole.DEPARTMENT_EMPLOYEE,
     SystemRole.DEPARTMENT_HEAD,
-    SystemRole.HR_EMPLOYEE,
     SystemRole.HR_MANAGER,
+    SystemRole.HR_EMPLOYEE,
+    SystemRole.PAYROLL_SPECIALIST,
+    SystemRole.PAYROLL_MANAGER,
+    SystemRole.SYSTEM_ADMIN,
+    SystemRole.LEGAL_POLICY_ADMIN,
+    SystemRole.FINANCE_STAFF,
     SystemRole.HR_ADMIN,
     SystemRole.RECRUITER,
   )
@@ -974,10 +989,10 @@ export class LeaveController {
     );
   }
 
-  // NEW CODE: Department Head/HR Manager reject document (also rejects the leave request)
+  // NEW CODE: Department Head/HR Manager/Payroll Manager reject document (also rejects the leave request)
   @Post('request/:id/reject-document-dept-head')
   @UseGuards(RolesGuard)
-  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER)
+  @Roles(SystemRole.DEPARTMENT_HEAD, SystemRole.HR_MANAGER, SystemRole.PAYROLL_MANAGER)
   async rejectDocumentByDepartmentHead(
     @Param('id') id: string,
     @Body() body: { rejectionReason: string },
